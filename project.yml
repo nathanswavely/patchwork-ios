@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: MPL-2.0
+
+name: Patchwork
+options:
+  bundleIdPrefix: org.patchwork.prototype
+  deploymentTarget:
+    iOS: '17.0'
+settings:
+  base:
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    SWIFT_VERSION: '5.0'
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    TARGETED_DEVICE_FAMILY: '1,2'
+targets:
+  Patchwork:
+    type: application
+    platform: iOS
+    sources: [Patchwork]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.patchwork.prototype
+        INFOPLIST_KEY_CFBundleDisplayName: Patchwork
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+  PatchworkTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [PatchworkTests]
+    dependencies: [{target: Patchwork}]
+  PatchworkUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [PatchworkUITests]
+    dependencies: [{target: Patchwork}]
+schemes:
+  Patchwork:
+    build:
+      targets:
+        Patchwork: all
+    test:
+      targets: [PatchworkTests, PatchworkUITests]
