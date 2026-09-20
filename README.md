@@ -18,7 +18,7 @@ Normal launches use live APIs. Add `--preview` to the scheme's launch arguments 
 2. Inspect the returned quilt identity and explicitly select Explore quilt.
 3. Explore the interactive quilt — it runs under the bars — pinch to zoom, pan, and filter by the quilt's most-worn tags to repack it. Switch to map or list from the floating control; all three read the same filter.
 4. Search patches and upcoming events from the top bar's field (or the tab bar's Search button); one explicit row narrows the quilt to the query.
-5. Tap a patch to dock its profile at the head's height; pull up for its upcoming events, directions, and links. Open an event, use native sharing, or follow a link to its website.
+5. Tap a patch to dock its profile at the head's height; pull up for its four glimpses — About, Events, Members, Governance — and open any of them by its heading. Read the whole calendar and subscribe to it, the roster the patch publishes, and the documents, proposals and record it publishes. Open an event, get directions, use native sharing, or follow a link to its website. A patch that has moved opens read-only on the quilt it moved to.
 6. Ask Discover what you're drawn to and get the patches wearing those tags, soonest event first.
 7. Hold the Quilt tab (or use the account menu) to switch quilts; connected quilts appear as doorways. Saved quilts are local to the device; no quilt is preselected at launch.
 
@@ -34,7 +34,12 @@ Lancaster is one directory entry, not the default. Direct connection does not de
 | Search (ADR 033) | The field activates in place with patches and events listed under it; one "Show matches" row sets the search chip; the tab bar's Search button focuses it |
 | Filter chips | Sheet of usage-ranked chips over a live canvas; search chip among them; Clear |
 | Map and list | MapKit coordinates; quilt-order, name, and newest list sorts; the view pill floats at the foot |
-| Docked profile (ADR 094) | Sheet at the head's height, full screen on the pull, events fetched by the pull, ShareLink, Maps directions |
+| Docked profile (ADR 094) | Sheet at the head's height, full screen on the pull, the rooms fetched by the pull, ShareLink, Maps directions |
+| Profile glimpses (ADR 042) | About · Events · Members · Governance, each heading the door into its own screen; state worn in the head (moved, unclaimed, amended lining) |
+| Patch calendar and feeds (ADR 031) | Upcoming on open, earlier events on request (`include_past`); Subscribe hands out the ICS (`webcal:`) and RSS addresses on a public patch |
+| Members (ADR 006, ADR 095) | Paged roster with roles; `public_member_list` honoured, counts stay public, a withheld list says so |
+| Governance (ADR 036, ADR 055) | Overview, documents, proposals filtered by outcome, and the record; absent rather than empty where the patch publishes neither |
+| Remote patch (ADR 024) | Read-only view of a patch on another quilt, sashed with that quilt, ending in "Visit on {quilt}" |
 | Discovery mode (ADR 075) | Discover tab: most-worn tags with counts, patches wearing them, soonest event first; ends in the patch |
 | Event list and detail | Native lists, push navigation, event-local time zones, cursor pagination |
 | Mobile navigation | System TabView: Quilt, Events, Discover, Search (a button). Dashboard and notifications wait for sign-in |
@@ -44,7 +49,11 @@ System typography and surfaces adapt to appearance and Dynamic Type. The quilt r
 
 ## API boundary
 
-Reads `instance`, `instance/icon`, `nodes/tree` (including each patch's `appearance`), `nodes/{slug}`, `tags` (for tag motifs), `events` (including `node_slug`, `after`, and `limit`), and `events/{id}`. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
+Reads `instance`, `instance/icon`, `nodes/tree` (including each patch's `appearance`), `nodes/{slug}` (node plus the `is_unclaimed` and `lining_status` envelope), `tags` (for tag motifs), `events` (including `node_slug`, `after`, `limit`, `from`, `to`, and `include_past`), and `events/{id}`.
+
+The patch profile's rooms add `nodes/{slug}/members` (with `after`), `nodes/{slug}/governance`, `governance/{id}`, `nodes/{slug}/governance/overview`, `nodes/{slug}/governance/record`, `nodes/{slug}/proposals` (with `status`), and `proposals/{id}`. `nodes/{slug}/events.ics` and `nodes/{slug}/events.rss` are handed to the reader's own calendar or feed app rather than fetched. A patch on a connected quilt is read from that quilt's own `nodes/{slug}`, `events`, `instance`, and `instance/icon`.
+
+Every one of these is a public read. The client sends no credentials and makes no writes, so a patch's own disclosure settings — `public_member_list`, `public_governance_record`, `visibility`, and the server's `published_only` / `admins_withheld` / `proposals_withheld` flags — are honoured as the server states them, and a withheld list is never rendered as an empty one. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
 
 The client's direct visit to a selected quilt is not a cross-quilt blended read. It does not use `multi_quilt: false` as permission to blend data from other instances.
 

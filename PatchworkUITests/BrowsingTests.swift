@@ -76,12 +76,48 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
         app.swipeUp()
         capture(app, "03a Docked profile pulled up")
-        app.buttons["Upcoming events"].tap()
-        XCTAssertTrue(app.buttons["eventRow"].firstMatch.waitForExistence(timeout: 10))
-        app.buttons["eventRow"].firstMatch.tap()
+        // Each glimpse heading is the door into that room (web ADR 042).
+        app.buttons["glimpseDoor-Events"].tap()
+        XCTAssertTrue(app.buttons["calendarRow"].firstMatch.waitForExistence(timeout: 10))
+        capture(app, "04 Patch calendar")
+        app.buttons["calendarRow"].firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Event"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Saturday open studio"].exists)
-        capture(app, "04 Event detail")
+        capture(app, "04a Event detail")
+        app.buttons["Done"].tap()
+
+        // The profile's depth: state worn in the head, and the two rooms the
+        // glimpses open onto. Taken on the quilt's own tile, because this is
+        // the fixture patch that publishes both a roster and a record.
+        app.segmentedControls.buttons["Quilt"].tap()
+        XCTAssertTrue(tile.waitForExistence(timeout: 10))
+        tile.tap()
+        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["Amended lining"].waitForExistence(timeout: 10), "A patch that amended the lining wears the fact")
+        XCTAssertTrue(app.staticTexts["About"].exists, "About leads the glimpses")
+        capture(app, "03b Glimpses")
+
+        // A public patch's calendar offers the feeds; nothing here signs in.
+        app.buttons["glimpseDoor-Events"].tap()
+        XCTAssertTrue(app.buttons["subscribeToCalendar"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons["Patch"].firstMatch.tap()
+
+        let members = app.buttons["glimpseDoor-Members"]
+        XCTAssertTrue(members.waitForExistence(timeout: 10))
+        members.tap()
+        XCTAssertTrue(app.staticTexts["Rowan Hale"].waitForExistence(timeout: 10), "A member row names the person")
+        XCTAssertTrue(app.staticTexts["Role: admin"].exists, "and the role they hold")
+        capture(app, "03c Members")
+        app.navigationBars.buttons["Patch"].firstMatch.tap()
+
+        let governance = app.buttons["glimpseDoor-Governance"]
+        XCTAssertTrue(governance.waitForExistence(timeout: 10))
+        governance.tap()
+        XCTAssertTrue(app.buttons["governanceDocuments"].waitForExistence(timeout: 10))
+        capture(app, "03d Governance")
+        app.buttons["governanceDocuments"].tap()
+        XCTAssertTrue(app.buttons["documentRow"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["Done"].tap()
 
         // Discover asks, then answers with patches; a row docks the profile.

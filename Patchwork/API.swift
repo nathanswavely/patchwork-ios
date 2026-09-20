@@ -40,13 +40,36 @@ struct PatchworkAPI {
         do { return try decoder.decode(T.self, from: data) }
         catch { throw APIError.response }
     }
-    func events(slug: String? = nil, after: String? = nil, limit: Int = 30) async throws -> EventPage {
+    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false) async throws -> EventPage {
+        try await get("events", query: Self.eventsQuery(slug: slug, after: after, limit: limit, from: from, to: to, includePast: includePast))
+    }
+    /// The events query, built apart from the request so the gates a patch's
+    /// calendar turns on can be checked without a network. `from` keeps a
+    /// section headed "Upcoming" from holding last month; `include_past`
+    /// drops that bound, and `to` is what turns the dropped bound into a
+    /// deliberate request for what already happened. The server orders
+    /// events oldest first and pages forward, so asking for the whole
+    /// calendar at once hands a busy venue its own history before tonight —
+    /// which is why the two halves are asked for separately.
+    static func eventsQuery(slug: String?, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false) -> [URLQueryItem] {
         var query = [URLQueryItem(name: "limit", value: String(limit))]
         if let slug { query.append(URLQueryItem(name: "node_slug", value: slug)) }
+        if let from { query.append(URLQueryItem(name: "from", value: ISO8601DateFormatter().string(from: from))) }
+        if let to { query.append(URLQueryItem(name: "to", value: ISO8601DateFormatter().string(from: to))) }
+        if includePast { query.append(URLQueryItem(name: "include_past", value: "true")) }
         if let after, !after.isEmpty { query.append(URLQueryItem(name: "after", value: after)) }
-        return try await get("events", query: query)
+        return query
     }
     func webURL(_ path: String) -> URL { base.appendingPathComponent(path) }
+    /// A public API address, for the feeds a reader hands to another app.
+    func apiURL(_ path: String) -> URL { base.appendingPathComponent("api/v1/" + path) }
+    /// The same address a calendar app subscribes to. `webcal` is what hands
+    /// an ICS feed to Calendar rather than downloading it once.
+    func subscriptionURL(_ path: String) -> URL? {
+        var parts = URLComponents(url: apiURL(path), resolvingAgainstBaseURL: false)
+        parts?.scheme = "webcal"
+        return parts?.url
+    }
     /// Raw bytes, for the quilt's icon. Preview data serves no images.
     func data(_ path: String) async throws -> Data {
         #if DEBUG
