@@ -320,6 +320,114 @@ final class BrowsingTests: XCTestCase {
         XCTAssertFalse(card.exists, "offered once, never again")
     }
 
+    /// The one authenticated act this client has: a code in the email, six
+    /// digits in the sheet, and the account menu saying who that made you.
+    /// Nothing leaves the app — the whole flow is native, on the quilt the
+    /// reader chose.
+    func testSignInByCodeAndSignOut() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+
+        // Signed out, the menu offers the way in rather than a web link.
+        app.buttons["Account"].tap()
+        let signIn = app.buttons["Sign in"]
+        XCTAssertTrue(signIn.waitForExistence(timeout: 5))
+        signIn.tap()
+
+        let email = app.textFields["signInEmail"]
+        XCTAssertTrue(email.waitForExistence(timeout: 5))
+        capture(app, "15 Sign in — the address")
+        email.tap()
+        email.typeText("reader@example.org")
+        app.buttons["signInSendCode"].tap()
+
+        let code = app.textFields["signInCode"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "reader@example.org")).firstMatch.exists,
+                      "the step names the address the code went to")
+        XCTAssertFalse(app.buttons["signInContinue"].isEnabled, "six digits or nothing")
+        capture(app, "16 Sign in — the code")
+        code.tap()
+        code.typeText("123456")
+        app.buttons["signInContinue"].tap()
+
+        // The sheet's ending is the menu, not a page of its own.
+        XCTAssertFalse(app.textFields["signInCode"].waitForExistence(timeout: 5), "a signed-in reader is not still in the sheet")
+        app.buttons["Account"].tap()
+        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5))
+        XCTAssertTrue(named(app, "samplereader").waitForExistence(timeout: 5), "the menu says who you are")
+        capture(app, "18 Signed-in account menu")
+        app.buttons["Sign out"].tap()
+
+        app.buttons["Account"].tap()
+        XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 5), "letting go offers the way back in")
+        XCTAssertFalse(app.buttons["Sign out"].exists)
+    }
+
+    /// The other half of the same flow: an address the quilt has never seen
+    /// answers its code and is asked for a username, with the rule enforced in
+    /// the sheet before the quilt is asked.
+    func testNewAccountChoosesAUsername() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+
+        app.buttons["Account"].tap()
+        XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 5))
+        app.buttons["Sign in"].tap()
+        let email = app.textFields["signInEmail"]
+        XCTAssertTrue(email.waitForExistence(timeout: 5))
+        email.tap()
+        email.typeText("stranger@example.org")
+        app.buttons["signInSendCode"].tap()
+
+        let code = app.textFields["signInCode"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        code.tap()
+        code.typeText("654321")
+        app.buttons["signInContinue"].tap()
+
+        // No account yet, so the quilt asks for a name before it makes one.
+        let username = app.textFields["signInUsername"]
+        XCTAssertTrue(username.waitForExistence(timeout: 5))
+        capture(app, "17 Sign in — choosing a username")
+        username.tap()
+        username.typeText("-nope-")
+        app.buttons["signInCreate"].tap()
+        XCTAssertTrue(named(app, "That username won’t work").waitForExistence(timeout: 5),
+                      "a hyphen at the end is said out loud, not silently refused")
+        XCTAssertTrue(app.textFields["signInUsername"].exists, "and the step does not move")
+        capture(app, "17a Sign in — the username rule")
+
+        username.tap()
+        let typed = (username.value as? String) ?? ""
+        username.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: typed.count))
+        username.typeText("new-reader")
+        app.buttons["signInCreate"].tap()
+
+        XCTAssertFalse(app.textFields["signInUsername"].waitForExistence(timeout: 5), "the account is made and the sheet is done")
+        app.buttons["Account"].tap()
+        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5))
+        XCTAssertTrue(named(app, "new-reader").waitForExistence(timeout: 5), "the menu wears the name they chose")
+    }
+
+    /// Anything on screen whose label carries this word — a menu's own rows
+    /// are drawn by UIKit, and which element holds the handle is its business.
+    private func named(_ app: XCUIApplication, _ text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch
+    }
+
+    private func openSampleQuilt(_ app: XCUIApplication) {
+        app.buttons["quiltChoice"].firstMatch.tap()
+        let explore = app.buttons["exploreQuilt"]
+        XCTAssertTrue(explore.waitForExistence(timeout: 10))
+        explore.tap()
+        XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
+    }
+
     func testLargeTextAndDarkAppearance() {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL", "--dark-preview"]

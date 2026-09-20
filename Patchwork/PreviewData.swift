@@ -22,12 +22,23 @@ enum PreviewData {
         return formatter.string(from: day.addingTimeInterval(TimeInterval(hour * 3600)))
     }
 
+    /// Tonight, and still ahead of whoever is reading. The fixture's point is
+    /// one event later today, and a fixed 6pm stops being that at 6pm: a suite
+    /// run in the evening found the day's event already over and the patch's
+    /// "Upcoming" section starting two days out. Clamped to 23:00 so tonight
+    /// never slides into tomorrow.
+    private static var tonightHour: Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        return min(max(18, calendar.component(.hour, from: Date()) + 1), 23)
+    }
+
     private static var events: [(id: String, json: String)] {
         let tonight = """
         {"id":"demo-event","node_id":"demo-patch","title":"Saturday open studio",\
         "description":"Bring something you’re working on, or try something new. There will be fabric, paper, and a pot of coffee. Everyone is welcome; no experience needed.",\
         "location":"12 Example Street","latitude":40.0379,"longitude":-76.3055,\
-        "starts_at":"\(instant(daysFromToday: 0))","ends_at":"\(instant(daysFromToday: 0, hour: 21))",\
+        "starts_at":"\(instant(daysFromToday: 0, hour: tonightHour))","ends_at":"\(instant(daysFromToday: 0, hour: tonightHour + 3))",\
         "timezone":"America/New_York","recurrence":"weekly","visibility":"public","status":"active",\
         "image_url":"https://quilt.example.org/flyers/open-studio.jpg","image_alt":"A hand-lettered flyer for open studio night",\
         "event_url":"https://quilt.example.org/whats-on/open-studio",\
@@ -57,7 +68,7 @@ enum PreviewData {
     /// The offline stand-in for `events/{id}/event.ics`, so the share
     /// fallback has a file to hand over with no network.
     static func calendarFile(_ id: String) -> Data {
-        let stamp = instant(daysFromToday: 0)
+        let stamp = instant(daysFromToday: 0, hour: tonightHour)
             .replacingOccurrences(of: "-", with: "").replacingOccurrences(of: ":", with: "")
         return Data("""
         BEGIN:VCALENDAR\r
@@ -89,6 +100,54 @@ enum PreviewData {
             return true
         }
         return "{\"items\":[\(items.joined(separator: ","))],\"next_cursor\":\"\"}"
+    }
+
+    // MARK: The signed-in half
+
+    /// Whether the fictional reader is signed in. In preview there is no
+    /// cookie jar to consult, so this stands in for the cookie itself — set by
+    /// a verified code, cleared by signing out, and gone at the next launch,
+    /// which is what a fixture should be.
+    static var signedIn = false
+    /// The account the fixtures name. `auth/signup` replaces it with the
+    /// username the person chose, so the menu shows their word and not ours.
+    static var account = #"{"id":"demo-user","username":"samplereader","display_name":"Sample Reader","role":"member"}"#
+    private static let sampleAccount = account
+    static func signOut() { signedIn = false; account = sampleAccount }
+
+    /// The offline stand-in for the three writes. The JSON is returned as text
+    /// so a post with nothing to read (`auth/logout`) runs the same path as
+    /// one with a user in the answer.
+    static func post(_ path: String, body: Data) throws -> String {
+        let fields = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        switch path {
+        case "auth/magic-link":
+            return #"{"status":"ok"}"#
+        case "auth/magic-link/verify":
+            switch (fields["code"] as? String) ?? "" {
+            case "123456":
+                signedIn = true
+                account = sampleAccount
+                return account
+            // The address with no account yet: the other half of the flow.
+            case "654321":
+                return #"{"status":"username_required","signup_token":"demo-signup"}"#
+            default:
+                throw APIError.message("invalid or expired code", status: 400)
+            }
+        case "auth/signup":
+            let username = ((fields["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let display = ((fields["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !username.isEmpty else { throw APIError.message("Choose a username.", status: 400) }
+            signedIn = true
+            account = "{\"id\":\"demo-user\",\"username\":\"\(username)\",\"display_name\":\"\(display)\",\"role\":\"member\"}"
+            return account
+        case "auth/logout":
+            signOut()
+            return "{}"
+        default:
+            throw APIError.status(404)
+        }
     }
 
     static func response<T: Decodable>(_ path: String, query: [URLQueryItem] = []) throws -> T {
@@ -124,6 +183,9 @@ enum PreviewData {
         // whole-quilt public numbers rather than a tally of the tree in hand:
         // `craft` is worn by more patches than this fixture's tree holds, and
         // `archive` is a curated term nothing wears yet.
+        case "auth/me":
+            guard signedIn else { throw APIError.unauthenticated }
+            json = account
         case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":3},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6},{"name":"archive","node_count":0}]"#
         case "events": json = eventsPage(query)
         case "nodes/common-thread/members": json = members

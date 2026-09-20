@@ -2,29 +2,80 @@
 
 import Foundation
 
-enum APIError: LocalizedError {
+enum APIError: LocalizedError, Equatable {
     case address, response, status(Int)
+    /// The server's own sentence, decoded from an `{"error": …}` body. The
+    /// quilt words a refusal better than this client can — "that username is
+    /// taken", "that address isn’t an address" — so where it says something,
+    /// that is what the person is shown.
+    case message(String, status: Int)
+    /// A 401 from an authenticated call: the session is gone or was never
+    /// there. It is a state, not a failure to report — whoever asked clears
+    /// the account and carries on reading the public quilt.
+    case unauthenticated
     var errorDescription: String? {
         switch self {
         case .address: return "Enter a quilt’s HTTPS address, such as community.example.org, without a page path."
         case .response: return "This address did not return a Patchwork response. Check the address and try again."
         case .status(let status): return "The quilt could not complete the request (HTTP \(status)). Try again shortly."
+        case .message(let message, _): return message
+        case .unauthenticated: return "You are signed out of this quilt."
         }
+    }
+    /// What a non-2xx answer means, read from the body where the body says.
+    static func from(status: Int, data: Data) -> APIError {
+        if status == 401 { return .unauthenticated }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = (object["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
+            return .message(message, status: status)
+        }
+        return .status(status)
     }
 }
 
 struct PatchworkAPI {
     let base: URL
+    /// The name of the session cookie the server sets (HttpOnly, Secure,
+    /// SameSite=Lax). There is no bearer token anywhere in this contract.
+    static let sessionCookie = "patchwork_session"
+    /// One session for the app, and it keeps cookies.
+    ///
+    /// This used to be `.ephemeral` with `httpShouldSetCookies = false`, which
+    /// was the honest shape of a client that could not sign in. Now that it
+    /// can, the session cookie has to survive a relaunch, so the storage is
+    /// `HTTPCookieStorage.shared` — the system's own jar, private to this app,
+    /// shared with nothing and no web view.
+    ///
+    /// Cookies are host-scoped by the cookie standard itself, so a reader
+    /// signed in to two saved quilts keeps two separate sessions with no
+    /// bookkeeping here at all: a request to `a.example` is never sent
+    /// `b.example`'s cookie, and clearing one quilt's session cannot touch the
+    /// other's. That is why nothing in this client indexes sessions by quilt.
     private static let session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.httpShouldSetCookies = false
+        let config = URLSessionConfiguration.default
+        config.httpShouldSetCookies = true
+        config.httpCookieAcceptPolicy = .onlyFromMainDocumentDomain
+        config.httpCookieStorage = HTTPCookieStorage.shared
         config.timeoutIntervalForRequest = 20
         config.timeoutIntervalForResource = 30
         return URLSession(configuration: config)
     }()
+    private static var isPreview: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--preview")
+        #else
+        return false
+        #endif
+    }
+    private static func decoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }
     func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--preview") {
+        if Self.isPreview {
             return try PreviewData.response(path, query: query)
         }
         #endif
@@ -34,11 +85,70 @@ struct PatchworkAPI {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await Self.session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.response }
-        guard (200..<300).contains(http.statusCode) else { throw APIError.status(http.statusCode) }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        do { return try decoder.decode(T.self, from: data) }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.from(status: http.statusCode, data: data) }
+        do { return try Self.decoder().decode(T.self, from: data) }
         catch { throw APIError.response }
+    }
+    /// A write. Three of them exist — ask for a code, answer it, and let go —
+    /// and every one of them needs the two headers the server refuses a
+    /// request without: `X-Patchwork-Request` (the quilt's own CSRF gate) and
+    /// a JSON content type. A body is encoded snake_case, the way the server
+    /// spells its fields.
+    func post<T: Decodable>(_ path: String, body: some Encodable) async throws -> T {
+        let data = try await postData(path, body: body)
+        do { return try Self.decoder().decode(T.self, from: data) }
+        catch { throw APIError.response }
+    }
+    /// The same write where the answer is not read: logging out.
+    func postVoid(_ path: String, body: some Encodable) async throws { _ = try await postData(path, body: body) }
+    func postVoid(_ path: String) async throws { try await postVoid(path, body: NoBody()) }
+    private func postData(_ path: String, body: some Encodable) async throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let payload = try encoder.encode(body)
+        #if DEBUG
+        if Self.isPreview { return Data(try PreviewData.post(path, body: payload).utf8) }
+        #endif
+        var request = URLRequest(url: base.appendingPathComponent("api/v1/" + path))
+        request.httpMethod = "POST"
+        request.httpBody = payload
+        request.setValue("true", forHTTPHeaderField: "X-Patchwork-Request")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await Self.session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.response }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.from(status: http.statusCode, data: data) }
+        return data
+    }
+    /// Whether this quilt's host has a session cookie in the jar.
+    ///
+    /// This is what keeps a signed-out launch signed out: `auth/me` is the one
+    /// authenticated read this client makes, and asking it with no cookie
+    /// would be a 401 round trip announcing to every quilt that the app
+    /// opened. The storage is injectable so the host scoping can be checked
+    /// without touching the shared jar.
+    func hasSession(in storage: HTTPCookieStorage = .shared) -> Bool {
+        #if DEBUG
+        if Self.isPreview { return PreviewData.signedIn }
+        #endif
+        return Self.hasSession(for: base, in: storage)
+    }
+    /// The same check as a value: is there a `patchwork_session` cookie this
+    /// URL would be sent? `cookies(for:)` applies the cookie's own domain,
+    /// path and Secure rules, so a cookie set by one quilt is invisible here
+    /// to every other.
+    static func hasSession(for url: URL, in storage: HTTPCookieStorage) -> Bool {
+        (storage.cookies(for: url) ?? []).contains { $0.name == sessionCookie }
+    }
+    /// Forget this quilt's session, and only this quilt's.
+    func clearSession(in storage: HTTPCookieStorage = .shared) {
+        #if DEBUG
+        if Self.isPreview { PreviewData.signOut(); return }
+        #endif
+        Self.clearSession(for: base, in: storage)
+    }
+    static func clearSession(for url: URL, in storage: HTTPCookieStorage) {
+        for cookie in storage.cookies(for: url) ?? [] { storage.deleteCookie(cookie) }
     }
     /// The same feed with bounds already resolved to instants — what the date
     /// presets produce. `from`/`to` travel as instants, never bare dates: the
@@ -107,6 +217,53 @@ struct PatchworkAPI {
         return data
     }
 }
+
+/// A POST with nothing to say — `auth/logout`.
+struct NoBody: Encodable {}
+
+/// The whole of what this client can do with an account: ask a quilt to email
+/// a code, answer it, choose a username the first time, read back who that
+/// made you, and let go. Every one of them is on the quilt the reader chose;
+/// there is no central anything.
+extension PatchworkAPI {
+    /// "Email me a code." The quilt answers 200 whether or not the address has
+    /// an account — it will not tell a stranger who is registered — and 400
+    /// only when the address is not an address.
+    func requestCode(email: String) async throws {
+        try await postVoid("auth/magic-link", body: ["email": email.trimmingCharacters(in: .whitespacesAndNewlines)])
+    }
+    /// The code, answered. Two 200s mean two different things: a user, or a
+    /// handoff to choosing a username.
+    func verify(email: String, code: String) async throws -> SignInOutcome {
+        let response: SignInResponse = try await post(
+            "auth/magic-link/verify",
+            body: ["email": email.trimmingCharacters(in: .whitespacesAndNewlines), "code": SignInFlow.normalize(code: code)]
+        )
+        return try response.outcome()
+    }
+    /// The second half of a first sign-in.
+    func signUp(token: String, username: String, displayName: String) async throws -> User {
+        let response: SignInResponse = try await post("auth/signup", body: SignUpBody(token: token, username: username, displayName: displayName))
+        guard let user = response.user else { throw APIError.response }
+        return user
+    }
+    /// Who the cookie says this is. 401 — the signed-out answer — arrives as
+    /// `APIError.unauthenticated` rather than as a status to report.
+    func account() async throws -> User {
+        let response: SignInResponse = try await get("auth/me")
+        guard let user = response.user else { throw APIError.response }
+        return user
+    }
+    func signOut() async throws { try await postVoid("auth/logout") }
+}
+
+private struct SignUpBody: Encodable {
+    let token: String
+    let username: String
+    /// Optional to the person, always sent: the server takes an empty string.
+    let displayName: String
+}
+
 
 @MainActor final class QuiltStore: ObservableObject {
     @Published var saved: [Quilt] = []

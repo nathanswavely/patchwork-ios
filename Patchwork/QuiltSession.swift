@@ -41,6 +41,10 @@ import WebKit
     /// setting `QuiltTheme.colorMode` from the same place keeps the palette
     /// the layers resolve in step with the one the views were told about.
     @Published private(set) var colorMode = QuiltTheme.colorMode
+    /// Who this quilt says the reader is, or nobody. It is the account menu's
+    /// whole state: there is one session per quilt, held in the cookie jar,
+    /// and this is the quilt's own answer to `auth/me` about it.
+    @Published private(set) var me: User?
     init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
     func apply(colorMode next: ColorMode) {
         QuiltTheme.colorMode = next
@@ -108,6 +112,42 @@ import WebKit
             if image == nil { image = await SVGRasterizer().render(data, side: 50) }
             if let image { icon = image; tabIcon = image.tabIcon(); tabIconDim = image.tabIcon(dimmed: true) }
         }
+        await refreshAccount()
+    }
+
+    // MARK: The account
+
+    /// Read back who the cookie says this is — but only if there is a cookie.
+    ///
+    /// A reader who has never signed in to this quilt makes no authenticated
+    /// request at all: the check is local, host-scoped, and costs no round
+    /// trip, so a signed-out launch reads exactly the public endpoints it
+    /// always did.
+    func refreshAccount() async {
+        guard api.hasSession() else { me = nil; return }
+        do { me = try await api.account() }
+        catch APIError.unauthenticated { signedOut() }
+        catch { /* A quilt that cannot be reached is not a quilt that signed us out. */ }
+    }
+
+    /// The sheet's ending: the account menu is what confirms it.
+    func signedIn(_ user: User) { me = user }
+
+    /// Any authenticated call anywhere can land here: a 401 means the session
+    /// is gone, whatever was being asked for.
+    func signedOut() { me = nil }
+
+    /// Let go of this quilt, and only this quilt.
+    ///
+    /// The cookie is cleared whatever the POST did. A 401 means the session
+    /// was already gone; anything else means the quilt could not be reached,
+    /// and a reader who pressed Sign out on a train should not still be signed
+    /// in when they get off — the server-side session then expires on its own.
+    func signOut() async {
+        do { try await api.signOut() }
+        catch { }
+        api.clearSession()
+        signedOut()
     }
 }
 

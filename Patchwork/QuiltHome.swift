@@ -83,6 +83,7 @@ struct DiscoveryToolbar: ViewModifier {
     var filter: Binding<Bool>? = nil
     @State private var about = false
     @State private var display = false
+    @State private var signIn = false
     @FocusState private var focused: Bool
     private var fieldWidth: CGFloat { min(420, max(200, UIScreen.main.bounds.width - (session.searching ? 108 : 150))) }
     func body(content: Content) -> some View {
@@ -111,7 +112,25 @@ struct DiscoveryToolbar: ViewModifier {
                         Button("Cancel") { session.endSearch() }
                     } else {
                         Menu {
-                            Link(destination: session.api.webURL("login")) { Label("Join or sign in on the web", systemImage: "person.badge.key") }
+                            // Signing in is native now. Joining a patch,
+                            // following and posting are still the website's.
+                            if let me = session.me {
+                                Button {} label: {
+                                    Text(me.title)
+                                    Text(me.handle)
+                                }
+                                .disabled(true)
+                                // A menu row's label is its title alone, so
+                                // the handle under it would be drawn and never
+                                // spoken. Both, in one sentence.
+                                .accessibilityLabel("Signed in as \(me.title), \(me.handle)")
+                                .accessibilityIdentifier("accountMe")
+                                Button { Task { await session.signOut() } } label: {
+                                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                                }
+                            } else {
+                                Button { signIn = true } label: { Label("Sign in", systemImage: "person.badge.key") }
+                            }
                             Divider()
                             Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
                             Button { display = true } label: { Label("Display", systemImage: "slider.horizontal.3") }
@@ -124,6 +143,11 @@ struct DiscoveryToolbar: ViewModifier {
             .onChange(of: session.searching) { _, now in focused = now }
             .sheet(isPresented: $about) { QuiltInfoSheet() }
             .sheet(isPresented: $display) { DisplaySheet() }
+            .sheet(isPresented: $signIn) {
+                SignInSheet(api: session.api, quiltName: session.instance?.name ?? session.quilt.name) { user in
+                    session.signedIn(user)
+                }
+            }
     }
     /// At rest the field is a button wearing the field's clothes: a text field
     /// hosted in the bar's UIKit toolbar item reports neither focus nor editing

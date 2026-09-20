@@ -363,3 +363,70 @@ simulator, with no test changed. Contrast sampled by pixel on every screen this
 pass touched, in light and dark: ink 12.9–14.1:1, muted 5.1–6.0:1, the active
 filter chip 5.2:1 light and 7.0:1 dark — AA throughout. Not verified: a physical
 device, VoiceOver, iPad, and Increase Contrast beyond the declared values.
+
+## Sign-in — 2026-09-20
+
+The client could read a quilt and nothing else. It can now sign in to one.
+
+**What was built.** One sheet (`SignIn.swift`) with three steps, driven by
+`SignInFlow` — a value with a `Step` enum (`.email` → `.code(email)` →
+`.username(token, email)` → `.done(User)`), an `Event` enum for what the server
+answered, and one `apply(_:)` that is the only thing allowed to move between
+steps. Every transition is checked in `PatchworkTests/SignInTests.swift` with
+no window open. The account menu in `DiscoveryToolbar` lost "Join or sign in on
+the web" and gained **Sign in** when signed out, and when signed in a disabled
+row naming the person (display name over `@username`, both in one accessibility
+label, because a menu row's label is otherwise its title alone) followed by
+**Sign out**. About, Display and Switch quilt are untouched.
+
+**The contract, as the server states it.** All under `api/v1/`. Every non-GET
+carries `X-Patchwork-Request: true` and a JSON content type or the quilt
+answers 403. `POST auth/magic-link` takes `{email}` and answers 200 whether or
+not the address has an account — it will not tell a stranger who is registered
+— and 400 with a sentence only when the address is not an address. `POST
+auth/magic-link/verify` takes `{email, code}` and answers with either the user
+or `{"status":"username_required","signup_token":…}`; every failure is the same
+400, and five wrong codes burn the code. `POST auth/signup` takes
+`{token, username, display_name}` and answers with the user. `GET auth/me` is
+the user or 401. `POST auth/logout` is 200. The username rule
+(`^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$`) is mirrored client-side for the inline
+hint only; the quilt still has the last word.
+
+**The cookie decision.** Sessions are a cookie (`patchwork_session`, HttpOnly,
+Secure, SameSite=Lax) and there are no bearer tokens, so the app's `URLSession`
+stopped being `.ephemeral` with `httpShouldSetCookies = false` and became
+`URLSessionConfiguration.default` over `HTTPCookieStorage.shared` — the
+system's own jar, private to this app, shared with no web view. That is what
+lets a session survive a relaunch. It also settles multi-quilt sessions for
+free: cookies are host-scoped by the cookie standard, so a reader signed in to
+two saved quilts keeps two sessions, one quilt's cookie is never sent to
+another, and clearing one cannot touch the other. Nothing in the client indexes
+sessions by quilt, and the host scoping is checked in a test with its own
+`HTTPCookieStorage`. `auth/me` is asked only when a `patchwork_session` cookie
+exists for that host, so a reader who has never signed in still makes exactly
+the public reads they always did — a signed-out launch is unchanged. Signing
+out clears the cookie whether or not the POST succeeded: a 401 means the
+session was already gone, and anything else means the quilt could not be
+reached, which is not a reason to stay signed in on the device.
+
+**What stays on the web.** Joining a patch, following, suggesting a patch,
+posting, governance and editing an event are still website links, and the
+profile footer and Discover links were left alone. The dashboard and
+notifications still wait. Passkeys wait too: they need an associated-domains
+entitlement per quilt, and a client that connects to any quilt by address
+cannot declare that list ahead of time — the six-digit code is the flow that
+works for an unbounded set of hosts.
+
+**Offline.** `PreviewData.post` answers the three writes: code `123456` signs
+in the sample reader, `654321` hands back a signup token, anything else is the
+server's own "invalid or expired code". `PreviewData.signedIn` stands in for
+the cookie, so the whole flow runs with no network.
+
+**Verification.** 129 unit tests and 8 UI tests on an iPhone 17 Pro simulator;
+the flow was also driven by hand in preview and read in light mode. Two things
+that only showed up on screen: SwiftUI parses a placeholder string literal as
+Markdown and drew `you@example.org` as a blue link (now `Text(verbatim:)`), and
+a `TextField` whose binding rewrites the text as it is typed shows one thing
+while holding another, so the code is normalised when it is sent rather than
+under the cursor. Not verified: a live quilt, a physical device, VoiceOver, the
+five-wrong-codes lockout, and cookie persistence across a real relaunch.

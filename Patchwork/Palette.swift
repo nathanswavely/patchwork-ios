@@ -156,8 +156,30 @@ struct InkAction: ViewModifier {
     }
 }
 
+/// What a text field is made of. The app has almost no forms — sign-in is the
+/// first — and a bare `TextField` on the textile ground has no edge at all, so
+/// one modifier gives every field the card's own materials at a smaller
+/// radius: the surface a step off the ground, the hairline it is cut out with,
+/// and a 44pt-minimum target. The tint stays out of it; a field is not an act.
+struct FieldStyle: ViewModifier {
+    static let radius: CGFloat = 10
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: Self.radius, style: .continuous) }
+    func body(content: Content) -> some View {
+        content
+            .font(Font.pw.body)
+            .foregroundStyle(Color.pwText)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .frame(minHeight: 44)
+            .background(Color.pwSurface, in: shape)
+            .overlay(shape.strokeBorder(Color.pwBorder, lineWidth: 1))
+    }
+}
+
 extension View {
     func cardSurface(padding: CGFloat = PatchworkCard.padding) -> some View { modifier(CardSurface(padding: padding)) }
+    /// A text field in the app's own clothes: surface, hairline, 10pt radius.
+    func fieldStyle() -> some View { modifier(FieldStyle()) }
     func groundedList() -> some View { modifier(GroundedList()) }
     /// The card surface under a list's rows. Applied to a `Group` of sections
     /// inside the list, which is the one place it propagates from.

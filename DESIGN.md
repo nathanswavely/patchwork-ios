@@ -169,6 +169,15 @@ Use system-rounded controls and native sheet corners. Tiles are square and meet 
 - **Secondary:** `.bordered`, `.plain`, or `Link` for Cancel, Done, website, directions, and sharing.
 - **State:** use system pressed, focus, disabled, and VoiceOver states; never rely on hover.
 
+### Forms
+
+The app asks for almost nothing, and sign-in is the first thing it asks for at all (`SignIn.swift`). A bare `TextField` on the textile ground has no edge, so every field wears one modifier — `View.fieldStyle()` (`FieldStyle`, Palette.swift): `pwSurface`, a 1pt `pwBorder` hairline, a 10pt continuous radius (the card's materials at a smaller corner, because a field is a smaller thing than a card), 12pt padding and a 44pt minimum height. The tint stays out of it; a field is not an act.
+
+- **A step** is a heading in the display face, one sentence in `pwTextMuted`, the field, the refusal, then one `.borderedProminent` button in the accent taking the full width. Anything secondary beside it is an `inkAction`, never a coloured word.
+- **A refusal** sits under the field it is about, never at the foot of the step, and it is the server's own sentence wherever the server wrote one.
+- **A rule the client can check** (the username) is a muted hint while it is being typed and a correction only once the person has left the field or pressed the button. Editing clears it.
+- **Placeholders** are `Text(verbatim:)`. A string literal shaped like an email address is parsed as Markdown and drawn as a blue link — in the field whose whole job is to hold one.
+
 ### Filters
 
 - **Style:** the Filter button opens a sheet of chips — every tag the quilt wears, most-worn first, with the search chip among them — over the canvas, which repacks live behind it. Chips are plain: only Discover says how many patches wear a tag, and the number it says is the quilt's own (`tags` → `node_count`), so both surfaces rank by one thing. Inactive chips are grey; the one tint marks the active ones.

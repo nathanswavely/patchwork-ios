@@ -767,3 +767,60 @@ enum AtprotoHandle {
         return host.replacingOccurrences(of: "%3A", with: ":", options: .caseInsensitive)
     }
 }
+
+// The account half of the contract. This client holds one signed-in person at
+// a time per quilt, and this is everything it knows about them.
+
+/// The person the session cookie names (`auth/me`, and the answer to both
+/// sign-in posts). `email` is served only to the account that owns it.
+struct User: Decodable, Hashable, Identifiable {
+    let id: String
+    let username: String
+    let displayName: String?
+    let bio: String?
+    let avatarUrl: String?
+    let role: String?
+    let email: String?
+    /// The name to print, the way a steward's is printed: what they filled in,
+    /// or the handle with its at sign so a bare word is never mistaken for a
+    /// display name nobody chose.
+    var title: String { (displayName?.isEmpty == false ? displayName : nil) ?? handle }
+    var handle: String { "@" + username }
+    var avatar: URL? { (avatarUrl?.isEmpty == false) ? URL(string: avatarUrl!) : nil }
+}
+
+/// What a 200 from `auth/magic-link/verify` turned out to be.
+enum SignInOutcome: Equatable {
+    case signedIn(User)
+    /// The address has no account yet. The token is the quilt's proof that
+    /// this address answered its code, and it is spent by `auth/signup`.
+    case usernameRequired(token: String)
+}
+
+/// Both sign-in posts and `auth/me` answer at the same level: either the user
+/// object itself or, for the address with no account, a status and a token. So
+/// one type decodes both, and the shape is read afterwards rather than guessed
+/// at from which endpoint was called.
+struct SignInResponse: Decodable {
+    let status: String?
+    let signupToken: String?
+    let user: User?
+    private enum CodingKeys: String, CodingKey { case status, signupToken, user }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try? container.decodeIfPresent(String.self, forKey: .status)
+        signupToken = try? container.decodeIfPresent(String.self, forKey: .signupToken)
+        // Tolerated rather than required: a quilt that wraps the user in
+        // `{"user": …}` is read the same as one that does not.
+        if let nested = try? container.decode(User.self, forKey: .user) { user = nested }
+        else { user = try? User(from: decoder) }
+    }
+    func outcome() throws -> SignInOutcome {
+        if status == "username_required" {
+            guard let token = signupToken, !token.isEmpty else { throw APIError.response }
+            return .usernameRequired(token: token)
+        }
+        guard let user else { throw APIError.response }
+        return .signedIn(user)
+    }
+}
