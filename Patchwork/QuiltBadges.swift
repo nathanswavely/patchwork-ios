@@ -228,10 +228,21 @@ final class BadgeView: UIView {
     private let label = UILabel()
     private var lines = 1
 
+    private let frost = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        backgroundColor = QuiltInk.labelBackground
+        // Frosted, the way the web's badge is: a blur behind the tinted pill,
+        // so the name earns its contrast from the reader's theme rather than
+        // from whatever fabric happens to lie under it.
+        clipsToBounds = true
+        frost.frame = bounds
+        frost.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        frost.isUserInteractionEnabled = false
+        addSubview(frost)
+        backgroundColor = .clear
+        frost.contentView.backgroundColor = QuiltInk.labelBackground
         layer.borderWidth = 1
         label.textAlignment = .center
         label.lineBreakMode = .byTruncatingTail

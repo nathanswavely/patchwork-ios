@@ -167,11 +167,14 @@ private struct FieldChrome: ViewModifier {
     }
 }
 
-/// Liquid glass where the system has it; material where it does not.
+/// Liquid glass where the system has it; material where it does not. The
+/// glass is tinted with the app's own surface: the quilt under it is dense
+/// and unpredictable, and a control that carries text needs a floor of its
+/// own without a band behind it. Tinted regular glass is the system's answer
+/// to exactly that — it stays glass, it just reads frosted.
 private struct GlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) { content.glassEffect() }
-        else { content.background(.regularMaterial, in: Capsule()) }
+        content.background(.thickMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
     }
 }
 
