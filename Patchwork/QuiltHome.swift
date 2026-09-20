@@ -6,6 +6,9 @@ import UIKit
 struct QuiltHome: View {
     @StateObject private var session: QuiltSession
     @State private var pane = Pane.quilt
+    /// The reader's colour register, read here so a change to it reaches the
+    /// session — and through it the canvas — wherever the sheet was opened from.
+    @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
     enum Pane: Hashable { case quilt, events, discover, search }
     init(quilt: Quilt) { _session = StateObject(wrappedValue: QuiltSession(quilt: quilt)) }
     var body: some View {
@@ -37,6 +40,8 @@ struct QuiltHome: View {
         .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
         .sheet(isPresented: $session.switching) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
         .task { await session.load() }
+        .onAppear { session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard) }
+        .onChange(of: colors) { _, now in session.apply(colorMode: ColorMode(rawValue: now) ?? .standard) }
         .environmentObject(session)
     }
     private var quiltPane: some View { NavigationStack { QuiltBrowser() } }
@@ -55,6 +60,7 @@ struct DiscoveryToolbar: ViewModifier {
     @EnvironmentObject private var session: QuiltSession
     var filter: Binding<Bool>? = nil
     @State private var about = false
+    @State private var display = false
     @FocusState private var focused: Bool
     private var fieldWidth: CGFloat { min(420, max(200, UIScreen.main.bounds.width - (session.searching ? 108 : 150))) }
     func body(content: Content) -> some View {
@@ -86,6 +92,7 @@ struct DiscoveryToolbar: ViewModifier {
                             Link(destination: session.api.webURL("login")) { Label("Join or sign in on the web", systemImage: "person.badge.key") }
                             Divider()
                             Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
+                            Button { display = true } label: { Label("Display", systemImage: "slider.horizontal.3") }
                             Button { session.switching = true } label: { Label("Switch quilt", systemImage: "square.grid.2x2") }
                         } label: { Image(systemName: "person.crop.circle") }
                         .accessibilityLabel("Account")
@@ -93,7 +100,8 @@ struct DiscoveryToolbar: ViewModifier {
                 }
             }
             .onChange(of: session.searching) { _, now in focused = now }
-            .sheet(isPresented: $about) { AboutQuilt() }
+            .sheet(isPresented: $about) { QuiltInfoSheet() }
+            .sheet(isPresented: $display) { DisplaySheet() }
     }
     /// At rest the field is a button wearing the field's clothes: a text field
     /// hosted in the bar's UIKit toolbar item reports neither focus nor editing
@@ -145,23 +153,14 @@ private struct GlassCapsule: ViewModifier {
     }
 }
 
-struct AboutQuilt: View {
-    @EnvironmentObject private var session: QuiltSession
+/// Display is the reader's own setting, not the quilt's, so it opens as its
+/// own sheet beside the quilt's information rather than inside it.
+struct DisplaySheet: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let icon = session.icon { Image(uiImage: icon).resizable().aspectRatio(contentMode: .fill).frame(width: 42, height: 42).clipped() }
-                    else { QuiltMark() }
-                    Text(session.quilt.name).font(.largeTitle.bold())
-                    Text(session.quilt.url.host() ?? session.quilt.id).foregroundStyle(.secondary)
-                    if let description = session.instance?.description, !description.isEmpty { Text(description) }
-                    Link("Open quilt website", destination: session.quilt.url)
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
-            }
-            .navigationTitle("About this quilt").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            DisplaySettings()
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
     }

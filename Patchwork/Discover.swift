@@ -101,7 +101,12 @@ struct Discover: View {
                         Text(picked.isEmpty ? "Everything on this quilt" : "Patches you might like").font(.title2.bold()).foregroundStyle(Color.primary)
                         Text("\(matching.count) \(matching.count == 1 ? "patch" : "patches")\(picked.isEmpty ? "" : " match what you picked") — the ones with something coming up are first.")
                     }.textCase(nil).padding(.bottom, 6)
-                } footer: { Text("Following a patch is available on this quilt’s website.") }
+                } footer: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Following a patch is available on this quilt’s website.")
+                        QuiltInfoFooter()
+                    }
+                }
             }
         }
     }

@@ -27,7 +27,7 @@ struct QuiltBrowser: View {
                     Label("No patches match", systemImage: "line.3.horizontal.decrease")
                 } description: { Text("Nothing on this quilt matches your filters.") } actions: { Button("Clear filters") { session.clearFilters() } }
             } else if mode == "Quilt" {
-                QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs) { open($0) }
+                QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs, colorMode: session.colorMode) { open($0) }
                     .ignoresSafeArea()
             } else if mode == "Map" {
                 if located.isEmpty { ContentUnavailableView("No locations to show", systemImage: "map", description: Text("These patches haven’t shared map coordinates.")) }
@@ -47,7 +47,13 @@ struct QuiltBrowser: View {
                         ForEach(ordered) { patch in
                             Button { open(patch) } label: { PatchRow(patch: patch) }.accessibilityIdentifier("patchRow")
                         }
-                    } header: { Text("\(filtered.count) of \(session.patches.count) patches") }
+                    } header: {
+                        Text("\(filtered.count) of \(session.patches.count) patches")
+                    } footer: {
+                        // The web carries a footer strip on every page; here it
+                        // is one quiet row at the end of the reading surfaces.
+                        QuiltInfoFooter()
+                    }
                 }
                 .refreshable { await session.load() }
                 .safeAreaPadding(.bottom, 64)

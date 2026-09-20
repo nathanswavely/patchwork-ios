@@ -6,10 +6,15 @@ struct QuiltCanvas: UIViewRepresentable {
     let tiles: [QuiltLayout.Tile]
     let patches: [Patch]
     var tagMotifs: [String: String] = [:]
+    /// The register the tiles are cut in. It rides along so a change to it is
+    /// a change to this view's value, which is what makes `updateUIView` run
+    /// and the tiles recut; the mode is otherwise invisible to SwiftUI.
+    var colorMode: ColorMode = .standard
     let select: (Patch) -> Void
     func makeUIView(context: Context) -> CanvasView { CanvasView() }
     func updateUIView(_ view: CanvasView, context: Context) {
-        view.update(tiles: tiles, patches: patches, tagMotifs: tagMotifs, select: select)
+        QuiltTheme.colorMode = colorMode
+        view.update(tiles: tiles, patches: patches, tagMotifs: tagMotifs, colorMode: colorMode, select: select)
     }
 }
 
@@ -88,10 +93,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         select?(patch)
     }
 
-    func update(tiles: [QuiltLayout.Tile], patches: [Patch], tagMotifs: [String: String], select: @escaping (Patch) -> Void) {
+    func update(tiles: [QuiltLayout.Tile], patches: [Patch], tagMotifs: [String: String], colorMode: ColorMode, select: @escaping (Patch) -> Void) {
         self.select = select
         patchesByID = Dictionary(patches.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        scroll.update(tiles: tiles, patches: patches, tagMotifs: tagMotifs, select: select)
+        scroll.update(tiles: tiles, patches: patches, tagMotifs: tagMotifs, colorMode: colorMode, select: select)
         updateBadges()
     }
 
@@ -110,6 +115,7 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
     private var current: [QuiltLayout.Tile] = []
     private var currentPatches: [Patch] = []
     private var currentMotifs: [String: String] = [:]
+    private var currentColorMode = QuiltTheme.colorMode
     private var needsFit = true
     private var lastBounds = CGSize.zero
     private var suppressSelectionUntil = 0.0
@@ -205,10 +211,12 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
                                     bottom: safeAreaInsets.bottom + vertical, right: safeAreaInsets.right + horizontal)
     }
 
-    func update(tiles: [QuiltLayout.Tile], patches: [Patch], tagMotifs: [String: String], select: @escaping (Patch) -> Void) {
-        guard current != tiles || currentPatches != patches || currentMotifs != tagMotifs else { return }
+    func update(tiles: [QuiltLayout.Tile], patches: [Patch], tagMotifs: [String: String], colorMode: ColorMode, select: @escaping (Patch) -> Void) {
+        guard current != tiles || currentPatches != patches || currentMotifs != tagMotifs
+                || currentColorMode != colorMode else { return }
         currentPatches = patches
         currentMotifs = tagMotifs
+        currentColorMode = colorMode
         let animate = !current.isEmpty && !UIAccessibility.isReduceMotionEnabled
         current = tiles
         let unit = QuiltInk.unit, pad: CGFloat = 16
@@ -230,14 +238,14 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
                     self.board.addSubview(view)
                 }
                 if let patch {
-                    view.configure(patch: patch, tagMotifs: tagMotifs)
+                    view.configure(patch: patch, tagMotifs: tagMotifs, colorMode: colorMode)
                     view.removeAction(identifiedBy: UIAction.Identifier("open"), for: .touchUpInside)
                     view.addAction(UIAction(identifier: UIAction.Identifier("open")) { [weak self] _ in
                         guard let self, self.canSelect else { return }
                         select(patch)
                     }, for: .touchUpInside)
                 } else {
-                    view.configure(filler: Int(tile.id.dropFirst("filler-".count)) ?? 0)
+                    view.configure(filler: Int(tile.id.dropFirst("filler-".count)) ?? 0, colorMode: colorMode)
                 }
                 view.frame = CGRect(x: CGFloat(tile.x - minX) * unit + pad, y: CGFloat(tile.y - minY) * unit + pad,
                                     width: CGFloat(tile.size) * unit, height: CGFloat(tile.size) * unit)
@@ -300,7 +308,7 @@ final class QuiltTileView: UIControl {
     private var cuts: [CAShapeLayer] = []
     private var marks: [CornerMark] = []
     private var rotation = 0
-    private var identity: (id: String, appearance: Appearance?, motif: String?, unclaimed: Bool, filler: Int?)?
+    private var identity: (id: String, appearance: Appearance?, motif: String?, unclaimed: Bool, filler: Int?, colorMode: ColorMode)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -310,7 +318,7 @@ final class QuiltTileView: UIControl {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(patch: Patch, tagMotifs: [String: String]) {
+    func configure(patch: Patch, tagMotifs: [String: String], colorMode: ColorMode) {
         let motif = Motifs.key(for: patch, tagMotifs: tagMotifs)
         patchName = patch.name
         isUserInteractionEnabled = true
@@ -319,9 +327,10 @@ final class QuiltTileView: UIControl {
         accessibilityLabel = patch.name
         accessibilityHint = "Opens patch details"
         accessibilityIdentifier = "quiltTile-\(patch.slug)"
-        let next = (id: patch.id, appearance: patch.appearance, motif: Optional(motif), unclaimed: patch.communityListing, filler: Optional<Int>.none)
+        let next = (id: patch.id, appearance: patch.appearance, motif: Optional(motif), unclaimed: patch.communityListing, filler: Optional<Int>.none, colorMode: colorMode)
         guard identity?.id != next.id || identity?.appearance != next.appearance || identity?.motif != next.motif
-                || identity?.unclaimed != next.unclaimed || identity?.filler != nil else { return }
+                || identity?.unclaimed != next.unclaimed || identity?.filler != nil
+                || identity?.colorMode != next.colorMode else { return }
         identity = next
         let palette = QuiltTheme.palette(for: patch)
         rotation = QuiltBlocks.rotation(id: patch.id, appearance: patch.appearance)
@@ -339,13 +348,13 @@ final class QuiltTileView: UIControl {
 
     /// A neutral cell bridging a gap: a ghost block at low opacity, never
     /// tappable, never named.
-    func configure(filler index: Int) {
+    func configure(filler index: Int, colorMode: ColorMode) {
         patchName = nil
         isUserInteractionEnabled = false
         isAccessibilityElement = false
         accessibilityIdentifier = nil
-        guard identity?.filler != index else { return }
-        identity = (id: "filler-\(index)", appearance: nil, motif: nil, unclaimed: false, filler: index)
+        guard identity?.filler != index || identity?.colorMode != colorMode else { return }
+        identity = (id: "filler-\(index)", appearance: nil, motif: nil, unclaimed: false, filler: index, colorMode: colorMode)
         rotation = 0
         block.opacity = 0.15
         let palette = QuiltTheme.ghost(index)
