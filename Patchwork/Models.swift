@@ -125,6 +125,14 @@ struct Patch: Decodable, Identifiable, Hashable {
     let activatedAt: String?
     let createdAt: String?
     let appearance: Appearance?
+    /// The atproto DID a claim proved, the forwarding address of a patch that
+    /// left, whether the patch is publicly readable at all, and the two
+    /// disclosure settings a signed-out reader is governed by.
+    let did: String?
+    let movedTo: String?
+    let visibility: String?
+    let publicMemberList: String?
+    let publicGovernanceRecord: String?
     var communityListing: Bool { isUnclaimed == true || status == "unclaimed" }
 }
 
@@ -188,8 +196,13 @@ struct Affinity: Decodable, Hashable {
     let strength: Double
 }
 
+/// The patch payload's envelope. `is_unclaimed` and `lining_status` ride here
+/// rather than on the node, so a reader that only unpacks `node` loses the two
+/// facts the head has to wear (web ADR 037, ADR 042).
 struct PatchResponse: Decodable {
     let node: Patch
+    let isUnclaimed: Bool?
+    let liningStatus: String?
 }
 
 struct TreeResponse: Decodable {
@@ -249,5 +262,398 @@ enum QuiltAddress {
         parts.path = ""
         guard let url = parts.url else { throw APIError.address }
         return url
+    }
+}
+
+// MARK: - Profile depth
+//
+// Everything below is the public (signed-out) half of a patch's face beyond
+// its head: who is in it, how it decides, what it has decided, and the same
+// face read from another quilt. Appended as one block so the shared file
+// grows rather than moves.
+
+/// How much of its roster a patch publishes (web ADR 095). The counts stay
+/// public at every rung — the quilt sizes the patch's tile by them — so a
+/// withheld list is never reported as an empty one.
+enum RosterDisclosure: String, Hashable {
+    case everyone, admins, nobody
+    init(_ raw: String?) { self = RosterDisclosure(rawValue: raw ?? "") ?? .everyone }
+}
+
+struct PatchMember: Decodable, Identifiable, Hashable {
+    let id: String
+    let userId: String?
+    let username: String?
+    let displayName: String?
+    let avatarUrl: String?
+    let role: String?
+    /// The name as the API gives it: whichever of the two the person filled in.
+    var name: String {
+        let display = (displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !display.isEmpty { return display }
+        let handle = (username ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return handle.isEmpty ? "Someone" : handle
+    }
+    var initial: String { String(name.first ?? "?").uppercased() }
+    var avatar: URL? { (avatarUrl?.isEmpty == false) ? URL(string: avatarUrl!) : nil }
+}
+
+struct MemberPage: Decodable {
+    let items: [PatchMember]?
+    let nextCursor: String?
+    let memberCount: Int?
+    let followerCount: Int?
+    let publicMemberList: String?
+}
+
+/// The roster as a reader outside the patch is shown it. A signed-out reader
+/// is always an outsider, so the patch's setting decides on its own.
+struct MemberRoster: Equatable {
+    var disclosure: RosterDisclosure = .everyone
+    /// Admins and members, never followers: the two are counted apart and
+    /// never summed (web CONTEXT.md "Member count").
+    var members: [PatchMember] = []
+    var memberCount = 0
+    var followerCount = 0
+    var cursor: String?
+    var withheld: Bool { disclosure == .nobody }
+    var adminsOnly: Bool { disclosure == .admins }
+    var title: String { adminsOnly ? "Admins" : "Members" }
+    /// Two kinds of empty, two sentences. A withheld list must never read as
+    /// a patch with nobody in it.
+    var emptyTitle: String { withheld ? "Member list not published" : "No members yet" }
+    var emptyMessage: String {
+        withheld
+            ? "This patch doesn’t publish its member list."
+            : "Nobody has joined this patch yet."
+    }
+    var countLine: String {
+        var parts = [memberCount == 1 ? "1 member" : "\(memberCount) members"]
+        if followerCount > 0 { parts.append(followerCount == 1 ? "1 following" : "\(followerCount) following") }
+        return parts.joined(separator: " · ")
+    }
+    init() {}
+    init(page: MemberPage) {
+        disclosure = RosterDisclosure(page.publicMemberList)
+        members = (page.items ?? []).filter { $0.role != "follower" }
+        memberCount = page.memberCount ?? members.count
+        followerCount = page.followerCount ?? 0
+        cursor = page.nextCursor
+    }
+    mutating func append(_ page: MemberPage) {
+        let known = Set(members.map(\.id))
+        members += (page.items ?? []).filter { $0.role != "follower" && !known.contains($0.id) }
+        memberCount = page.memberCount ?? memberCount
+        followerCount = page.followerCount ?? followerCount
+        cursor = page.nextCursor
+    }
+}
+
+struct GovernanceDocument: Decodable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let body: String?
+    /// "charter" or "lining" — the shared baseline every patch starts with.
+    let kind: String?
+    let visibility: String?
+    let version: Int?
+    let createdAt: String?
+    let updatedAt: String?
+}
+
+struct GovernanceDocumentPage: Decodable {
+    let items: [GovernanceDocument]?
+    /// Whether this listing held only what the patch published, so an empty
+    /// one can say which kind of empty it is without counting what it was
+    /// not shown (web ADR 036).
+    let publishedOnly: Bool?
+}
+
+struct GovernanceRules: Decodable, Hashable {
+    let decisionMethod: String?
+    let quorumPercent: Int?
+    let defaultVoteDurationHours: Int?
+    let leadershipModel: String?
+    let leadershipVenue: String?
+    let proposalVenue: String?
+    let inactivityDays: Int?
+    let adminTermMonths: Int?
+    let maxAdmins: Int?
+}
+
+struct GovernanceAdmin: Decodable, Identifiable, Hashable {
+    let userId: String
+    let username: String?
+    let displayName: String?
+    let avatarUrl: String?
+    let joinedAt: String?
+    var id: String { userId }
+    var name: String {
+        let display = (displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !display.isEmpty { return display }
+        let handle = (username ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return handle.isEmpty ? "Someone" : handle
+    }
+    var initial: String { String(name.first ?? "?").uppercased() }
+    var avatar: URL? { (avatarUrl?.isEmpty == false) ? URL(string: avatarUrl!) : nil }
+}
+
+/// One chair on a council (web ADR 100). A chair whose holder this reader is
+/// not shown is *held*, not vacant: three states, never two.
+struct GovernanceSeat: Decodable, Identifiable, Hashable {
+    let id: String
+    let username: String?
+    let displayName: String?
+    let termEndsAt: String?
+    let vacant: Bool?
+    let fill: String?
+    let contestOpens: String?
+    let contestDue: Bool?
+    let contestId: String?
+    let holderWithheld: Bool?
+    var isVacant: Bool { vacant == true }
+    var holder: String {
+        if isVacant { return "Vacant" }
+        if holderWithheld == true { return "Held" }
+        let display = (displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !display.isEmpty { return display }
+        let handle = (username ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return handle.isEmpty ? "Held" : handle
+    }
+    /// One sentence about this chair, in the words the web uses for it.
+    var fate: String {
+        switch fill {
+        case "contest_open":
+            return isVacant
+                ? "In the contest running now."
+                : "Held until \(ProfileDate.day(termEndsAt) ?? "the term ends"), and in the contest running now."
+        case "nomination":
+            return "Filled by nomination: an admin puts a member forward and the members ratify it."
+        case "contest_scheduled":
+            let opens = ProfileDate.day(contestOpens)
+            if contestDue == true { return "Its contest is due to open." }
+            return opens.map { "Contested from \($0)." } ?? "Contested when the calendar opens."
+        default:
+            if let ends = ProfileDate.day(termEndsAt) { return "Held until \(ends)." }
+            return isVacant ? "Vacant, with no contest scheduled." : "Held, with no term end set."
+        }
+    }
+}
+
+struct GovernanceElection: Decodable, Hashable {
+    let id: String
+    let phase: String?
+    let seats: Int?
+    let nominationsCloseAt: String?
+    let votingEndsAt: String?
+    let candidates: Int?
+}
+
+struct GovernanceOverview: Decodable {
+    let rules: GovernanceRules?
+    let admins: [GovernanceAdmin]?
+    /// Which kind of empty `admins` is. Read before its length, or a patch
+    /// that withholds its roster is reported as leaderless (web ADR 095).
+    let adminsWithheld: Bool?
+    let proposalsWithheld: Bool?
+    let election: GovernanceElection?
+    let seats: [GovernanceSeat]?
+    let nextTermEnd: String?
+    let nextContestOpens: String?
+    let membershipPolicy: String?
+    let memberCount: Int?
+    let documentCount: Int?
+    let openProposals: Int?
+    let passedProposals: Int?
+    let rejectedProposals: Int?
+    var leadershipLabel: String {
+        switch rules?.leadershipModel {
+        case "maintainer": return "Maintainer"
+        case "meritocratic": return "Meritocratic"
+        case "elected": return "Elected council"
+        case let other?: return other.capitalized
+        default: return "Not set"
+        }
+    }
+    /// The council block renders only where this patch actually runs one.
+    var showsCouncil: Bool { rules?.leadershipModel == "elected" && rules?.leadershipVenue != "elsewhere" }
+    /// How decisions are made, in sentences. A patch that decides elsewhere
+    /// gets the venue line instead: narrating a quorum it does not run would
+    /// state what nothing enforces (web ADR 049).
+    var decisionNarrative: String {
+        guard let rules else { return "" }
+        if rules.proposalVenue == "elsewhere" {
+            return "Proposals are decided outside Patchwork. They stay open here for discussion, and adoption is recorded on the charter."
+        }
+        var text: String
+        switch rules.decisionMethod {
+        case "admin": text = "The maintainer makes all decisions for this patch, and may ask the members before deciding."
+        case "majority": text = "This patch decides things by majority vote. More than half must agree."
+        case "supermajority": text = "Decisions require a supermajority: at least 2 out of 3 voters must agree."
+        case "consensus": text = "Decisions are by consensus: one reject blocks a proposal, and a proposal nobody rejects carries."
+        case let other?: text = "Decisions use \(other) voting."
+        default: return ""
+        }
+        if let quorum = rules.quorumPercent, quorum > 0 {
+            text += " At least \(quorum)% of members must participate for a vote to count."
+        } else if rules.decisionMethod != "admin" {
+            text += " Any number of votes counts. No minimum participation required."
+        }
+        if rules.decisionMethod != "admin", let hours = rules.defaultVoteDurationHours, hours > 0 {
+            let days = Int((Double(hours) / 24).rounded())
+            text += days <= 1 ? " Proposals stay open for \(hours) hours." : " Proposals stay open for \(days) days."
+        }
+        return text
+    }
+    var leadershipNarrative: String {
+        guard let rules, rules.leadershipVenue != "elsewhere" else { return "" }
+        var text: String
+        switch rules.leadershipModel {
+        case "maintainer": text = "One person maintains this patch. They handle day-to-day decisions and can designate a successor."
+        case "meritocratic": text = "Admins earn their role through sustained contribution. When a seat opens, existing admins nominate from active members and the community ratifies."
+        case "elected": text = "The community elects admins for fixed terms. Regular elections ensure power rotates."
+        default: return ""
+        }
+        if let days = rules.inactivityDays, days > 0 {
+            text += " An admin who does not vote, propose or comment here for \(days) days is warned, and the seat is declared vacant at \(days * 2) days."
+        }
+        return text
+    }
+}
+
+struct Proposal: Decodable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let body: String?
+    let status: String?
+    let state: String?
+    let proposalType: String?
+    let targetDoc: String?
+    let authorName: String?
+    let votingEndsAt: String?
+    let createdAt: String?
+    let approveCount: Int?
+    let rejectCount: Int?
+    let abstainCount: Int?
+    let electionPhase: String?
+    var ballots: Int { (approveCount ?? 0) + (rejectCount ?? 0) + (abstainCount ?? 0) }
+    /// An approved proposal with no ballots was born applied under
+    /// admin-decides rules: a direct change, not a vote nobody turned up to.
+    var isDirectChange: Bool { status == "approved" && ballots == 0 }
+    /// What this proposal's outcome is *called*. `state` is read before
+    /// `status` because a lapsed vote and an unsettled contest both carry the
+    /// schema's terminal `rejected` without anybody having rejected anything
+    /// (web ADR 097, ADR 051).
+    var outcome: String {
+        if isDirectChange { return "applied" }
+        if state == "lapsed" { return "lapsed" }
+        if state == "unsettled" { return "unsettled" }
+        return status ?? ""
+    }
+    /// Red is for a decision the patch made; an absence keeps the muted default.
+    var outcomeIsDecision: Bool { outcome == "rejected" }
+    var outcomeIsOpen: Bool { outcome == "open" }
+}
+
+struct ProposalPage: Decodable {
+    let items: [Proposal]?
+    let nextCursor: String?
+    let publicGovernanceRecord: String?
+}
+
+/// One settled thing, assembled from whatever feature owns it (web ADR 055).
+struct GovernanceRecordEntry: Decodable, Identifiable, Hashable {
+    let kind: String
+    let at: String?
+    let title: String
+    let summary: String?
+    let link: String?
+    let outcome: String?
+    let actor: String?
+    let names: [String]?
+    var id: String { "\(kind)|\(at ?? "")|\(title)" }
+    var kindLabel: String {
+        switch kind {
+        case "vote": return "Vote"
+        case "direct": return "Direct change"
+        case "election": return "Election"
+        case "council": return "Council"
+        case "adoption": return "Adopted elsewhere"
+        default: return kind.capitalized
+        }
+    }
+    var settled: Bool { !["unsettled", "failed", "lapsed"].contains(outcome ?? "") }
+    /// Names as a person reads them aloud: a record is prose.
+    private func listOf(_ names: [String]) -> String {
+        if names.count == 1 { return names[0] }
+        return names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+    }
+    /// One sentence saying how it was settled. No tally: the outcome is
+    /// stored when a vote resolves and never moves, while counts are
+    /// recomputed and drift (web ADR 044).
+    var outcomeLine: String {
+        switch kind {
+        case "vote":
+            if outcome == "carried" { return "Carried by a vote." }
+            if outcome == "lapsed" { return "Put to a vote. Nobody decided it either way; the proposal lapsed." }
+            return "Put to a vote and did not carry."
+        case "direct":
+            if outcome == "declined" { return actor.map { "Declined by \($0)." } ?? "Declined by the maintainer." }
+            return actor.map { "Applied by \($0)." } ?? "Applied without a vote."
+        case "election":
+            guard outcome == "seated" else { return "Settled nothing. Nobody was elected." }
+            if let names, !names.isEmpty { return "The members seated \(listOf(names))." }
+            return "The members seated a council."
+        case "council":
+            if let names, !names.isEmpty { return "Seated \(listOf(names))." }
+            return "A meeting chose the council."
+        case "adoption":
+            return "A meeting adopted this text."
+        default:
+            return ""
+        }
+    }
+}
+
+struct GovernanceRecordPage: Decodable {
+    let items: [GovernanceRecordEntry]?
+    let publicGovernanceRecord: String?
+}
+
+/// Dates on a profile arrive as either a full timestamp or a bare calendar
+/// day (`next_contest_opens`), and either may be an empty string.
+enum ProfileDate {
+    static func parse(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        if let date = PatchworkEvent.parseDate(value) { return date }
+        let day = DateFormatter()
+        day.calendar = Calendar(identifier: .gregorian)
+        day.locale = Locale(identifier: "en_US_POSIX")
+        day.timeZone = .current
+        day.dateFormat = "yyyy-MM-dd"
+        return day.date(from: value)
+    }
+    static func day(_ value: String?) -> String? {
+        guard let date = parse(value) else { return nil }
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
+    static func monthYear(_ value: String?) -> String? {
+        guard let date = parse(value) else { return nil }
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMM y")
+        return formatter.string(from: date)
+    }
+}
+
+/// The atproto handle a `did:web` names, and nothing else (web ADR 062). The
+/// handle is derived from the DID rather than the verification domain because
+/// the DID is the half that travels when a patch forks.
+enum AtprotoHandle {
+    static func from(_ did: String?) -> String? {
+        let value = (did ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.hasPrefix("did:web:") else { return nil }
+        let host = value.dropFirst("did:web:".count).split(separator: ":").first.map(String.init) ?? ""
+        guard !host.isEmpty else { return nil }
+        return host.replacingOccurrences(of: "%3A", with: ":", options: .caseInsensitive)
     }
 }

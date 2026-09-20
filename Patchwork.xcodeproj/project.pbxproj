@@ -10,6 +10,7 @@
 		043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE5474B5736A302A83E7519 /* QuiltPicker.swift */; };
 		09EAD7EC52B7EA5B230CECAB /* Motifs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6280253991897DC2B3FDDF06 /* Motifs.swift */; };
 		151CC357CA100483033629EF /* Discover.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E90AA0007CCFBCD3D80C16 /* Discover.swift */; };
+		16D1A6157D7C2A3847CED277 /* ProfileDepthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FBBFCFEB1DC1DDE8E13864 /* ProfileDepthTests.swift */; };
 		36ED9726FBEECCBBD1E7DC0C /* QuiltBadges.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF4CA9F8CC3EE2AA037FF27 /* QuiltBadges.swift */; };
 		4DA43DAF095AE52D063A248D /* SearchResults.swift in Sources */ = {isa = PBXBuildFile; fileRef = C282B734B4827A544F7C1F07 /* SearchResults.swift */; };
 		503FB17375BC29E7E8FC1201 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293BA8AA195974A4AA7FD88F /* Models.swift */; };
@@ -27,10 +28,15 @@
 		8C6DAF1BA26021C1E73FE388 /* QuiltHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE32844B5FEA95B9FA7EBDC5 /* QuiltHome.swift */; };
 		8D322574AB01D33BA9FA22D4 /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00DAAFA46F05B23EEE22D37E /* Markdown.swift */; };
 		9A4183634985C2ADB100B3D4 /* QuiltBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6169EE189790BD8F3B78637 /* QuiltBlocks.swift */; };
+		A63E26FF9A6F8656D3A2E168 /* RemotePatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B63D84A048798D7CEB8109A /* RemotePatch.swift */; };
 		A647F17C9C3224259E0B39BC /* BrowsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAA546CA1C556D90F3EEA7C /* BrowsingTests.swift */; };
+		B067E3063F1A3647C9BF4F72 /* PatchCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1CE19D520C26DFAB2758DE /* PatchCalendar.swift */; };
+		BA4385AB910F5ED96FC0A620 /* PatchGovernance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A665F8F6905212C2452DE92A /* PatchGovernance.swift */; };
 		BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
 		D5E1382ABD304BDF35699A42 /* QuiltSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFC7ACE15046E1958924BFE /* QuiltSession.swift */; };
+		D73FE866F89C7232A0351766 /* PatchMembers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1AEA837177256C32A178DA /* PatchMembers.swift */; };
+		E982D8F404E86A6C934654E9 /* PatchProfileParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F2C785CDD61C9D4283C6DB6 /* PatchProfileParts.swift */; };
 		EC6CFD2E27475CC9FBF7EE1D /* LabelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8258292508FE2DD12B36218B /* LabelView.swift */; };
 		F02D6A66065C1CBB63F082A6 /* QuiltLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */; };
 		F22887B76A0A581F1DBBE60B /* PreviewData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC491BDA8B532F53F22BCE42 /* PreviewData.swift */; };
@@ -69,12 +75,18 @@
 		3EFC7ACE15046E1958924BFE /* QuiltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSession.swift; sourceTree = "<group>"; };
 		4510113B947EAF0DB94F046F /* QuiltCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltCanvas.swift; sourceTree = "<group>"; };
 		4858D666E2FE8B480005EB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4F1CE19D520C26DFAB2758DE /* PatchCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchCalendar.swift; sourceTree = "<group>"; };
+		4F2C785CDD61C9D4283C6DB6 /* PatchProfileParts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchProfileParts.swift; sourceTree = "<group>"; };
 		529B45CF7173A2EF95492E0C /* QuiltLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltLayout.swift; sourceTree = "<group>"; };
 		5C217C3BCE3AF77E084E40D6 /* PatchProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchProfile.swift; sourceTree = "<group>"; };
 		5D86AEE1D626D1AB55DDD14F /* QuiltBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltBrowser.swift; sourceTree = "<group>"; };
 		6280253991897DC2B3FDDF06 /* Motifs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motifs.swift; sourceTree = "<group>"; };
 		66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
+		6F1AEA837177256C32A178DA /* PatchMembers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchMembers.swift; sourceTree = "<group>"; };
 		8258292508FE2DD12B36218B /* LabelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabelView.swift; sourceTree = "<group>"; };
+		8B63D84A048798D7CEB8109A /* RemotePatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePatch.swift; sourceTree = "<group>"; };
+		97FBBFCFEB1DC1DDE8E13864 /* ProfileDepthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileDepthTests.swift; sourceTree = "<group>"; };
+		A665F8F6905212C2452DE92A /* PatchGovernance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchGovernance.swift; sourceTree = "<group>"; };
 		AF781619947A025A8719BEC3 /* FilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSheet.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE32844B5FEA95B9FA7EBDC5 /* QuiltHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltHome.swift; sourceTree = "<group>"; };
@@ -114,7 +126,11 @@
 				00DAAFA46F05B23EEE22D37E /* Markdown.swift */,
 				293BA8AA195974A4AA7FD88F /* Models.swift */,
 				6280253991897DC2B3FDDF06 /* Motifs.swift */,
+				4F1CE19D520C26DFAB2758DE /* PatchCalendar.swift */,
+				A665F8F6905212C2452DE92A /* PatchGovernance.swift */,
+				6F1AEA837177256C32A178DA /* PatchMembers.swift */,
 				5C217C3BCE3AF77E084E40D6 /* PatchProfile.swift */,
+				4F2C785CDD61C9D4283C6DB6 /* PatchProfileParts.swift */,
 				66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */,
 				CC491BDA8B532F53F22BCE42 /* PreviewData.swift */,
 				CEF4CA9F8CC3EE2AA037FF27 /* QuiltBadges.swift */,
@@ -127,6 +143,7 @@
 				2DE5474B5736A302A83E7519 /* QuiltPicker.swift */,
 				3EFC7ACE15046E1958924BFE /* QuiltSession.swift */,
 				D8958EDC97FC429B38CD2DAE /* QuiltTheme.swift */,
+				8B63D84A048798D7CEB8109A /* RemotePatch.swift */,
 				C282B734B4827A544F7C1F07 /* SearchResults.swift */,
 			);
 			path = Patchwork;
@@ -147,6 +164,7 @@
 			children = (
 				1B1F0F4B4C66C9D11B2A8662 /* ContractTests.swift */,
 				CFF1AEE9C2A0DF5127851BCB /* layout-fixtures.json */,
+				97FBBFCFEB1DC1DDE8E13864 /* ProfileDepthTests.swift */,
 				F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */,
 				D7F732AE521653E03A1A3514 /* QuiltInfoTests.swift */,
 				15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */,
@@ -297,7 +315,11 @@
 				8D322574AB01D33BA9FA22D4 /* Markdown.swift in Sources */,
 				503FB17375BC29E7E8FC1201 /* Models.swift in Sources */,
 				09EAD7EC52B7EA5B230CECAB /* Motifs.swift in Sources */,
+				B067E3063F1A3647C9BF4F72 /* PatchCalendar.swift in Sources */,
+				BA4385AB910F5ED96FC0A620 /* PatchGovernance.swift in Sources */,
+				D73FE866F89C7232A0351766 /* PatchMembers.swift in Sources */,
 				65550D118F2245A37FE3B05B /* PatchProfile.swift in Sources */,
+				E982D8F404E86A6C934654E9 /* PatchProfileParts.swift in Sources */,
 				F90B0CC8F8B2D7BDE47569B3 /* PatchworkApp.swift in Sources */,
 				F22887B76A0A581F1DBBE60B /* PreviewData.swift in Sources */,
 				36ED9726FBEECCBBD1E7DC0C /* QuiltBadges.swift in Sources */,
@@ -310,6 +332,7 @@
 				043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */,
 				D5E1382ABD304BDF35699A42 /* QuiltSession.swift in Sources */,
 				734A0612AF1C3409A9EF80C2 /* QuiltTheme.swift in Sources */,
+				A63E26FF9A6F8656D3A2E168 /* RemotePatch.swift in Sources */,
 				4DA43DAF095AE52D063A248D /* SearchResults.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -319,6 +342,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				89154EF7862741EE0E4EE6BC /* ContractTests.swift in Sources */,
+				16D1A6157D7C2A3847CED277 /* ProfileDepthTests.swift in Sources */,
 				BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */,
 				5F4C31A2ABF0F64850F4BE91 /* QuiltInfoTests.swift in Sources */,
 				F02D6A66065C1CBB63F082A6 /* QuiltLayoutTests.swift in Sources */,
