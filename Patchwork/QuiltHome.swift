@@ -1,89 +1,231 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import SwiftUI
+import UIKit
 
 struct QuiltHome: View {
-    let quilt: Quilt
-    @State private var choosing = false
+    @StateObject private var session: QuiltSession
+    @State private var pane = Pane.quilt
+    enum Pane: Hashable { case quilt, events, discover, search }
+    init(quilt: Quilt) { _session = StateObject(wrappedValue: QuiltSession(quilt: quilt)) }
     var body: some View {
-        TabView {
-            NavigationStack {
-                QuiltBrowser(quilt: quilt)
-                    .toolbar { ToolbarItem(placement: .topBarLeading) { switcher } }
-            }.tabItem { Label("Quilt", systemImage: "square.grid.2x2") }
-            NavigationStack {
-                EventList(quilt: quilt)
-                    .toolbar { ToolbarItem(placement: .topBarLeading) { switcher } }
-            }.tabItem { Label("Events", systemImage: "calendar") }
+        Group {
+            if #available(iOS 18.0, *) {
+                TabView(selection: $pane) {
+                    Tab(value: Pane.quilt) { quiltPane } label: { Label { Text("Quilt") } icon: { quiltIcon } }
+                    Tab("Events", systemImage: "calendar", value: Pane.events) { eventsPane }
+                    Tab("Discover", systemImage: "safari", value: Pane.discover) { discoverPane }
+                    // A button, not a place: choosing it focuses the top bar's field (see onChange).
+                    Tab("Search", systemImage: "magnifyingglass", value: Pane.search, role: .search) { Color.clear }
+                }
+            } else {
+                TabView(selection: $pane) {
+                    quiltPane.tabItem { Label { Text("Quilt") } icon: { quiltIcon } }.tag(Pane.quilt)
+                    eventsPane.tabItem { Label("Events", systemImage: "calendar") }.tag(Pane.events)
+                    discoverPane.tabItem { Label("Discover", systemImage: "safari") }.tag(Pane.discover)
+                    Color.clear.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Pane.search)
+                }
+            }
         }
-        .sheet(isPresented: $choosing) { NavigationStack { QuiltPicker() } }
+        .onChange(of: pane) { was, now in
+            // Bouncing back from Search fires this again; that second pass must not end the search it just began.
+            if now == .search { pane = was; session.searching = true }
+            else if was != .search { session.endSearch() }
+        }
+        // Hold the quilt's tab to switch quilts, the way a profile tab switches accounts.
+        .background(TabBarLongPress(item: 0) { session.switching = true })
+        .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
+        .sheet(isPresented: $session.switching) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
+        .task { await session.load() }
+        .environmentObject(session)
     }
-    private var switcher: some View {
-        Button { choosing = true } label: { Label("Quilts", systemImage: "square.grid.2x2.fill") }
-            .accessibilityLabel("Switch quilt")
+    private var quiltPane: some View { NavigationStack { QuiltBrowser() } }
+    private var eventsPane: some View { NavigationStack { EventList(quilt: session.quilt).modifier(DiscoveryToolbar()) } }
+    private var discoverPane: some View { NavigationStack { Discover() } }
+    @ViewBuilder private var quiltIcon: some View {
+        if let icon = session.tabIcon, let dim = session.tabIconDim { Image(uiImage: pane == .quilt ? icon : dim).renderingMode(.original) }
+        else { Image(systemName: pane == .quilt ? "square.grid.2x2.fill" : "square.grid.2x2") }
     }
 }
 
-struct PatchDetail: View {
-    let quilt: Quilt
-    let initial: Patch
-    var close: (() -> Void)? = nil
-    @State private var detail: Patch?
-    @State private var error: String?
-    private var patch: Patch { detail ?? initial }
-    private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
-    var body: some View {
-        List {
-            Section {
-                Text(patch.name).font(.largeTitle.bold()).fixedSize(horizontal: false, vertical: true)
-                if let tags = patch.tags, !tags.isEmpty {
-                    Text(tags.joined(separator: " · ")).foregroundStyle(.secondary)
+/// The one top bar on every discovery surface: filter where the surface
+/// narrows, the live search field in the middle, and the account menu —
+/// which gives way to Cancel while the field is in use.
+struct DiscoveryToolbar: ViewModifier {
+    @EnvironmentObject private var session: QuiltSession
+    var filter: Binding<Bool>? = nil
+    @State private var about = false
+    @FocusState private var focused: Bool
+    private var fieldWidth: CGFloat { min(420, max(200, UIScreen.main.bounds.width - (session.searching ? 108 : 150))) }
+    func body(content: Content) -> some View {
+        content
+            .overlay { if session.searching { SearchResults() } }
+            .toolbar {
+                if let filter, !session.searching {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { filter.wrappedValue = true } label: {
+                            Image(systemName: "line.3.horizontal.decrease")
+                                .overlay(alignment: .topTrailing) {
+                                    if session.activeFilterCount > 0 {
+                                        Text("\(session.activeFilterCount)").font(.caption2.bold()).foregroundStyle(Color(.systemBackground))
+                                            .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
+                                            .background(Color.accentColor, in: Capsule()).offset(x: 10, y: -8)
+                                    }
+                                }
+                        }
+                        .accessibilityLabel("Filter")
+                        .accessibilityValue(session.activeFilterCount > 0 ? "\(session.activeFilterCount) active" : "")
+                    }
                 }
-                if let description = patch.description, !description.isEmpty {
-                    Text(description).textSelection(.enabled)
-                }
-            }
-            if let address = patch.address, !address.isEmpty {
-                Section("Find this patch") {
-                    Label(address, systemImage: "mappin.and.ellipse")
-                    if let url = mapsURL {
-                        Link("Get directions", destination: url)
+                ToolbarItem(placement: .principal) { field }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if session.searching {
+                        Button("Cancel") { session.endSearch() }
+                    } else {
+                        Menu {
+                            Link(destination: session.api.webURL("login")) { Label("Join or sign in on the web", systemImage: "person.badge.key") }
+                            Divider()
+                            Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
+                            Button { session.switching = true } label: { Label("Switch quilt", systemImage: "square.grid.2x2") }
+                        } label: { Image(systemName: "person.crop.circle") }
+                        .accessibilityLabel("Account")
                     }
                 }
             }
-            Section {
-                NavigationLink { EventList(quilt: quilt, slug: patch.slug, close: close) } label: {
-                    Label("Upcoming events", systemImage: "calendar")
-                }
-                Link(destination: api.webURL("patches/\(patch.slug)")) {
-                    Label("Visit patch website", systemImage: "safari")
-                }
-            } footer: { Text("Joining, following, and governance are available on this quilt’s website while the native app is being developed.") }
-            if let error {
-                Section {
-                    Text(error).foregroundStyle(.secondary)
-                    Button("Reload patch") { Task { await load() } }
+            .onChange(of: session.searching) { _, now in focused = now }
+            .sheet(isPresented: $about) { AboutQuilt() }
+    }
+    /// At rest the field is a button wearing the field's clothes: a text field
+    /// hosted in the bar's UIKit toolbar item reports neither focus nor editing
+    /// to SwiftUI, but a freshly inserted one can be given focus. So the tap
+    /// swaps the real field in, focused, and nothing appears to change.
+    @ViewBuilder private var field: some View {
+        if session.searching {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(Color.secondary)
+                TextField("Search patches and events", text: $session.searchText)
+                    .focused($focused).submitLabel(.search).autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .onSubmit { session.showMatches() }
+                    .accessibilityIdentifier("searchField")
+                if !session.searchText.isEmpty {
+                    Button { session.searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.secondary) }.accessibilityLabel("Clear text")
                 }
             }
+            .modifier(FieldChrome(width: fieldWidth))
+            .onAppear { DispatchQueue.main.async { focused = true } }
+        } else {
+            Button { session.searching = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                    Text("Search patches and events").lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Color.secondary)
+                .modifier(FieldChrome(width: fieldWidth))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Search")
         }
-        .navigationTitle("Patch").navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { ShareLink(item: api.webURL("patches/\(patch.slug)")) }
-            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
-        }
-        .task { await load() }
     }
-    private var mapsURL: URL? {
-        var parts = URLComponents(string: "https://maps.apple.com/")!
-        parts.queryItems = [URLQueryItem(name: "daddr", value: patch.address)]
-        return parts.url
+}
+
+/// The capsule both forms of the field wear.
+private struct FieldChrome: ViewModifier {
+    let width: CGFloat
+    func body(content: Content) -> some View {
+        content.font(.subheadline).padding(.horizontal, 14).frame(height: 44).frame(width: width).modifier(GlassCapsule())
     }
-    private func load() async {
-        error = nil
-        do {
-            let response: PatchResponse = try await api.get("nodes/\(initial.slug)")
-            detail = response.node
+}
+
+/// Liquid glass where the system has it; material where it does not.
+private struct GlassCapsule: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) { content.glassEffect() }
+        else { content.background(.regularMaterial, in: Capsule()) }
+    }
+}
+
+struct AboutQuilt: View {
+    @EnvironmentObject private var session: QuiltSession
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let icon = session.icon { Image(uiImage: icon).resizable().aspectRatio(contentMode: .fill).frame(width: 42, height: 42).clipped() }
+                    else { QuiltMark() }
+                    Text(session.quilt.name).font(.largeTitle.bold())
+                    Text(session.quilt.url.host() ?? session.quilt.id).foregroundStyle(.secondary)
+                    if let description = session.instance?.description, !description.isEmpty { Text(description) }
+                    Link("Open quilt website", destination: session.quilt.url)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+            }
+            .navigationTitle("About this quilt").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
-        catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// Finds the tab bar under this view and reports a long press on one of its
+/// items. UIKit still draws SwiftUI's tab bar, so the press attaches there.
+private struct TabBarLongPress: UIViewRepresentable {
+    let item: Int
+    let action: () -> Void
+    func makeUIView(context: Context) -> Probe { Probe(item: item, action: action) }
+    func updateUIView(_ view: Probe, context: Context) { view.action = action }
+    final class Probe: UIView, UIGestureRecognizerDelegate {
+        let item: Int
+        var action: () -> Void
+        private weak var bar: UITabBar?
+        private var attempts = 0
+        init(item: Int, action: @escaping () -> Void) {
+            self.item = item; self.action = action
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            attempts = 0
+            attach()
+        }
+        /// The tab bar is built a little after this view lands in the window, so look again for a while.
+        private func attach() {
+            guard bar == nil, let window else { return }
+            guard let found = Self.tabBar(in: window.rootViewController) ?? Self.tabBar(in: window) else {
+                attempts += 1
+                if attempts < 20 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.attach() } }
+                return
+            }
+            let press = UILongPressGestureRecognizer(target: self, action: #selector(pressed))
+            press.minimumPressDuration = 0.45
+            press.cancelsTouchesInView = false
+            press.delegate = self
+            found.addGestureRecognizer(press)
+            bar = found
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+        private static func tabBar(in controller: UIViewController?) -> UITabBar? {
+            guard let controller else { return nil }
+            if let tabs = controller as? UITabBarController { return tabs.tabBar }
+            for child in controller.children { if let bar = tabBar(in: child) { return bar } }
+            return tabBar(in: controller.presentedViewController)
+        }
+        @objc private func pressed(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .began, let bar, let count = bar.items?.count, count > 0 else { return }
+            let point = gesture.location(in: bar)
+            let controls = Self.controls(in: bar).map { $0.convert($0.bounds, to: bar) }.filter { $0.width > 20 }.sorted { $0.minX < $1.minX }
+            let index: Int? = controls.count == count ? controls.firstIndex { $0.contains(point) } : Int(point.x / (bar.bounds.width / CGFloat(count)))
+            if index == item { action() }
+        }
+        private static func tabBar(in view: UIView) -> UITabBar? {
+            if let bar = view as? UITabBar { return bar }
+            for child in view.subviews { if let bar = tabBar(in: child) { return bar } }
+            return nil
+        }
+        private static func controls(in view: UIView) -> [UIView] {
+            view.subviews.flatMap { $0 is UIControl ? [$0] : controls(in: $0) }
+        }
     }
 }

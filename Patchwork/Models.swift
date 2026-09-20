@@ -90,11 +90,13 @@ struct PatchworkEvent: Decodable, Identifiable, Hashable {
         parser.formatOptions = [.withInternetDateTime]
         return parser.date(from: value)
     }
-    var dateLabel: String {
+    var dateLabel: String { label(dateStyle: .full) }
+    var shortDateLabel: String { label(dateStyle: .medium) }
+    private func label(dateStyle: DateFormatter.Style) -> String {
         guard let date else { return "Time to be confirmed" }
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: timezone ?? "") ?? .current
-        formatter.dateStyle = .full
+        formatter.dateStyle = dateStyle
         formatter.timeStyle = .short
         return formatter.string(from: date)
     }

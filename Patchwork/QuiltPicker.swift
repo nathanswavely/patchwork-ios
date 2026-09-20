@@ -3,6 +3,8 @@
 import SwiftUI
 
 struct QuiltPicker: View {
+    /// Quilts this one names as neighbours: doorways into their own inspect-and-confirm.
+    var neighbors: [Instance.Neighbor] = []
     @EnvironmentObject private var store: QuiltStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -48,6 +50,22 @@ struct QuiltPicker: View {
                     }.disabled(busy).accessibilityIdentifier("quiltChoice")
                 }
                 if choices.isEmpty { Text("No matching quilts. You can connect by address below.").foregroundStyle(.secondary) }
+            }
+            if !neighbors.isEmpty {
+                Section("Connected quilts") {
+                    ForEach(neighbors, id: \.url) { neighbor in
+                        Button { Task { await inspectAddress(neighbor.url) } } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(neighbor.name).foregroundStyle(Color.primary)
+                                    Text(URL(string: neighbor.url)?.host() ?? neighbor.url).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.forward").font(.caption).foregroundStyle(.tertiary)
+                            }.padding(.vertical, 6)
+                        }.disabled(busy)
+                    }
+                }
             }
             Section {
                 TextField("community.example.org", text: $address)
@@ -98,8 +116,8 @@ struct QuiltPicker: View {
             if store.selected != nil { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
     }
-    private func inspectAddress() async {
-        do { let url = try QuiltAddress.parse(address); await inspect(url) }
+    private func inspectAddress(_ text: String? = nil) async {
+        do { let url = try QuiltAddress.parse(text ?? address); await inspect(url) }
         catch { self.error = error.localizedDescription; pending = nil; instance = nil }
     }
     private func inspect(_ url: URL) async {

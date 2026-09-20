@@ -5,11 +5,10 @@ import UIKit
 struct QuiltCanvas: UIViewRepresentable {
     let tiles: [QuiltLayout.Tile]
     let patches: [Patch]
-    let fitRequest: Int
     let select: (Patch) -> Void
     func makeUIView(context: Context) -> CanvasScrollView { CanvasScrollView() }
     func updateUIView(_ view: CanvasScrollView, context: Context) {
-        view.update(tiles: tiles, patches: patches, fitRequest: fitRequest, select: select)
+        view.update(tiles: tiles, patches: patches, select: select)
     }
 }
 
@@ -18,7 +17,6 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
     private var buttons: [String: QuiltTileButton] = [:]
     private var current: [QuiltLayout.Tile] = []
     private var currentPatches: [Patch] = []
-    private var request = -1
     private var needsFit = true
     private var lastBounds = CGSize.zero
     private var suppressSelectionUntil = 0.0
@@ -28,6 +26,8 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
         minimumZoomScale = 0.3
         maximumZoomScale = 6
         backgroundColor = .systemGroupedBackground
+        contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) { topEdgeEffect.isHidden = true; bottomEdgeEffect.isHidden = true }
         board.backgroundColor = .clear
         addSubview(board)
         accessibilityIdentifier = "quiltCanvas"
@@ -44,21 +44,29 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         for button in buttons.values { button.updateLabelScale(zoomScale) }
     }
+    /// The canvas runs under the bars, so fitting and centring use the safe area,
+    /// and the insets carry the safe area plus whatever centres a small quilt.
     override func layoutSubviews() {
         super.layoutSubviews()
-        if bounds.size != lastBounds { needsFit = true; lastBounds = bounds.size }
-        if needsFit && bounds.width > 0 && board.bounds.width > 0 {
+        let visible = bounds.inset(by: safeAreaInsets)
+        if visible.size != lastBounds { needsFit = true; lastBounds = visible.size }
+        if needsFit && visible.width > 0 && board.bounds.width > 0 {
             needsFit = false
-            let fit = min(bounds.width / board.bounds.width, bounds.height / board.bounds.height)
+            let fit = min(visible.width / board.bounds.width, visible.height / board.bounds.height)
             setZoomScale(min(2.4, max(0.65, fit)), animated: false)
-            contentOffset = CGPoint(x: max(0, (contentSize.width - bounds.width) / 2), y: max(0, (contentSize.height - bounds.height) / 2))
+            centre(in: visible)
+            contentOffset = CGPoint(x: max(0, (contentSize.width - visible.width) / 2) - contentInset.left,
+                                    y: max(0, (contentSize.height - visible.height) / 2) - contentInset.top)
         }
-        let horizontal = max(0, (bounds.width - board.frame.width) / 2)
-        let vertical = max(0, (bounds.height - board.frame.height) / 2)
-        contentInset = UIEdgeInsets(top: vertical, left: horizontal, bottom: vertical, right: horizontal)
+        centre(in: visible)
     }
-    func update(tiles: [QuiltLayout.Tile], patches: [Patch], fitRequest: Int, select: @escaping (Patch) -> Void) {
-        if request != fitRequest { request = fitRequest; needsFit = true; setNeedsLayout() }
+    private func centre(in visible: CGRect) {
+        let horizontal = max(0, (visible.width - board.frame.width) / 2)
+        let vertical = max(0, (visible.height - board.frame.height) / 2)
+        contentInset = UIEdgeInsets(top: safeAreaInsets.top + vertical, left: safeAreaInsets.left + horizontal,
+                                    bottom: safeAreaInsets.bottom + vertical, right: safeAreaInsets.right + horizontal)
+    }
+    func update(tiles: [QuiltLayout.Tile], patches: [Patch], select: @escaping (Patch) -> Void) {
         guard current != tiles || currentPatches != patches else { return }
         currentPatches = patches
         let animate = !current.isEmpty && !UIAccessibility.isReduceMotionEnabled
