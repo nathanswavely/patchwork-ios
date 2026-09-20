@@ -21,6 +21,7 @@ struct Instance: Decodable {
     let description: String
     let geography: Geography
     let neighborQuilts: [Neighbor]?
+    let modules: [String: Bool]?
     struct Geography: Decodable { let timezone: String? }
     struct Neighbor: Decodable { let name: String; let url: String }
 }
@@ -36,6 +37,28 @@ struct Patch: Decodable, Identifiable, Hashable {
     let address: String?
     let latitude: Double?
     let longitude: Double?
+    let eventCount: Int?
+    let upcomingEventCount: Int?
+    let isUnclaimed: Bool?
+    let status: String?
+    let imageUrl: String?
+    let imageAlt: String?
+    let website: String?
+    let links: [PatchLink]?
+    let activatedAt: String?
+    let createdAt: String?
+    var communityListing: Bool { isUnclaimed == true || status == "unclaimed" }
+}
+
+struct PatchLink: Decodable, Hashable {
+    let url: String
+    let label: String
+}
+
+struct Affinity: Decodable, Hashable {
+    let source: String
+    let target: String
+    let strength: Double
 }
 
 struct PatchResponse: Decodable {
@@ -44,6 +67,7 @@ struct PatchResponse: Decodable {
 
 struct TreeResponse: Decodable {
     let tree: Root
+    let affinity: [Affinity]?
     struct Root: Decodable { let children: [Patch]? }
 }
 

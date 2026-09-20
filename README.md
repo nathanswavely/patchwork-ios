@@ -16,9 +16,10 @@ Normal launches use live APIs. Add `--preview` to the scheme's launch arguments 
 
 1. Choose a quilt from the small starter directory or enter its HTTPS origin.
 2. Inspect the returned quilt identity and explicitly select Explore quilt.
-3. Browse/search public patches, open a profile, and browse its upcoming events.
-4. Open an event, use native sharing, or follow a link to its website.
-5. Switch quilts from the toolbar. Saved quilts are local to the device; no quilt is preselected at launch.
+3. Explore the interactive quilt, pinch to zoom, pan, and search/filter to repack it. Switch to map or list using the same filters.
+4. Open a patch in a native sheet and browse its upcoming events.
+5. Open an event, use native sharing, or follow a link to its website.
+6. Switch quilts from the toolbar. Saved quilts are local to the device; no quilt is preselected at launch.
 
 Lancaster is one directory entry, not the default. Direct connection does not depend on directory inclusion. HTTPS root origins only in this prototype; subpath hosting, invitations, registry URLs, QR codes, directory administration, and location discovery are not implemented.
 
@@ -27,13 +28,14 @@ Lancaster is one directory entry, not the default. Direct connection does not de
 | Existing mobile surface | Native implementation |
 | --- | --- |
 | Quilt switcher | First-run List, identity confirmation, toolbar sheet |
-| Patch browsing and search | Searchable List with native NavigationStack |
-| Patch profile | Grouped sections, semantic text sizes, ShareLink, Maps directions |
+| Quilt browsing and search | Native pan/pinch canvas; activity sizing, affinity packing, search and tag reflow |
+| Map and list | MapKit coordinates; quilt-order, name, and newest list sorts |
+| Patch profile | Dismissible sheet, NavigationStack, grouped sections, ShareLink, Maps directions |
 | Event list and detail | Native lists, push navigation, event-local time zones, cursor pagination |
-| Mobile navigation | System TabView with separate Patches and Events stacks |
-| Textile identity | Existing blue accent in light/dark appearances, four-fabric mark, patch/quilt vocabulary |
+| Mobile navigation | System TabView with separate Quilt and Events stacks |
+| Visual identity | Blue action tint, system surfaces and SF Symbols, patch/quilt vocabulary |
 
-System typography and surfaces adapt to appearance and Dynamic Type. The custom quilt canvas, fabric artwork, map browsing, and original display typography have not been ported. This is a workflow prototype, not visual parity with the mobile site.
+System typography and surfaces adapt to appearance and Dynamic Type. The quilt retains the web’s rearranging behavior with clean native blocks. Textile decoration and display fonts are intentionally omitted. Reduce Motion disables rearrangement animation; the list provides full text at accessibility sizes.
 
 ## API boundary
 
@@ -45,7 +47,7 @@ Authentication, passkey associated domains, mutations, notifications, account de
 
 ## Verification
 
-Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, and explicit selection. UI tests use fictional Debug data to exercise selection → patch → event → switcher plus invalid-address handling, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
+Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, explicit selection, layout parity, filter matching, and canvas lifetime. UI tests use fictional Debug data to exercise explicit quilt selection, pinch and fit, patch-sheet return without changing the viewport, tag filtering and restoration, map/list browsing, events, and quilt switching, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
 
 ```sh
 xcodebuild -project Patchwork.xcodeproj -scheme Patchwork \
@@ -63,6 +65,6 @@ The quilt chooser includes links to this source repository and the license. For 
 
 The software license does not grant trademark rights or imply that a fork is an official Patchwork app. App Store distribution still requires a review of the actual binary, dependencies, disclosures, and applicable store terms.
 
-Verified locally: six model/contract tests and three simulator UI tests passed. Public Lancaster instance, tree, event-list, patch-detail, and event-detail responses decoded with the client models. This does not replace a device or VoiceOver audit.
+The layout test suite compares 24 synthetic full/filtered layouts with numeric results from the web engine, including placement order, coordinates, and sizes. Public Lancaster instance, tree, event-list, patch-detail, and event-detail responses decoded with the client models. This does not replace a device or VoiceOver audit.
 
 Before release: complete feature scope, accessibility review on devices, privacy disclosures, native authentication and moderation requirements, app icon, and App Store metadata. The project does not configure signing, upload, or publish anything.

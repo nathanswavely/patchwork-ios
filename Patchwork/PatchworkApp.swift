@@ -28,11 +28,10 @@ import SwiftUI
 
 struct QuiltMark: View {
     var body: some View {
-        Grid(horizontalSpacing: 3, verticalSpacing: 3) {
-            GridRow { Color(red: 0.01, green: 0.45, blue: 0.71); Color(red: 0.75, green: 0.15, blue: 0.14) }
-            GridRow { Color(red: 0.72, green: 0.49, blue: 0.06); Color(red: 0.36, green: 0.42, blue: 0.28) }
-        }
-        .frame(width: 42, height: 42).clipShape(RoundedRectangle(cornerRadius: 7))
+        Image(systemName: "square.grid.2x2.fill")
+            .font(.title2)
+            .foregroundStyle(.tint)
+            .frame(width: 42, height: 42)
         .accessibilityHidden(true)
     }
 }

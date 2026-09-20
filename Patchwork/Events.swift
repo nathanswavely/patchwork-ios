@@ -5,6 +5,7 @@ import SwiftUI
 struct EventList: View {
     let quilt: Quilt
     var slug: String? = nil
+    var close: (() -> Void)? = nil
     @State private var events: [PatchworkEvent] = []
     @State private var cursor: String?
     @State private var loading = false
@@ -14,7 +15,7 @@ struct EventList: View {
         List {
             Section {
                 ForEach(events) { event in
-                    NavigationLink { EventDetail(quilt: quilt, initial: event) } label: {
+                    NavigationLink { EventDetail(quilt: quilt, initial: event, close: close) } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             Text(event.title).font(.headline)
                             Text(event.dateLabel).font(.subheadline).foregroundStyle(.secondary)
@@ -35,6 +36,7 @@ struct EventList: View {
             }
         }
         .navigationTitle("Events")
+        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .overlay {
             if loaded && !loading && error == nil && events.isEmpty {
                 ContentUnavailableView("No upcoming events", systemImage: "calendar", description: Text("Check back for the next gathering."))
@@ -62,6 +64,7 @@ struct EventList: View {
 struct EventDetail: View {
     let quilt: Quilt
     let initial: PatchworkEvent
+    var close: (() -> Void)? = nil
     @State private var detail: PatchworkEvent?
     @State private var error: String?
     private var event: PatchworkEvent { detail ?? initial }
@@ -94,7 +97,10 @@ struct EventDetail: View {
             }
         }
         .navigationTitle("Event").navigationBarTitleDisplayMode(.inline)
-        .toolbar { ShareLink(item: api.webURL("events/\(event.id)")) }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { ShareLink(item: api.webURL("events/\(event.id)")) }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
         .task { await load() }
     }
     private func load() async {

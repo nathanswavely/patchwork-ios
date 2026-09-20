@@ -8,9 +8,9 @@ struct QuiltHome: View {
     var body: some View {
         TabView {
             NavigationStack {
-                PatchList(quilt: quilt)
+                QuiltBrowser(quilt: quilt)
                     .toolbar { ToolbarItem(placement: .topBarLeading) { switcher } }
-            }.tabItem { Label("Patches", systemImage: "square.grid.2x2") }
+            }.tabItem { Label("Quilt", systemImage: "square.grid.2x2") }
             NavigationStack {
                 EventList(quilt: quilt)
                     .toolbar { ToolbarItem(placement: .topBarLeading) { switcher } }
@@ -24,67 +24,10 @@ struct QuiltHome: View {
     }
 }
 
-struct PatchList: View {
-    let quilt: Quilt
-    @State private var patches: [Patch] = []
-    @State private var search = ""
-    @State private var loading = true
-    @State private var error: String?
-    private var filtered: [Patch] {
-        patches.filter { search.isEmpty || ($0.name + " " + ($0.tags ?? []).joined(separator: " ")).localizedCaseInsensitiveContains(search) }
-    }
-    var body: some View {
-        List {
-            Section {
-                HStack(spacing: 12) {
-                    QuiltMark()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(quilt.name).font(.headline)
-                        Text(quilt.url.host() ?? "").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }.padding(.vertical, 8)
-            }
-            Section("Explore patches") {
-                ForEach(filtered) { patch in
-                    NavigationLink {
-                        PatchDetail(quilt: quilt, initial: patch)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(patch.name).font(.headline)
-                            if let description = patch.description, !description.isEmpty {
-                                Text(description).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                            }
-                            if let tags = patch.tags, !tags.isEmpty {
-                                Text(tags.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                            }
-                        }.padding(.vertical, 7)
-                    }.accessibilityIdentifier("patchRow")
-                }
-            }
-        }
-        .navigationTitle("Patches")
-        .searchable(text: $search, prompt: "Patches and interests")
-        .overlay {
-            if loading { ProgressView("Loading patches…") }
-            else if let error { FailureView(message: error) { Task { await load() } }.background(.background) }
-            else if filtered.isEmpty { ContentUnavailableView("No patches found", systemImage: "square.grid.2x2", description: Text(search.isEmpty ? "Public patches will appear here when this quilt adds them." : "Try another name or interest.")) }
-        }
-        .task { await load() }
-        .refreshable { await load() }
-    }
-    private func load() async {
-        loading = patches.isEmpty; error = nil
-        defer { loading = false }
-        do {
-            let result: TreeResponse = try await PatchworkAPI(base: quilt.url).get("nodes/tree")
-            patches = result.tree.children ?? []
-        } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
-    }
-}
-
 struct PatchDetail: View {
     let quilt: Quilt
     let initial: Patch
+    var close: (() -> Void)? = nil
     @State private var detail: Patch?
     @State private var error: String?
     private var patch: Patch { detail ?? initial }
@@ -109,7 +52,7 @@ struct PatchDetail: View {
                 }
             }
             Section {
-                NavigationLink { EventList(quilt: quilt, slug: patch.slug) } label: {
+                NavigationLink { EventList(quilt: quilt, slug: patch.slug, close: close) } label: {
                     Label("Upcoming events", systemImage: "calendar")
                 }
                 Link(destination: api.webURL("patches/\(patch.slug)")) {
@@ -124,7 +67,10 @@ struct PatchDetail: View {
             }
         }
         .navigationTitle("Patch").navigationBarTitleDisplayMode(.inline)
-        .toolbar { ShareLink(item: api.webURL("patches/\(patch.slug)")) }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { ShareLink(item: api.webURL("patches/\(patch.slug)")) }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
         .task { await load() }
     }
     private var mapsURL: URL? {
