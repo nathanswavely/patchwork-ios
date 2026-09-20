@@ -96,7 +96,10 @@ enum PreviewData {
         let second = ##"{"id":"demo-patch-2","name":"The Listening Room","slug":"listening-room","description":"Independent music in good company.","tags":["music","venue"],"visibility":"public","public_member_list":"nobody","public_governance_record":"nobody","member_count":8,"follower_count":15,"appearance":{"block":{"grid":3,"colors":{"0,1":[1],"0,2":[2],"1,0":[1],"1,2":[1],"2,0":[2],"2,1":[1]}},"rotation":0,"bundle":["#2E7D5B","#204B4B","#D9D6AF","#D89E13"]}}"##
         let names = ["Community Garden", "Bike Kitchen", "Neighborhood Books", "River Walkers", "Pottery Circle", "Market Friends", "Repair Cafe", "Film Club", "Food Share", "Evening Choir"]
         let extras = names.enumerated().map { index, name in
-            "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")}"
+            // One patch has left this quilt, so a list has something to wear
+            // the Moved chip on (web ADR 090).
+            let moved = index == 4 ? ",\"moved_to\":\"https://neighbor.example.org/patches/pottery-circle\"" : ""
+            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")\(moved)}"
         }
         let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
@@ -117,7 +120,11 @@ enum PreviewData {
         case "nodes/tree": json = "{\"tree\":{\"children\":[\(([patch, second] + extras).joined(separator: ","))]}}"
         case "nodes/common-thread": json = "{\"node\":\(patch),\"is_unclaimed\":false,\"lining_status\":\"diverged\"}"
         case "nodes/listening-room": json = "{\"node\":\(second),\"is_unclaimed\":false,\"lining_status\":\"pristine\"}"
-        case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":1},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6}]"#
+        // The vocabulary answers with its own counts, which are the quilt's
+        // whole-quilt public numbers rather than a tally of the tree in hand:
+        // `craft` is worn by more patches than this fixture's tree holds, and
+        // `archive` is a curated term nothing wears yet.
+        case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":3},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6},{"name":"archive","node_count":0}]"#
         case "events": json = eventsPage(query)
         case "nodes/common-thread/members": json = members
         case "nodes/listening-room/members": json = withheldMembers

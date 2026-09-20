@@ -9,6 +9,8 @@ struct QuiltHome: View {
     /// The reader's colour register, read here so a change to it reaches the
     /// session — and through it the canvas — wherever the sheet was opened from.
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
+    /// The one-time orientation card, over the foot of the quilt (see Orientation.swift).
+    @State private var intro = false
     enum Pane: Hashable { case quilt, events, discover, search }
     init(quilt: Quilt) { _session = StateObject(wrappedValue: QuiltSession(quilt: quilt)) }
     var body: some View {
@@ -40,11 +42,31 @@ struct QuiltHome: View {
         .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
         .sheet(isPresented: $session.switching) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
         .task { await session.load() }
-        .onAppear { session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard) }
+        .onAppear {
+            session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard)
+            if !IntroState.seen(session.quilt) { intro = true }
+        }
         .onChange(of: colors) { _, now in session.apply(colorMode: ColorMode(rawValue: now) ?? .standard) }
         .environmentObject(session)
     }
-    private var quiltPane: some View { NavigationStack { QuiltBrowser() } }
+    /// The quilt, with the orientation card over the foot of it. The overlay
+    /// goes on the tab's own content rather than on the `TabView`, so the
+    /// card floats inside the canvas instead of underneath the tab bar; the
+    /// padding clears the canvas's own Quilt/Map/List pill, because the card
+    /// may cover the quilt but never a control.
+    private var quiltPane: some View {
+        NavigationStack { QuiltBrowser() }
+            .overlay(alignment: .bottom) {
+                if intro, !session.searching {
+                    IntroCard(quiltName: session.instance?.name ?? session.quilt.name) {
+                        IntroState.markSeen(session.quilt)
+                        withAnimation { intro = false }
+                    }
+                    .padding(.bottom, 64)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+    }
     private var eventsPane: some View { NavigationStack { EventList(quilt: session.quilt).modifier(DiscoveryToolbar()) } }
     private var discoverPane: some View { NavigationStack { Discover() } }
     @ViewBuilder private var quiltIcon: some View {

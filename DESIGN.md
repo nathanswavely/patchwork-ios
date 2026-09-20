@@ -131,13 +131,13 @@ Use system-rounded controls and native sheet corners. Tiles are square and meet 
 
 ### Filters
 
-- **Style:** the Filter button opens a sheet of chips — every tag the quilt wears, most-worn first, with the search chip among them — over the canvas, which repacks live behind it. Chips are plain: only Discover says how many patches wear a tag. Inactive chips are grey; the one tint marks the active ones.
+- **Style:** the Filter button opens a sheet of chips — every tag the quilt wears, most-worn first, with the search chip among them — over the canvas, which repacks live behind it. Chips are plain: only Discover says how many patches wear a tag, and the number it says is the quilt's own (`tags` → `node_count`), so both surfaces rank by one thing. Inactive chips are grey; the one tint marks the active ones.
 - **State:** the active count badges the Filter button; Clear removes search and interests together. Map, Quilt, and List read the same state.
 
 ### Search
 
 - **Style:** the centre field activates in place; results list under it, over the surface, as patches (by name or description) and upcoming events (by title), each a way through to the thing itself. Cancel leaves the surface as it was.
-- **Nothing found:** where the quilt says it takes suggestions (`submissions_enabled`), the empty result offers one link to the website's submission form. There is no native form; suggesting needs an account.
+- **Nothing found:** where the quilt says it takes suggestions (`submissions_enabled`), the empty result offers one link to the website's submission form — "Suggest “X” as a patch", carrying the typed name as `?name=X` so the form arrives already about the thing that was looked for. There is no native form; suggesting needs an account.
 - **Rule:** typing never narrows the quilt. The last row — "Show matches on the quilt for …" — is the one act that sets the search chip.
 
 ### Quilt Tiles
@@ -169,7 +169,15 @@ Below the head are four glimpses in the web's order — About, Events, Members, 
 
 ### Discover
 
-Asks one question — "What are you drawn to?" — with the eight most-worn tags on this quilt (counts shown here and nowhere else) and a way to show all. The answer lists the patches wearing what was picked, the ones with something coming up first, read from the upcoming-events feed rather than claimed; each row opens the docked profile. Following stays on the website until sign-in exists here.
+Asks one question — "What are you drawn to?" — with the eight most-worn tags on this quilt (counts shown here and nowhere else) and "Show all tags (N more)". The counts are the quilt's own `node_count` from the `tags` vocabulary, which is whole-quilt and public; where that endpoint does not answer they are derived from the patches in hand, so a shortlist is never blank. Ranking is count descending, ties A to Z. A curated term no patch wears is dropped rather than printed as a zero — the same array is the filter sheet's vocabulary, and a chip that can only empty the quilt is worse than an absent one.
+
+The answer has two halves, as the web's does. **Patches you might like** lists what wears the picked tags, the ones with something coming up first — read from the upcoming-events feed rather than claimed — then in quilt order. Under it, **Show the rest of the quilt (N)** folds everything else away behind one disclosure, counted and ordered the same way: the answer is a shortlist, not a verdict on the rest. "Show me everything instead" is one list with no remainder. A row states its patch's name, its tags, its next event, and a **Moved** chip where the patch has a `moved_to` — the fact is visible before anyone walks into an address that has moved. Each row opens the docked profile.
+
+Following stays on the website, and the sentence that says so is the door: "Following needs an account — reading never does." links to the quilt's `/login`, and the docked profile's equivalent line carries `?redirect=/patches/{slug}` so a reader lands back on the patch they were reading. No Follow button, enabled or disabled, appears anywhere.
+
+### Orientation
+
+One card, over the foot of the quilt, the first time a quilt is opened: what a quilt is, what this one promises, **What is Patchwork?** into the About page, and "I'll lurk for now" as a worded decline. It is an overlay, never a sheet — a modal would have to be dismissed before the quilt could be looked at, which is backwards for a card whose content is that reading costs nothing. It may sit over the canvas, never over a control, and the quilt pans and opens underneath it. Either answer is an answer: the card is offered once per quilt, remembered in `UserDefaults`, and never shown again.
 
 ### Events
 

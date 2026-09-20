@@ -118,3 +118,53 @@ The Events tab and an event's detail were brought level with the web's public
 
 Nothing authenticated is stubbed: no submit, no edit, no RSVP (the web has
 none either), and no `scope=my`.
+
+## Discover and search — 2026-09-20
+
+Discovery mode and the search field were brought level with the web's public
+(signed-out) organisation of the same two acts.
+
+- **The answer is two halves** (`DiscoverAnswer.split`, checked as a value).
+  What wears the picked tags leads — soonest event first, then quilt order —
+  and the rest of the quilt is folded behind one counted disclosure rather
+  than dropped. A shortlist that silently hid four fifths of a quilt would be
+  a verdict rather than an answer, which is exactly the thing discovery mode
+  exists not to be. "Show me everything instead" stays one list.
+- **Counts come from the quilt** (`tags` → `node_count`, kept whole on the
+  session as `tagTerms`; the motif map is now one reader of it rather than
+  the reason it is fetched). `node_count` is the quilt's own whole-quilt
+  public number; the tree this client holds approximates it, so where the
+  server has spoken it wins, term by term, and locally derived counts are the
+  fallback for a quilt that will not serve the vocabulary at all. Ordering is
+  the web's — count descending, ties A to Z. One deviation, deliberate: a
+  term nothing wears is dropped rather than printed as a zero, because here
+  the same ranking is also the filter sheet's chips (Lancaster has 11 such
+  terms today), and a chip that can only empty the quilt is worse than an
+  absent one. The filter sheet itself still prints no counts, as web ADR 022
+  requires — a whole-quilt count on a chip that narrows a scoped surface is a
+  different quantity.
+- **The Moved chip** (web ADR 090) on a Discover row whose patch has a
+  `moved_to`, so a patch the community has left is legible in the list rather
+  than only on its own page.
+- **Search's exit carries the name**: `Suggest “X” as a patch` →
+  `{base}/submit?name=X`, gated on `submissions_enabled`, still a website
+  link and still not a native form. The narrowing rule is untouched: typing
+  finds, and "Show matches on the quilt" is the one act that narrows.
+- **Follow is signposted, not stubbed.** The web offers anonymous visitors a
+  Follow button that routes to `/login`; a button that only ever goes
+  somewhere else is a stub here, so the existing sentence became the link
+  instead — Discover's footer to `{base}/login`, and the docked profile's
+  line to `{base}/login?redirect=/patches/{slug}` so signing in lands back on
+  the patch being read (`PatchworkAPI.loginURL(returningTo:)` /
+  `suggestURL(name:)`, added as an extension in `QuiltSession.swift`).
+- **One orientation card** (web ADR 040, `Orientation.swift`), the first time
+  a quilt opens: an overlay on the foot of the quilt, not a sheet — a modal
+  would have to be dismissed before the quilt could be looked at, which is
+  backwards for a card that says reading costs nothing. About or a worded
+  decline, both answers, remembered per quilt in `UserDefaults` and never
+  shown again. The UI tests say which side of that they are testing
+  (`--forget-intro` / `--skip-intro`), because `UserDefaults` outlives a
+  launch and "the first time" would otherwise be whichever test ran first.
+
+Still nothing authenticated: no Follow, join, or suggest control, enabled or
+disabled, and no native submission form.
