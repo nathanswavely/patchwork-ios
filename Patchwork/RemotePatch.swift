@@ -24,59 +24,77 @@ struct RemotePatchView: View {
     private var visitURL: URL? { origin?.appendingPathComponent("patches/\(slug)") }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             Section {
                 HStack(spacing: 8) {
                     if let icon {
                         Image(uiImage: icon).resizable().frame(width: 18, height: 18)
                             .clipShape(RoundedRectangle(cornerRadius: 3)).accessibilityHidden(true)
                     } else {
-                        Image(systemName: "square.grid.2x2").font(Font.pw.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+                        Image(systemName: "square.grid.2x2").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).accessibilityHidden(true)
                     }
-                    Text("On \(quiltName), another quilt").font(Font.pw.captionSemibold).foregroundStyle(.secondary)
+                    Text("On \(quiltName), another quilt").font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted)
                 }
             }
             if let patch {
                 Section {
-                    Text(patch.name).font(Font.pw.title2).fixedSize(horizontal: false, vertical: true)
-                    Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(.secondary)
+                    Text(patch.name).font(Font.pw.title2).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
+                    Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     if let tags = patch.tags, !tags.isEmpty {
-                        Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(.secondary)
+                        Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                     }
                     if let description = patch.description, !description.isEmpty {
-                        Text(description).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        Text(description).font(Font.pw.body).foregroundStyle(Color.pwText)
+                            .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 if !events.isEmpty {
-                    Section("Upcoming events") {
+                    Section {
                         ForEach(events) { event in
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(event.title)
-                                Text(event.shortDateLabel).font(Font.pw.subheadline).foregroundStyle(.secondary)
+                                Text(event.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                                Text(event.shortDateLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                                 if let location = event.location, !location.isEmpty {
-                                    Text(location).font(Font.pw.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(location).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).lineLimit(1)
                                 }
                             }.padding(.vertical, 2).accessibilityIdentifier("remoteEventRow")
                         }
-                    }
+                    } header: { heading("Upcoming events") }
                 }
                 Section {
-                    if let visitURL { Link(destination: visitURL) { Label("Visit on \(quiltName)", systemImage: "arrow.up.forward.app") } }
+                    if let visitURL {
+                        Link(destination: visitURL) { Label("Visit on \(quiltName)", systemImage: "arrow.up.forward.app") }
+                            .exitLink()
+                    }
                 } footer: {
-                    Text("You’re seeing this patch’s public face from your own quilt. Joining and everything deeper live on \(quiltName).")
+                    footnote("You’re seeing this patch’s public face from your own quilt. Joining and everything deeper live on \(quiltName).")
                 }
             }
             if loading { ProgressView("Reaching \(host)…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
-                    if let visitURL { Link(destination: visitURL) { Label("Try their site", systemImage: "safari") } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
+                    if let visitURL {
+                        Link(destination: visitURL) { Label("Try their site", systemImage: "safari") }.exitLink()
+                    }
                 }
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Patch").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .task { await load() }
+    }
+    private func heading(_ text: String) -> some View {
+        Text(text).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+    }
+    private func footnote(_ text: String) -> some View {
+        Text(text).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).textCase(nil)
     }
     private func load() async {
         guard let api else {

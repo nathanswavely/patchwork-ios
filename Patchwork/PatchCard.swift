@@ -216,7 +216,7 @@ struct PatchCard: View {
                 Text(patch.cardCountsLabel)
                     .font(Font.pw.captionSemibold)
                     .foregroundStyle(Color.pwText)
-                if patch.movedTo?.isEmpty == false { movedChip }
+                if patch.movedTo?.isEmpty == false { MovedChip() }
             }
             if let description = patch.description, !description.isEmpty {
                 Text(description)
@@ -228,16 +228,6 @@ struct PatchCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12).padding(.vertical, 10)
-    }
-
-    /// A fact, not a chip that does anything: this patch left, and the profile
-    /// is where its forwarding address is.
-    private var movedChip: some View {
-        Text("Moved")
-            .font(Font.pw.caption2Semibold)
-            .foregroundStyle(Color.pwTextMuted)
-            .padding(.horizontal, 7).padding(.vertical, 2)
-            .overlay(Capsule().strokeBorder(Color.pwBorder))
     }
 
     /// The web's `.card-corner`: a glass chip on the strip's top-right. The
@@ -257,6 +247,94 @@ struct PatchCard: View {
             .accessibilityLabel("Follow \(patch.name)")
             .accessibilityHint("Opens this quilt\u{2019}s website to sign in.")
         }
+    }
+}
+
+/// A fact, not a chip that does anything: this patch left, and the profile is
+/// where its forwarding address is. One shape, because the full card, the
+/// compact card and the Discover row are all saying the same thing.
+struct MovedChip: View {
+    var body: some View {
+        Text("Moved")
+            .font(Font.pw.caption2Semibold)
+            .foregroundStyle(Color.pwTextMuted)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .overlay(Capsule().strokeBorder(Color.pwBorder))
+            .accessibilityLabel("Moved")
+    }
+}
+
+// MARK: - The compact card
+
+/// The same card, laid on its side, for a *ranked* list of patches — the
+/// Discover answer and the search results.
+///
+/// The full card leads with a 100pt strip of the patch's cloth, which is
+/// right when the list is the quilt read back and a reader is browsing. A
+/// shortlist is not that: Discover's answer runs eight patches deep before
+/// the rest of the quilt, and a search result is read while the keyboard is
+/// still up, so a stack of hundred-point covers would turn an answer into a
+/// scroll and bury the one row that narrows the quilt. So the cover becomes
+/// the quilt's own square — `TileMiniature` at its `.tile` fit, wearing both
+/// corner marks — beside the body rather than above it. Everything the card
+/// says it still says: the motif disc before the name, the counts in the
+/// web's own wording, and the `Moved` chip where the patch has left. Only
+/// the cloth gets smaller.
+///
+/// `detail` is the line the surface adds on its own account — the tags a
+/// search matched, the next thing happening on a Discover row.
+struct CompactPatchCard<Detail: View>: View {
+    let patch: Patch
+    var tagMotifs: [String: String] = [:]
+    var colorMode: ColorMode = QuiltTheme.colorMode
+    /// The surface names its own rows: the UI tests tell a Discover row from
+    /// a search result from a card in List mode.
+    var identifier: String = "patchRow"
+    let open: () -> Void
+    @ViewBuilder var detail: Detail
+    @Environment(\.colorScheme) private var scheme
+
+    private let radius: CGFloat = 6
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(alignment: .top, spacing: 12) {
+                TileMiniature(patch: patch, tagMotifs: tagMotifs, fit: .tile, side: 44, colorMode: colorMode)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        MotifDisc(patch: patch, tagMotifs: tagMotifs, side: 15, colorMode: colorMode)
+                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                        Text(patch.name)
+                            .font(Font.pw.cardTitle)
+                            .foregroundStyle(Color.pwText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: 6) {
+                        Text(patch.cardCountsLabel)
+                            .font(Font.pw.captionSemibold)
+                            .foregroundStyle(Color.pwText)
+                        // A patch the community has left wears the fact in the
+                        // list, so it is visible before anybody walks into an
+                        // address that has moved (web ADR 090).
+                        if patch.movedTo?.isEmpty == false { MovedChip() }
+                    }
+                    detail
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.pwSurface)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.pwBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(scheme == .dark ? 0.05 : 0.08), radius: 5, y: 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
+        .accessibilityHint("Opens patch details.")
     }
 }
 

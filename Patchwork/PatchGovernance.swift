@@ -30,13 +30,16 @@ struct PatchGovernanceHome: View {
     }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             if let overview {
                 if let election = overview.election, election.phase == "nominating" {
                     Section {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Nominations are open for \(election.seats ?? 0) seat\((election.seats ?? 0) == 1 ? "" : "s")")
                                 .font(Font.pw.headline)
-                            Text(candidateLine(election)).font(Font.pw.subheadline).foregroundStyle(.secondary)
+                            Text(candidateLine(election)).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                         }.padding(.vertical, 2)
                     }
                 }
@@ -53,7 +56,7 @@ struct PatchGovernanceHome: View {
                     // that has taken its roster down is reported as leaderless.
                     if overview.adminsWithheld == true {
                         Label("This patch does not list its admins publicly.", systemImage: "eye.slash")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.pwTextMuted)
                     } else if let admins = overview.admins, !admins.isEmpty {
                         ForEach(admins) { admin in
                             PersonRow(
@@ -62,7 +65,7 @@ struct PatchGovernanceHome: View {
                             )
                         }
                     } else {
-                        Text("Nobody holds the admin role here yet.").foregroundStyle(.secondary)
+                        Text("Nobody holds the admin role here yet.").foregroundStyle(Color.pwTextMuted)
                     }
                 }
                 if overview.showsCouncil { council(overview) }
@@ -75,7 +78,7 @@ struct PatchGovernanceHome: View {
                     }.accessibilityIdentifier("governanceDocuments")
                     if recordWithheld {
                         Label("Proposals and decisions here are not public.", systemImage: "lock")
-                            .font(Font.pw.subheadline).foregroundStyle(.secondary)
+                            .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     } else {
                         NavigationLink {
                             PatchProposalList(quilt: quilt, slug: patch.slug, close: close)
@@ -94,14 +97,17 @@ struct PatchGovernanceHome: View {
             if loading { ProgressView("Loading governance…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
             Section {
                 WebsiteOnlyNote(text: "Proposing, voting, and standing for a seat happen on this quilt’s website.")
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Governance").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .task { if overview == nil { await load() } }
@@ -121,8 +127,8 @@ struct PatchGovernanceHome: View {
                 Text(seatSummary(seats)).fixedSize(horizontal: false, vertical: true)
                 ForEach(seats) { seat in
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(seat.holder).foregroundStyle(seat.isVacant ? Color.secondary : Color.primary)
-                        Text(seat.fate).font(Font.pw.subheadline).foregroundStyle(.secondary)
+                        Text(seat.holder).foregroundStyle(seat.isVacant ? Color.pwTextMuted : Color.pwText)
+                        Text(seat.fate).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }.padding(.vertical, 2)
                 }
@@ -171,29 +177,35 @@ struct GovernanceDocumentList: View {
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             ForEach(documents) { document in
                 NavigationLink { GovernanceDocumentDetail(quilt: quilt, initial: document, close: close) } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(document.title).font(Font.pw.headline)
+                        Text(document.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
                         HStack(spacing: 8) {
                             if let version = document.version { Text("v\(version)") }
                             if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
                             if document.kind == "lining" { Text("The lining") }
-                        }.font(Font.pw.caption).foregroundStyle(.secondary)
+                        }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     }.padding(.vertical, 4)
                 }.accessibilityIdentifier("documentRow")
             }
             if loading { ProgressView("Loading documents…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
             if publishedOnly && !documents.isEmpty {
-                Section { Text("Members-only documents are not listed here.").font(Font.pw.footnote).foregroundStyle(.secondary) }
+                Section { Text("Members-only documents are not listed here.").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Documents").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .overlay {
@@ -231,15 +243,18 @@ struct GovernanceDocumentDetail: View {
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             Section {
-                Text(document.title).font(Font.pw.title2).fixedSize(horizontal: false, vertical: true)
+                Text(document.title).font(Font.pw.title2).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 10) {
                     if let version = document.version { Text("v\(version)") }
                     if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
-                }.font(Font.pw.caption).foregroundStyle(.secondary)
+                }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                 if document.kind == "lining" {
                     Text("The shared baseline every patch on this quilt starts with.")
-                        .font(Font.pw.footnote).foregroundStyle(.secondary)
+                        .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 }
             }
             if let body = document.body, !body.isEmpty {
@@ -249,11 +264,14 @@ struct GovernanceDocumentDetail: View {
             }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Document").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .task { await load() }
@@ -285,6 +303,9 @@ struct PatchProposalList: View {
     ]
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             Section {
                 Picker("Show", selection: $filter) {
                     ForEach(Self.filters, id: \.value) { Text($0.label).tag($0.value) }
@@ -293,13 +314,13 @@ struct PatchProposalList: View {
             ForEach(proposals) { proposal in
                 NavigationLink { ProposalDetailView(quilt: quilt, initial: proposal, close: close) } label: {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(proposal.title).font(Font.pw.headline)
+                        Text(proposal.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
                         HStack(spacing: 8) {
                             if let author = proposal.authorName, !author.isEmpty {
                                 Text("\(proposal.isDirectChange ? "applied by" : "by") \(author)")
                             }
                             if let created = ProfileDate.day(proposal.createdAt) { Text(created) }
-                        }.font(Font.pw.caption).foregroundStyle(.secondary)
+                        }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                         OutcomeBadge(proposal: proposal)
                     }.padding(.vertical, 4)
                 }.accessibilityIdentifier("proposalRow")
@@ -307,11 +328,14 @@ struct PatchProposalList: View {
             if loading { ProgressView("Loading proposals…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Proposals").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .overlay {
@@ -360,15 +384,18 @@ struct ProposalDetailView: View {
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             Section {
-                Text(proposal.title).font(Font.pw.title2).fixedSize(horizontal: false, vertical: true)
+                Text(proposal.title).font(Font.pw.title2).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
                 OutcomeBadge(proposal: proposal)
                 if let author = proposal.authorName, !author.isEmpty {
                     Text("\(proposal.isDirectChange ? "Applied by" : "Proposed by") \(author)")
-                        .font(Font.pw.subheadline).foregroundStyle(.secondary)
+                        .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                 }
                 if let created = ProfileDate.day(proposal.createdAt) {
-                    Text(created).font(Font.pw.caption).foregroundStyle(.secondary)
+                    Text(created).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                 }
             }
             Section {
@@ -390,14 +417,17 @@ struct ProposalDetailView: View {
             }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
             Section {
                 WebsiteOnlyNote(text: "Voting and commenting on a proposal happen on this quilt’s website.")
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Proposal").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .task { await load() }
@@ -425,19 +455,22 @@ struct GovernanceRecordList: View {
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             ForEach(entries) { entry in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text(entry.kindLabel).font(Font.pw.captionSemibold).foregroundStyle(.secondary)
+                        Text(entry.kindLabel).font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted)
                         Spacer()
-                        if let day = ProfileDate.day(entry.at) { Text(day).font(Font.pw.caption).foregroundStyle(.secondary) }
+                        if let day = ProfileDate.day(entry.at) { Text(day).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted) }
                     }
-                    Text(entry.title).font(Font.pw.headline).fixedSize(horizontal: false, vertical: true)
+                    Text(entry.title).font(Font.pw.headline).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
                     Text(entry.outcomeLine).font(Font.pw.subheadline)
-                        .foregroundStyle(entry.settled ? Color.primary : Color.secondary)
+                        .foregroundStyle(entry.settled ? Color.pwText : Color.pwTextMuted)
                         .fixedSize(horizontal: false, vertical: true)
                     if let summary = entry.summary, !summary.isEmpty {
-                        Text(summary).font(Font.pw.footnote).foregroundStyle(.secondary)
+                        Text(summary).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                     }
                 }
                 .padding(.vertical, 4)
@@ -446,11 +479,14 @@ struct GovernanceRecordList: View {
             if loading { ProgressView("Loading the record…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Record").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .overlay {

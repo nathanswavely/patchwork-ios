@@ -124,6 +124,9 @@ struct ExitLink: ViewModifier {
 /// The same rule for a door that stays inside the app: ink, and the platform's
 /// own chevron to say it opens something.
 struct InkRow: ViewModifier {
+    /// As with `ExitLink`: where the door shares its line with something else,
+    /// the chevron hugs the text instead of taking the whole width.
+    var fills = true
     func body(content: Content) -> some View {
         HStack(spacing: 6) {
             content.foregroundStyle(Color.pwText)
@@ -131,6 +134,23 @@ struct InkRow: ViewModifier {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.pwTextMuted)
                 .accessibilityHidden(true)
+            if fills { Spacer(minLength: 0) }
+        }
+    }
+}
+
+/// An act rather than a door: "Try again", "Load more", "Show all tags". It
+/// is still a word, so it is still ink — the glyph beside it is what says it
+/// can be pressed, and the tint stays where it belongs, on filled controls.
+struct InkAction: ViewModifier {
+    let symbol: String
+    func body(content: Content) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.pwTextMuted)
+                .accessibilityHidden(true)
+            content.foregroundStyle(Color.pwText)
             Spacer(minLength: 0)
         }
     }
@@ -142,8 +162,18 @@ extension View {
     /// The card surface under a list's rows. Applied to a `Group` of sections
     /// inside the list, which is the one place it propagates from.
     func listRows() -> some View { listRowBackground(Color.pwSurface) }
+    /// A row in a re-grounded plain `List` that carries its own surface — a
+    /// card, or a line of ink on the ground. The list must not draw a second
+    /// surface under it, and a rule between two cards belongs to neither.
+    func plainRow() -> some View {
+        listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+    }
     /// A link out of the app: ink text, and an arrow that says so.
     func exitLink(fills: Bool = true) -> some View { modifier(ExitLink(fills: fills)) }
     /// A door within the app that is text rather than a list row.
-    func inkRow() -> some View { modifier(InkRow()) }
+    func inkRow(fills: Bool = true) -> some View { modifier(InkRow(fills: fills)) }
+    /// A worded act — retry, load more, unfold — in ink, with its own glyph.
+    func inkAction(_ symbol: String) -> some View { modifier(InkAction(symbol: symbol)) }
 }

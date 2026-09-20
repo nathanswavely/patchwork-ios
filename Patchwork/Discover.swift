@@ -46,8 +46,20 @@ struct Discover: View {
     private var ask: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("What are you drawn to?").font(.title.bold())
-                Text("Pick a few and we’ll pull up the patches that match. These are the tags this quilt actually wears, most-worn first.").foregroundStyle(Color.secondary)
+                // The one display moment on this surface. It is not the
+                // screen's name — that is the inline title — but it is the
+                // app speaking in its own voice, once, in five words, and
+                // this whole surface exists to ask it. Shantell is the
+                // hand-lettered voice the web reserves "for big headings
+                // where it's personality, not strain" (app.css), and a
+                // question nobody has to read at length is exactly that.
+                Text("What are you drawn to?")
+                    .font(Font.pw.displayTitle)
+                    .foregroundStyle(Color.pwText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Pick a few and we’ll pull up the patches that match. These are the tags this quilt actually wears, most-worn first.")
+                    .font(Font.pw.body)
+                    .foregroundStyle(Color.pwTextMuted)
                 FlowLayout(spacing: 8) {
                     ForEach(visible, id: \.tag) { entry in
                         Chip(title: entry.tag, count: entry.count, active: picked.contains(entry.tag)) {
@@ -55,42 +67,72 @@ struct Discover: View {
                         }
                     }
                 }
-                if !showAll && ranked.count > shortlist { Button("Show all tags (\(ranked.count - shortlist) more)") { showAll = true } }
-                if !picked.isEmpty { Text("\(picked.count) selected").font(.footnote).foregroundStyle(Color.secondary) }
+                if !showAll && ranked.count > shortlist {
+                    Button("Show all tags (\(ranked.count - shortlist) more)") { showAll = true }
+                        .font(Font.pw.subheadlineMedium)
+                        .inkAction("chevron.down")
+                }
+                if !picked.isEmpty {
+                    Text("\(picked.count) selected").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                }
             }.frame(maxWidth: .infinity, alignment: .leading).padding()
         }
+        .background(Color.pwGround.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 10) {
+                // The tint fills the control and nothing else on this screen.
                 if picked.isEmpty {
-                    Button { answering = true } label: { Text("Pick at least one").frame(maxWidth: .infinity) }.buttonStyle(.bordered).controlSize(.large)
+                    Button { answering = true } label: {
+                        Text("Pick at least one").font(Font.pw.headline).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered).controlSize(.large).tint(.gray)
+                    .foregroundStyle(Color.pwText)
                 } else {
-                    Button { answering = true } label: { Text("Show me patches").frame(maxWidth: .infinity) }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
-                        .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
+                    Button { answering = true } label: {
+                        Text("Show me patches").font(Font.pw.headline).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
                 }
-                Button("Show me everything instead") { picked = []; answering = true }.font(.subheadline)
+                Button("Show me everything instead") { picked = []; answering = true }
+                    .font(Font.pw.subheadline)
+                    .foregroundStyle(Color.pwText)
             }.padding().background(.bar)
         }
     }
+    /// The answer is a stack of cards on the quilt's ground, the way List mode
+    /// is (docs/adr/078) — a plain `List` re-grounded, with the rows carrying
+    /// their own card surface rather than the system's inset grey.
     private var answerList: some View {
         List {
             if !ranked.isEmpty {
-                Button { answering = false } label: { Label("Ask me again", systemImage: "arrow.uturn.backward") }
+                Button { answering = false } label: {
+                    Text("Ask me again").font(Font.pw.subheadlineMedium)
+                }
+                .inkAction("arrow.uturn.backward")
+                .plainRow()
             }
             if session.patches.isEmpty {
                 Section {
-                    Text("Nothing here yet").font(.title2.bold())
-                    Text("No patches on this quilt so far. Add one, and the next person who comes looking will have something to find.").foregroundStyle(Color.secondary)
-                    Link("Add a patch on the website", destination: session.api.webURL("patches/new"))
-                }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Nothing here yet").font(Font.pw.title2).foregroundStyle(Color.pwText)
+                        Text("No patches on this quilt so far. Add one, and the next person who comes looking will have something to find.")
+                            .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                        Link("Add a patch on the website", destination: session.api.webURL("patches/new"))
+                            .font(Font.pw.subheadlineMedium)
+                            .exitLink(fills: false)
+                    }.padding(.vertical, 4)
+                }.plainRow()
             } else {
                 let split = answer
                 Section {
                     ForEach(split.matching) { patch in row(patch) }
                 } header: {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(picked.isEmpty ? "Everything on this quilt" : "Patches you might like").font(.title2.bold()).foregroundStyle(Color.primary)
+                        Text(picked.isEmpty ? "Everything on this quilt" : "Patches you might like")
+                            .font(Font.pw.title2).foregroundStyle(Color.pwText)
                         Text("\(split.matching.count) \(split.matching.count == 1 ? "patch" : "patches")\(picked.isEmpty ? "" : " match what you picked") — the ones with something coming up are first.")
+                            .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     }.textCase(nil).padding(.bottom, 6)
                 } footer: {
                     // Nothing follows this section where the answer is the
@@ -107,11 +149,14 @@ struct Discover: View {
                         Button {
                             withAnimation { showRest.toggle() }
                         } label: {
-                            Label(
-                                "\(showRest ? "Hide" : "Show") the rest of the quilt (\(split.rest.count))",
-                                systemImage: showRest ? "chevron.up" : "chevron.down"
-                            )
-                        }.accessibilityIdentifier("showRest")
+                            Text("\(showRest ? "Hide" : "Show") the rest of the quilt (\(split.rest.count))")
+                                .font(Font.pw.subheadlineMedium)
+                        }
+                        // The identifier belongs to the button itself, not to
+                        // the row the ink modifier wraps it in.
+                        .accessibilityIdentifier("showRest")
+                        .inkAction(showRest ? "chevron.up" : "chevron.down")
+                        .plainRow()
                         if showRest {
                             ForEach(split.rest) { patch in row(patch) }
                         }
@@ -121,26 +166,36 @@ struct Discover: View {
                 }
             }
         }
+        // Grouped rather than plain: a plain list pins its section headers,
+        // and a header sliding over a card is the one thing a stack of cards
+        // on the ground must not do.
+        .listStyle(.grouped)
+        .groundedList()
     }
     /// One patch, the same row in both lists: what it is, what it wears, and
     /// the next honest thing happening on it.
     private func row(_ patch: Patch) -> some View {
-        Button { session.open(patch) } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(patch.name).font(.headline).foregroundStyle(Color.primary)
-                    // A patch the community has left wears the fact here, so
-                    // it is visible before anybody walks into an address that
-                    // has moved (web ADR 090). Where it went is on the patch's
-                    // own page, one tap in.
-                    if patch.movedTo?.isEmpty == false { MovedChip() }
-                }
-                if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(.caption).foregroundStyle(Color.secondary) }
-                if let event = next[patch.slug] {
-                    Label("\(event.shortDateLabel) · \(event.title)", systemImage: "calendar").font(.caption).foregroundStyle(Color.secondary).lineLimit(1)
-                }
-            }.padding(.vertical, 4)
-        }.accessibilityIdentifier("discoverRow")
+        CompactPatchCard(patch: patch,
+                         tagMotifs: session.tagMotifs,
+                         colorMode: session.colorMode,
+                         identifier: "discoverRow",
+                         open: { session.open(patch) }) {
+            if let tags = patch.tags, !tags.isEmpty {
+                Text(tags.joined(separator: " · "))
+                    .font(Font.pw.caption)
+                    .foregroundStyle(Color.pwTextMuted)
+                    .lineLimit(1)
+            }
+            // The next honest thing happening on this patch, read from the
+            // upcoming feed rather than claimed.
+            if let event = next[patch.slug] {
+                Label("\(event.shortDateLabel) · \(event.title)", systemImage: "calendar")
+                    .font(Font.pw.caption)
+                    .foregroundStyle(Color.pwTextMuted)
+                    .lineLimit(1)
+            }
+        }
+        .plainRow()
     }
     /// The foot of the answer. Following is the thing the web sends people
     /// away with, and this client has no account to do it with — so the
@@ -150,21 +205,13 @@ struct Discover: View {
         VStack(alignment: .leading, spacing: 4) {
             Link(destination: session.api.loginURL()) {
                 Text("Following needs an account — reading never does.")
-            }.accessibilityIdentifier("followOnWebsite")
+                    .font(Font.pw.footnote)
+            }
+            .accessibilityIdentifier("followOnWebsite")
+            .exitLink(fills: false)
             QuiltInfoFooter()
         }
-    }
-}
-
-/// The chip a moved patch wears in a list: a word, never a colour.
-struct MovedChip: View {
-    var body: some View {
-        Text("Moved")
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .overlay(Capsule().stroke(Color(.separator)))
-            .foregroundStyle(Color.secondary)
-            .accessibilityLabel("Moved")
+        .textCase(nil)
     }
 }
 

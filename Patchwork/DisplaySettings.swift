@@ -42,6 +42,9 @@ struct DisplaySettings: View {
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
     var body: some View {
         List {
+            // One Group so both sections' rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             Section {
                 Picker("Theme", selection: $theme) {
                     ForEach(ThemeChoice.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
@@ -49,9 +52,9 @@ struct DisplaySettings: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("themePicker")
             } header: {
-                Text("Theme")
+                heading("Theme")
             } footer: {
-                Text("System follows your device’s light or dark appearance.")
+                footnote("System follows your device’s light or dark appearance.")
             }
             Section {
                 Picker("Colors", selection: $colors) {
@@ -60,12 +63,22 @@ struct DisplaySettings: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("colorsPicker")
             } header: {
-                Text("Colors")
+                heading("Colors")
             } footer: {
-                Text("Default draws what each patch chose. Muted keeps a patch’s hue, evens the lightness across every tile and caps how saturated any of them can get — it never adds a colour a patch didn’t choose.")
+                footnote("Default draws what each patch chose. Muted keeps a patch’s hue, evens the lightness across every tile and caps how saturated any of them can get — it never adds a colour a patch didn’t choose.")
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func heading(_ text: String) -> some View {
+        Text(text).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+    }
+
+    private func footnote(_ text: String) -> some View {
+        Text(text).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).textCase(nil)
     }
 }

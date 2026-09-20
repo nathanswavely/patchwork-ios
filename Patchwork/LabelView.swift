@@ -20,8 +20,8 @@ struct LabelView: View {
                 published(label)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("No Label yet").font(Font.pw.title)
-                    Text("Nobody has written this quilt’s Label yet.").foregroundStyle(Color.secondary)
+                    Text("No Label yet").font(Font.pw.title).foregroundStyle(Color.pwText)
+                    Text("Nobody has written this quilt’s Label yet.").font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
                 }
             }
         }
@@ -40,7 +40,7 @@ struct LabelView: View {
                 Text("The Label").font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted).textCase(.uppercase)
                 Text("How \(session.quilt.name) is run").font(Font.pw.title)
                 Text("Quilts carry a label on the back that says who made them and when. This is ours.")
-                    .font(Font.pw.subheadline).foregroundStyle(Color.secondary)
+                    .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
             }
             if !stewards.isEmpty { stewardRoster }
             if let prose = label.prose, !prose.isEmpty { MarkdownText(source: prose, base: session.quilt.url) }
@@ -60,15 +60,20 @@ struct LabelView: View {
                 HStack(alignment: .top, spacing: 12) {
                     StewardAvatar(steward: steward)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(steward.title).font(Font.pw.headline)
-                        Text("@" + steward.username).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
-                        if let blurb = steward.blurb, !blurb.isEmpty { Text(blurb).font(Font.pw.subheadline) }
+                        Text(steward.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                        Text("@" + steward.username).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                        if let blurb = steward.blurb, !blurb.isEmpty {
+                            Text(blurb).font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                        }
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                // A steward is somebody who could move to another quilt, so
+                // they get the card: surface, hairline, the site's radius.
+                .background(Color.pwSurface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.pwBorder, lineWidth: 1))
             }
         }
     }
@@ -88,31 +93,38 @@ struct LabelView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .foregroundStyle(Color.pwText)
+                    .background(Color.pwSurface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.pwBorder, lineWidth: 1))
                     .accessibilityIdentifier("labelStale")
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline) {
-                                Text(item.service ?? "—").font(Font.pw.headline)
+                                Text(item.service ?? "—").font(Font.pw.headline).foregroundStyle(Color.pwText)
                                 Spacer(minLength: 8)
+                                // A figure read against other figures: the
+                                // system's own tabular digits, which is a
+                                // technical origin the way a handle is.
                                 Text(QuiltLabel.money(item.amountMinor, label.currency) + item.periodWord)
                                     .font(.subheadline.monospacedDigit())
+                                    .foregroundStyle(Color.pwText)
                             }
                             if let purpose = item.purpose, !purpose.isEmpty {
-                                Text(purpose).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
+                                Text(purpose).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                             }
                             if let why = item.why, !why.isEmpty {
-                                Text(why).font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                                Text(why).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                             }
                         }
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("About \(QuiltLabel.money(label.totalMonthlyMinor, label.currency))/month to keep running").font(Font.pw.headline)
+                    Text("About \(QuiltLabel.money(label.totalMonthlyMinor, label.currency))/month to keep running")
+                        .font(Font.pw.headline).foregroundStyle(Color.pwText)
                     Text("The stewards typed these numbers in themselves. Nobody audits this.")
-                        .font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                        .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 }
             }
             // The version and the two cross-quilt capabilities, each stated in
@@ -120,16 +132,16 @@ struct LabelView: View {
             // made of, not settings a reader is being offered.
             VStack(alignment: .leading, spacing: 4) {
                 if let version = label.version, !version.isEmpty {
-                    Text("Running Patchwork \(version).").font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                    Text("Running Patchwork \(version).").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 }
                 Text(label.federation == true
                      ? "Federating. Public patches here can be followed from Mastodon and other ActivityPub sites."
                      : "Not federating. Patches here can’t be followed from other sites.")
-                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 Text(label.multiQuilt == true
                      ? "Readable by other quilts. Their sites can show this quilt’s public patches and events alongside their own."
                      : "Not readable by other quilts. They can link here, but people have to follow the link to see anything.")
-                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
             }
         }
     }
@@ -149,12 +161,12 @@ struct LabelView: View {
         Group {
             if let url = label.seamrippedFromUrl.flatMap(webLink) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Link(from, destination: url).exitLink()
-                    Text("This quilt started as a fork of it.").font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                    Link(from, destination: url).font(Font.pw.subheadlineMedium).exitLink()
+                    Text("This quilt started as a fork of it.").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 }
             } else {
                 Text("Seamripped from \(from). This quilt started as a fork of it.")
-                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
             }
         }
     }
@@ -163,12 +175,14 @@ struct LabelView: View {
     /// actionable — the Label always says where the exit is.
     @ViewBuilder private func theDoor(_ label: QuiltLabel) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Divider()
-            Label("If you don’t like how this is run", systemImage: "scissors").font(Font.pw.title3)
+            Divider().overlay(Color.pwBorder)
+            Label("If you don’t like how this is run", systemImage: "scissors")
+                .font(Font.pw.title3).foregroundStyle(Color.pwText)
             Text("Real people run this, and real people sometimes run things poorly, so the exit is built in. Any member can export what they can already see and start the community over somewhere else, under different stewards.")
+                .font(Font.pw.body).foregroundStyle(Color.pwText)
             if label.federation == true {
                 Text("Only the community travels: members, events, charters, and the threads between patches. This quilt’s addresses do not. A patch that leaves keeps its people and starts over with the followers it had on other sites.")
-                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
             }
         }
     }
@@ -203,8 +217,10 @@ private struct StewardAvatar: View {
     }
     private var initial: some View {
         ZStack {
-            Circle().fill(Color(.tertiarySystemGroupedBackground))
-            Text(String(steward.title.replacingOccurrences(of: "@", with: "").prefix(1)).uppercased()).font(Font.pw.headline)
+            Circle().fill(Color.pwGround)
+                .overlay(Circle().strokeBorder(Color.pwBorder, lineWidth: 1))
+            Text(String(steward.title.replacingOccurrences(of: "@", with: "").prefix(1)).uppercased())
+                .font(Font.pw.headline).foregroundStyle(Color.pwTextMuted)
         }
     }
 }

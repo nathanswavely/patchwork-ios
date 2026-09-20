@@ -21,6 +21,9 @@ struct PatchMemberList: View {
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             if loaded && !roster.withheld {
                 Section {
                     ForEach(roster.members) { member in
@@ -35,29 +38,35 @@ struct PatchMemberList: View {
                         // size. On a patch where somebody has hidden their
                         // membership the count sits above a shorter list on
                         // purpose.
-                        Text(roster.countLine)
+                        Text(roster.countLine).font(Font.pw.footnoteSemibold)
                         if roster.adminsOnly {
                             // Said once, above the list: three rows under a
                             // count of forty otherwise reads as a bug.
-                            Text("Only this patch’s admins are listed publicly.")
+                            Text("Only this patch’s admins are listed publicly.").font(Font.pw.caption)
                         }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .foregroundStyle(Color.pwTextMuted).textCase(nil)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let cursor = roster.cursor, !cursor.isEmpty {
-                    Button("Load more") { Task { await load(after: cursor) } }.disabled(loading)
+                    Button("Load more") { Task { await load(after: cursor) } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.down.circle").disabled(loading)
                 }
             }
             if loading { ProgressView("Loading members…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
             Section {
                 WebsiteOnlyNote(text: "Joining and following this patch happen on this quilt’s website.")
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle(roster.title).navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .overlay {
@@ -66,8 +75,8 @@ struct PatchMemberList: View {
                     Label(roster.emptyTitle, systemImage: roster.withheld ? "eye.slash" : "person.2")
                 } description: {
                     VStack(spacing: 6) {
-                        Text(roster.emptyMessage)
-                        if roster.withheld { Text(roster.countLine).foregroundStyle(.secondary) }
+                        Text(roster.emptyMessage).font(Font.pw.body)
+                        if roster.withheld { Text(roster.countLine).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted) }
                     }
                 }
             }

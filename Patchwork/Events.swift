@@ -66,7 +66,7 @@ struct EventList: View {
             if loading { ProgressView("Loading events…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await load(after: events.isEmpty ? nil : cursor) } }
                 }
             }
@@ -97,10 +97,12 @@ struct EventList: View {
             Button("Custom range…") { pickingRange = true }
         } label: {
             HStack {
-                Label("Date", systemImage: "calendar")
+                // A menu is a control, and its label is still words: ink,
+                // with the control's own glyph doing what the colour did.
+                Label("Date", systemImage: "calendar").font(Font.pw.subheadlineMedium).foregroundStyle(Color.pwText)
                 Spacer()
-                Text(dates.label(timeZone: zone)).foregroundStyle(.secondary)
-                Image(systemName: "chevron.up.chevron.down").font(Font.pw.caption2).foregroundStyle(.tertiary)
+                Text(dates.label(timeZone: zone)).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                Image(systemName: "chevron.up.chevron.down").font(Font.pw.caption2).foregroundStyle(Color.pwTextMuted)
             }
         }
         .accessibilityIdentifier("dateFilter")
@@ -122,7 +124,8 @@ struct EventList: View {
                 } description: {
                     Text("Nothing on this quilt matches what you picked\(forRange).")
                 } actions: {
-                    Button("Clear filter") { session.clearFilters() }.buttonStyle(.borderedProminent)
+                    Button("Clear filter") { session.clearFilters() }
+                        .font(Font.pw.headline).buttonStyle(.borderedProminent)
                 }
                 .accessibilityIdentifier("eventsFilteredEmpty")
             } else {
@@ -168,11 +171,11 @@ struct EventRow: View {
                 EventTierChip(event: event)
             }
             if let location = event.location, !location.isEmpty {
-                Text(location).font(Font.pw.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                Text(location).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted).lineLimit(2)
             }
             if let name = event.nodeName {
                 HStack(spacing: 6) {
-                    Label(name, systemImage: "square.grid.2x2").font(Font.pw.caption).foregroundStyle(.secondary)
+                    Label(name, systemImage: "square.grid.2x2").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     if event.communitySubmitted { EventBadge(text: "Community-submitted") }
                 }
             }
@@ -196,9 +199,9 @@ struct EventBadge: View {
     var body: some View {
         Text(text)
             .font(Font.pw.caption2Semibold)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.pwTextMuted)
             .padding(.horizontal, 7).padding(.vertical, 2)
-            .overlay(Capsule().strokeBorder(Color(.separator)))
+            .overlay(Capsule().strokeBorder(Color.pwBorder))
     }
 }
 
@@ -284,7 +287,7 @@ struct EventDetail: View {
                 Section {
                     Label("Awaiting review", systemImage: "clock.badge.questionmark").font(Font.pw.headline)
                     Text("The \(event.communitySubmitted ? "quilt admins" : "patch admins") will look at this event before it appears on the calendar.")
-                        .font(Font.pw.subheadline).foregroundStyle(.secondary)
+                        .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                 }
             }
             Section {
@@ -295,10 +298,10 @@ struct EventDetail: View {
             Section {
                 Label(event.rangeLabel(), systemImage: "calendar")
                 if let timezone = event.timezone {
-                    Text(timezone.replacingOccurrences(of: "_", with: " ")).font(Font.pw.caption).foregroundStyle(.secondary)
+                    Text(timezone.replacingOccurrences(of: "_", with: " ")).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                 }
                 if let note = event.recurrenceNote {
-                    Label(note, systemImage: "arrow.triangle.2.circlepath").font(Font.pw.subheadline).foregroundStyle(.secondary)
+                    Label(note, systemImage: "arrow.triangle.2.circlepath").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                 }
                 if let location = event.location, !location.isEmpty { Label(location, systemImage: "mappin.and.ellipse") }
             }
@@ -320,7 +323,7 @@ struct EventDetail: View {
             }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).foregroundStyle(Color.pwTextMuted)
                     Button("Reload event") { Task { await load() } }
                 }
             }
@@ -362,7 +365,7 @@ struct EventDetail: View {
     /// it, which are plain doorways to somebody else's quilt.
     private var companions: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("with").font(Font.pw.subheadline).foregroundStyle(.secondary)
+            Text("with").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
             FlowLayout(spacing: 8) {
                 ForEach(event.confirmedLinks) { link in
                     Button {
@@ -379,7 +382,7 @@ struct EventDetail: View {
                             HStack(spacing: 4) {
                                 Text(mention.title)
                                 Image(systemName: "arrow.up.right").font(Font.pw.caption2Semibold)
-                                Text(mention.host).font(Font.pw.caption2).foregroundStyle(.secondary)
+                                Text(mention.host).font(Font.pw.caption2).foregroundStyle(Color.pwTextMuted)
                             }.font(Font.pw.subheadlineMedium)
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.gray)
@@ -404,7 +407,7 @@ struct EventDetail: View {
                 default:
                     Label(event.imageAlt ?? "A flyer for this event, which its host is no longer serving.",
                           systemImage: "photo")
-                        .font(Font.pw.footnote).foregroundStyle(.secondary)
+                        .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                         .padding(.vertical, 10)
                 }
             }

@@ -137,7 +137,7 @@ struct PatchSheet: View {
         }
         if isUnclaimed {
             Text("No one runs this patch yet. The community added it; if it’s yours, you can claim it on this quilt’s website.")
-                .font(Font.pw.subheadline).foregroundStyle(Color.secondary)
+                .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("unclaimedNotice")
         } else if liningDiverged {
@@ -166,11 +166,11 @@ struct PatchSheet: View {
                 // back to this patch once they are signed in.
                 Link(destination: api.loginURL(returningTo: "/patches/\(patch.slug)")) {
                     Text("Joining, following, and posting are available on this quilt’s website while the native app is being developed.")
-                        .font(Font.pw.footnote).foregroundStyle(Color.secondary).multilineTextAlignment(.leading)
+                        .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted).multilineTextAlignment(.leading)
                 }.exitLink().accessibilityIdentifier("followOnWebsite")
             }
             if let error {
-                Text(error).foregroundStyle(Color.secondary)
+                Text(error).foregroundStyle(Color.pwTextMuted)
                 Button("Reload patch") { Task { await load() } }
             }
         }.padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 32)
@@ -200,7 +200,7 @@ struct PatchSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("@\(handle)").font(.subheadline.monospaced())
                     Text("atproto handle, proved when this patch was claimed")
-                        .font(Font.pw.caption).foregroundStyle(Color.secondary)
+                        .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                 }
             }
         }
@@ -210,12 +210,12 @@ struct PatchSheet: View {
             Divider()
             GlimpseHeading(title: "Events") { PatchCalendar(quilt: session.quilt, patch: patch, close: close) }
             if let events {
-                if events.isEmpty { Text("No upcoming events.").foregroundStyle(Color.secondary) }
+                if events.isEmpty { Text("No upcoming events.").foregroundStyle(Color.pwTextMuted) }
                 ForEach(events.prefix(3)) { event in
                     NavigationLink { EventDetail(quilt: session.quilt, initial: event, close: close) } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(event.title).foregroundStyle(Color.primary)
-                            Text(event.dateLabel).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
+                            Text(event.title).foregroundStyle(Color.pwText)
+                            Text(event.dateLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.accessibilityIdentifier("eventRow")
                 }
@@ -227,7 +227,7 @@ struct PatchSheet: View {
                         Text("\(moreEvents) more upcoming").font(Font.pw.subheadline).inkRow()
                     }
                 }
-            } else { Text("Pull up to see what’s coming.").foregroundStyle(Color.secondary) }
+            } else { Text("Pull up to see what’s coming.").foregroundStyle(Color.pwTextMuted) }
         }
     }
     private var moreEvents: Int {
@@ -242,14 +242,14 @@ struct PatchSheet: View {
             }
             if let roster {
                 if roster.members.isEmpty {
-                    Text(roster.emptyMessage).foregroundStyle(Color.secondary)
+                    Text(roster.emptyMessage).foregroundStyle(Color.pwTextMuted)
                 } else {
                     ForEach(roster.members.prefix(4)) { member in
                         PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
                             .accessibilityIdentifier("memberChip")
                     }
                 }
-            } else { Text("Pull up to see who’s here.").foregroundStyle(Color.secondary) }
+            } else { Text("Pull up to see who’s here.").foregroundStyle(Color.pwTextMuted) }
         }
     }
     /// The total belongs beside a heading that says Members. Beside "Admins"
@@ -267,25 +267,25 @@ struct PatchSheet: View {
             let docs = documents ?? []
             let open = recordWithheld ? [] : (proposals ?? [])
             if documents == nil && proposals == nil {
-                Text("Pull up to see how this patch decides.").foregroundStyle(Color.secondary)
+                Text("Pull up to see how this patch decides.").foregroundStyle(Color.pwTextMuted)
             } else if docs.isEmpty && open.isEmpty {
                 // Two kinds of empty, three sentences. A reader shown only
                 // what a patch published must not take it for the whole record.
-                Text(governanceEmptyLine).foregroundStyle(Color.secondary)
+                Text(governanceEmptyLine).foregroundStyle(Color.pwTextMuted)
             } else {
                 ForEach(docs.prefix(3)) { document in
                     NavigationLink { GovernanceDocumentDetail(quilt: session.quilt, initial: document, close: close) } label: {
                         HStack {
-                            Text(document.title).foregroundStyle(Color.primary)
+                            Text(document.title).foregroundStyle(Color.pwText)
                             Spacer()
-                            if let version = document.version { Text("v\(version)").font(Font.pw.caption).foregroundStyle(Color.secondary) }
+                            if let version = document.version { Text("v\(version)").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted) }
                         }
                     }.accessibilityIdentifier("documentChip")
                 }
                 ForEach(open.prefix(3)) { proposal in
                     NavigationLink { ProposalDetailView(quilt: session.quilt, initial: proposal, close: close) } label: {
                         HStack {
-                            Text(proposal.title).foregroundStyle(Color.primary)
+                            Text(proposal.title).foregroundStyle(Color.pwText)
                             Spacer()
                             OutcomeBadge(proposal: proposal)
                         }

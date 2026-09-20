@@ -30,61 +30,73 @@ struct QuiltPicker: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Find your people.").font(Font.pw.title2)
                         Text("Choose a quilt to explore its patches and events. Each quilt is run by its own community.")
-                            .foregroundStyle(.secondary)
+                            .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
                     }
                 }.padding(.vertical, 12)
             }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--preview") {
-                Text("Design preview · fictional community data").font(Font.pw.footnote).foregroundStyle(.secondary)
+                Text("Design preview · fictional community data").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
             }
             #endif
-            Section("Quilts") {
+            Section {
                 ForEach(choices) { quilt in
                     Button { Task { await inspect(quilt.url) } } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(quilt.name).foregroundStyle(Color.primary)
-                                Text(quilt.url.host() ?? quilt.id).font(Font.pw.subheadline).foregroundStyle(.secondary)
+                                Text(quilt.name).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                                Text(quilt.url.host() ?? quilt.id).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").font(Font.pw.caption).foregroundStyle(.tertiary)
+                            Image(systemName: "chevron.right").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                         }.padding(.vertical, 6)
                     }.disabled(busy).accessibilityIdentifier("quiltChoice")
                 }
-                if choices.isEmpty { Text("No matching quilts. You can connect by address below.").foregroundStyle(.secondary) }
-            }
+                if choices.isEmpty {
+                    Text("No matching quilts. You can connect by address below.")
+                        .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                }
+            } header: { heading("Quilts") }
             if !neighbors.isEmpty {
-                Section("Connected quilts") {
+                Section {
                     ForEach(neighbors, id: \.url) { neighbor in
                         Button { Task { await inspectAddress(neighbor.url) } } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(neighbor.name).foregroundStyle(Color.primary)
-                                    Text(URL(string: neighbor.url)?.host() ?? neighbor.url).font(Font.pw.subheadline).foregroundStyle(.secondary)
+                                    Text(neighbor.name).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                                    Text(URL(string: neighbor.url)?.host() ?? neighbor.url).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                                 }
                                 Spacer()
-                                Image(systemName: "arrow.up.forward").font(Font.pw.caption).foregroundStyle(.tertiary)
+                                Image(systemName: "arrow.up.forward").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                             }.padding(.vertical, 6)
                         }.disabled(busy)
                     }
-                }
+                } header: { heading("Connected quilts") }
             }
             Section {
                 TextField("community.example.org", text: $address)
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityLabel("Quilt address")
                     .onSubmit { Task { await inspectAddress() } }
+                // A primary action, so the tint fills the control rather
+                // than colouring the two words (DESIGN.md, Buttons).
                 Button("Find quilt") { Task { await inspectAddress() } }
+                    .font(Font.pw.headline)
+                    .buttonStyle(.borderedProminent)
+                    .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
                     .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
-            } header: { Text("Have a quilt address?") }
-              footer: { Text("A quilt doesn’t need to be listed here for you to connect.") }
+            } header: { heading("Have a quilt address?") }
+              footer: { footnote("A quilt doesn’t need to be listed here for you to connect.") }
             if busy { ProgressView("Checking quilt…") }
-            if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("connectionError") } }
-            Section("Open source") {
+            // `.red` stays: an error is a place the platform's own semantic
+            // colour owns the meaning, and it is not the app's tint.
+            if let error {
+                Section { Text(error).font(Font.pw.subheadline).foregroundStyle(.red).accessibilityIdentifier("connectionError") }
+            }
+            Section {
                 Link("View source code", destination: URL(string: "https://github.com/nathanswavely/patchwork-ios")!).exitLink()
                 Link("Mozilla Public License 2.0", destination: URL(string: "https://www.mozilla.org/MPL/2.0/")!).exitLink()
-            }
+            } header: { heading("Open source") }
 
 
             }.listRows()
@@ -98,8 +110,10 @@ struct QuiltPicker: View {
                     VStack(alignment: .leading, spacing: 20) {
                         QuiltMark()
                         Text(quilt.name).font(Font.pw.display)
-                        Text(quilt.url.host() ?? quilt.id).foregroundStyle(.secondary)
-                        if let instance, !instance.description.isEmpty { Text(instance.description) }
+                        Text(quilt.url.host() ?? quilt.id).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                        if let instance, !instance.description.isEmpty {
+                            Text(instance.description).font(Font.pw.body).foregroundStyle(Color.pwText)
+                        }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
                 }
                 .background(Color.pwGround.ignoresSafeArea())
@@ -111,6 +125,7 @@ struct QuiltPicker: View {
                         store.connect(quilt)
                         dismiss()
                     }
+                    .font(Font.pw.headline)
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
                     .accessibilityIdentifier("exploreQuilt")
@@ -121,6 +136,12 @@ struct QuiltPicker: View {
         .toolbar {
             if store.selected != nil { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
+    }
+    private func heading(_ text: String) -> some View {
+        Text(text).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+    }
+    private func footnote(_ text: String) -> some View {
+        Text(text).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).textCase(nil)
     }
     private func inspectAddress(_ text: String? = nil) async {
         do { let url = try QuiltAddress.parse(text ?? address); await inspect(url) }
