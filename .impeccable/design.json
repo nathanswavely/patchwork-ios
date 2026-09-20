@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-20T00:00:00Z",
+  "title": "Design System: Patchwork for iOS",
+  "extensions": {
+    "colorMeta": {
+      "accent-light": {
+        "role": "primary",
+        "displayName": "AccentColor light",
+        "canonical": "#0272B5"
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "AccentColor dark",
+        "canonical": "#39B4F6"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "SF Pro Display",
+        "purpose": "Detail titles through the Large Title system text style."
+      },
+      "body": {
+        "displayName": "SF Pro Text",
+        "purpose": "Descriptions and reading content through Dynamic Type."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "repack",
+        "value": "UIView.animate 0.3s; disabled for Reduce Motion",
+        "purpose": "Animate filtered quilt repacking while preserving direct manipulation."
+      },
+      {
+        "name": "canvas-gesture",
+        "value": "UIScrollView pinch and pan; zoom 0.3\u20136",
+        "purpose": "Directly inspect the quilt without turning gestures into navigation."
+      },
+      {
+        "name": "profile-sheet",
+        "value": "native medium and large detents",
+        "purpose": "Present patch profiles with a dismissible native sheet."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "compact horizontal size class"
+      },
+      {
+        "name": "wide",
+        "value": "regular horizontal size class"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Action",
+      "kind": "button",
+      "refersTo": "primary-action",
+      "description": "Illustrative preview only; native source uses a system button with Color.accentColor.",
+      "html": "<button class=\"ds-primary-action\">Explore quilt</button>",
+      "css": ".ds-primary-action { background: #0272B5; color: #FFFFFF; min-height: 44pt; padding: 8pt; border: 0; font: 600 1rem -apple-system, BlinkMacSystemFont, sans-serif; } .ds-primary-action:focus-visible { outline: 3px solid #0272B5; outline-offset: 2px; } .ds-primary-action:active { opacity: .72; }"
+    },
+    {
+      "name": "Filter Control",
+      "kind": "chip",
+      "refersTo": "filter-control",
+      "description": "Illustrative preview only; native source uses semantic grouped surfaces and Color.primary.",
+      "html": "<button class=\"ds-filter-control\" aria-pressed=\"true\">Filter (2)</button>",
+      "css": ".ds-filter-control { background: #F2F2F7; color: #1C1C1E; min-height: 44pt; padding: 8pt; border: 1px solid currentColor; font: 500 1rem -apple-system, BlinkMacSystemFont, sans-serif; } .ds-filter-control:focus-visible { outline: 3px solid #0272B5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Patch Tile",
+      "kind": "custom",
+      "refersTo": "patch-tile",
+      "description": "Illustrative preview only; native source is QuiltTileButton with the verified 8pt radius.",
+      "html": "<button class=\"ds-patch-tile\" aria-label=\"Common Thread Studio, opens patch details\"><span>Common Thread Studio</span></button>",
+      "css": ".ds-patch-tile { background: #F2F2F7; color: #1C1C1E; min-width: 44pt; min-height: 44pt; padding: 8pt; border: 0; border-radius: 8px; font: 500 1rem -apple-system, BlinkMacSystemFont, sans-serif; text-align: left; } .ds-patch-tile span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; } .ds-patch-tile:focus-visible { outline: 3px solid #0272B5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Profile Sheet",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Illustrative preview only; native source uses system sheet detents and platform-managed corners.",
+      "html": "<section class=\"ds-profile-sheet\"><h2>Common Thread Studio</h2><p>Open studio evenings, shared tools, and room for your next idea.</p></section>",
+      "css": ".ds-profile-sheet { background: #F2F2F7; color: #1C1C1E; padding: 8pt; font: 1rem/1.4 -apple-system, BlinkMacSystemFont, sans-serif; } .ds-profile-sheet h2 { margin: 0 0 8pt; font-weight: 700; } .ds-profile-sheet p { margin: 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Public Map",
+    "overview": "Patchwork is a direct, native iOS reader for independently operated communities. It keeps the web quilt's spatial behavior and vocabulary while using system typography, semantic surfaces, SF Symbols, and familiar navigation. The native client has no textile patterns, stitching, fabric texture, hand lettering, or generated raster decoration.\n\nThe quilt, map, and list are one discovery instrument. Filtering repacks the matching patches, the list follows quilt placement by default, and a selected patch opens its profile without losing the active filter or viewport. The single blue tint is reserved for actions and selection.",
+    "keyCharacteristics": [
+      "Native TabView, NavigationStack, sheets, lists, and SF Symbols.",
+      "SF Pro and Dynamic Type for all reading content and controls.",
+      "Semantic system colors and materials in light and dark appearances.",
+      "UIKit-backed quilt canvas with direct pinch and pan gestures."
+    ],
+    "rules": [
+      {
+        "name": "The One Tint Rule",
+        "body": "One tint communicates interaction. Meaning must remain available through text, shape, position, and VoiceOver state.",
+        "section": "colors"
+      },
+      {
+        "name": "The Scaling Rule",
+        "body": "Reading views grow with Dynamic Type. Spatial tile labels use intentional tail truncation; the full name remains available to VoiceOver, in List, and in the profile.",
+        "section": "typography"
+      },
+      {
+        "name": "The Live Surface Rule",
+        "body": "Opening a profile keeps the quilt's filter and viewport alive behind it. Filtering never dismisses the profile; changing quilts does.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use semantic colors, Dynamic Type, SF Symbols, VoiceOver labels, safe areas, and 44pt targets.",
+      "Do preserve placement order, repack filtered subsets, and share one filter state across Quilt, Map, and List.",
+      "Do honor Reduce Motion for repacking and native transitions.",
+      "Do preserve the active viewport and filters while a profile is open."
+    ],
+    "donts": [
+      "Don't add textile patterns, fabric artwork, stitching, hand lettering, generated raster assets, or a web icon set.",
+      "Don't replace native controls with web-shaped buttons, custom global navigation, or hover-only affordances.",
+      "Don't silently select a quilt or invent authenticated actions; joining, following, and governance remain website links in this browsing pass."
+    ]
+  }
+}

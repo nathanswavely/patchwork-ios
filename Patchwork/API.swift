@@ -40,13 +40,22 @@ struct PatchworkAPI {
         do { return try decoder.decode(T.self, from: data) }
         catch { throw APIError.response }
     }
-    func events(slug: String? = nil, after: String? = nil) async throws -> EventPage {
-        var query = [URLQueryItem(name: "limit", value: "30")]
+    func events(slug: String? = nil, after: String? = nil, limit: Int = 30) async throws -> EventPage {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
         if let slug { query.append(URLQueryItem(name: "node_slug", value: slug)) }
         if let after, !after.isEmpty { query.append(URLQueryItem(name: "after", value: after)) }
         return try await get("events", query: query)
     }
     func webURL(_ path: String) -> URL { base.appendingPathComponent(path) }
+    /// Raw bytes, for the quilt's icon. Preview data serves no images.
+    func data(_ path: String) async throws -> Data {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") { throw APIError.status(404) }
+        #endif
+        let (data, response) = try await Self.session.data(for: URLRequest(url: base.appendingPathComponent("api/v1/" + path)))
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.response }
+        return data
+    }
 }
 
 @MainActor final class QuiltStore: ObservableObject {

@@ -16,9 +16,11 @@ Normal launches use live APIs. Add `--preview` to the scheme's launch arguments 
 
 1. Choose a quilt from the small starter directory or enter its HTTPS origin.
 2. Inspect the returned quilt identity and explicitly select Explore quilt.
-3. Browse/search public patches, open a profile, and browse its upcoming events.
-4. Open an event, use native sharing, or follow a link to its website.
-5. Switch quilts from the toolbar. Saved quilts are local to the device; no quilt is preselected at launch.
+3. Explore the interactive quilt — it runs under the bars — pinch to zoom, pan, and filter by the quilt's most-worn tags to repack it. Switch to map or list from the floating control; all three read the same filter.
+4. Search patches and upcoming events from the top bar's field (or the tab bar's Search button); one explicit row narrows the quilt to the query.
+5. Tap a patch to dock its profile at the head's height; pull up for its upcoming events, directions, and links. Open an event, use native sharing, or follow a link to its website.
+6. Ask Discover what you're drawn to and get the patches wearing those tags, soonest event first.
+7. Hold the Quilt tab (or use the account menu) to switch quilts; connected quilts appear as doorways. Saved quilts are local to the device; no quilt is preselected at launch.
 
 Lancaster is one directory entry, not the default. Direct connection does not depend on directory inclusion. HTTPS root origins only in this prototype; subpath hosting, invitations, registry URLs, QR codes, directory administration, and location discovery are not implemented.
 
@@ -26,18 +28,23 @@ Lancaster is one directory entry, not the default. Direct connection does not de
 
 | Existing mobile surface | Native implementation |
 | --- | --- |
-| Quilt switcher | First-run List, identity confirmation, toolbar sheet |
-| Patch browsing and search | Searchable List with native NavigationStack |
-| Patch profile | Grouped sections, semantic text sizes, ShareLink, Maps directions |
+| Quilt switcher (scope switcher) | First-run List, identity confirmation; the Quilt tab wears the quilt's icon and a hold opens the switcher; Connected quilts are doorways |
+| Global bar | One top bar over the canvas: Filter (badged), a live glass search field, account menu (web sign-in, About, Switch) |
+| Quilt browsing | Native pan/pinch canvas running under the bars; activity sizing, affinity packing, tag reflow |
+| Search (ADR 033) | The field activates in place with patches and events listed under it; one "Show matches" row sets the search chip; the tab bar's Search button focuses it |
+| Filter chips | Sheet of usage-ranked chips over a live canvas; search chip among them; Clear |
+| Map and list | MapKit coordinates; quilt-order, name, and newest list sorts; the view pill floats at the foot |
+| Docked profile (ADR 094) | Sheet at the head's height, full screen on the pull, events fetched by the pull, ShareLink, Maps directions |
+| Discovery mode (ADR 075) | Discover tab: most-worn tags with counts, patches wearing them, soonest event first; ends in the patch |
 | Event list and detail | Native lists, push navigation, event-local time zones, cursor pagination |
-| Mobile navigation | System TabView with separate Patches and Events stacks |
-| Textile identity | Existing blue accent in light/dark appearances, four-fabric mark, patch/quilt vocabulary |
+| Mobile navigation | System TabView: Quilt, Events, Discover, Search (a button). Dashboard and notifications wait for sign-in |
+| Visual identity | Blue action tint, system surfaces and SF Symbols, patch/quilt vocabulary |
 
-System typography and surfaces adapt to appearance and Dynamic Type. The custom quilt canvas, fabric artwork, map browsing, and original display typography have not been ported. This is a workflow prototype, not visual parity with the mobile site.
+System typography and surfaces adapt to appearance and Dynamic Type. The quilt retains the web’s rearranging behavior with clean native blocks. Textile decoration and display fonts are intentionally omitted. Reduce Motion disables rearrangement animation; the list provides full text at accessibility sizes.
 
 ## API boundary
 
-Reads `instance`, `nodes/tree`, `nodes/{slug}`, `events` (including `node_slug` and `after`), and `events/{id}`. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
+Reads `instance`, `instance/icon`, `nodes/tree`, `nodes/{slug}`, `events` (including `node_slug`, `after`, and `limit`), and `events/{id}`. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
 
 The client's direct visit to a selected quilt is not a cross-quilt blended read. It does not use `multi_quilt: false` as permission to blend data from other instances.
 
@@ -45,11 +52,11 @@ Authentication, passkey associated domains, mutations, notifications, account de
 
 ## Verification
 
-Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, and explicit selection. UI tests use fictional Debug data to exercise selection → patch → event → switcher plus invalid-address handling, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
+Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, explicit selection, layout parity, filter matching, and canvas lifetime. UI tests use fictional Debug data to exercise explicit quilt selection, pinch and fit, docked-profile return without changing the viewport, the filter sheet and its Clear, search that narrows only through its one row, map/list browsing, the profile's pull to events, Discover's question and answer, and quilt switching from the account menu, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
 
 ```sh
 xcodebuild -project Patchwork.xcodeproj -scheme Patchwork \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
   test CODE_SIGNING_ALLOWED=NO
 ```
 
@@ -63,6 +70,6 @@ The quilt chooser includes links to this source repository and the license. For 
 
 The software license does not grant trademark rights or imply that a fork is an official Patchwork app. App Store distribution still requires a review of the actual binary, dependencies, disclosures, and applicable store terms.
 
-Verified locally: six model/contract tests and three simulator UI tests passed. Public Lancaster instance, tree, event-list, patch-detail, and event-detail responses decoded with the client models. This does not replace a device or VoiceOver audit.
+The layout test suite compares 24 synthetic full/filtered layouts with numeric results from the web engine, including placement order, coordinates, and sizes. Public Lancaster instance, tree, event-list, patch-detail, and event-detail responses decoded with the client models. This does not replace a device or VoiceOver audit.
 
 Before release: complete feature scope, accessibility review on devices, privacy disclosures, native authentication and moderation requirements, app icon, and App Store metadata. The project does not configure signing, upload, or publish anything.

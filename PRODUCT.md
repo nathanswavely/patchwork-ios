@@ -14,7 +14,7 @@ Open-source, self-hostable community infrastructure for discovering patches and 
 
 ## Brand Personality
 
-Neighborly, handmade, direct. Preserve the existing mobile site's textile vocabulary and visual identity.
+Neighborly, clear, direct. Preserve the web app's vocabulary and quilt interactions, including rearrangement. The iOS app uses clean native styling, system typography, and simple surfaces without textile patterns, stitching, or handmade decoration.
 
 ## Anti-references
 
