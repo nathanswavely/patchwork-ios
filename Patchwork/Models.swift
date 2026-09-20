@@ -222,7 +222,24 @@ struct PatchworkEvent: Decodable, Identifiable, Hashable {
     let nodeName: String?
     let nodeSlug: String?
     let eventUrl: String?
+    /// Everything below is additive and optional: the list endpoint sends
+    /// some of it, the detail endpoint the rest, and a quilt running an older
+    /// build sends none of it. Absent is never an error.
+    let nodeId: String?
+    let nodeStatus: String?
+    let visibility: String?
+    let recurrence: String?
+    let imageUrl: String?
+    let imageAlt: String?
+    let latitude: Double?
+    let longitude: Double?
+    let status: String?
+    let sourceId: String?
+    let links: [EventLink]?
+    let mentions: [EventMention]?
+
     var date: Date? { Self.parseDate(startsAt) }
+    var endDate: Date? { endsAt.flatMap(Self.parseDate) }
     static func parseDate(_ value: String) -> Date? {
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -230,16 +247,109 @@ struct PatchworkEvent: Decodable, Identifiable, Hashable {
         parser.formatOptions = [.withInternetDateTime]
         return parser.date(from: value)
     }
+    /// An event's time belongs to the place it happens, not to its reader:
+    /// every formatter here reads the instant in the event's own zone.
+    var zone: TimeZone { TimeZone(identifier: timezone ?? "") ?? .current }
     var dateLabel: String { label(dateStyle: .full) }
     var shortDateLabel: String { label(dateStyle: .medium) }
-    private func label(dateStyle: DateFormatter.Style) -> String {
+    func label(dateStyle: DateFormatter.Style) -> String {
         guard let date else { return "Time to be confirmed" }
         let formatter = DateFormatter()
-        formatter.timeZone = TimeZone(identifier: timezone ?? "") ?? .current
+        formatter.timeZone = zone
         formatter.dateStyle = dateStyle
         formatter.timeStyle = .short
         return formatter.string(from: date)
     }
+    private func timeLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = zone
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    /// Whether the two ends land on one calendar day *in the event's zone* —
+    /// the day the organizer meant, not the reader's and not UTC's.
+    var endsOnTheSameDay: Bool {
+        guard let date, let endDate else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        return calendar.isDate(date, inSameDayAs: endDate)
+    }
+    /// "Sunday, 20 September 2026 at 2:00 PM – 5:00 PM" on one day; the whole
+    /// of the other end when the event runs past midnight.
+    func rangeLabel(dateStyle: DateFormatter.Style = .full) -> String {
+        let start = label(dateStyle: dateStyle)
+        guard let endDate else { return start }
+        return endsOnTheSameDay
+            ? "\(start) – \(timeLabel(endDate))"
+            : "\(start) – \(PatchworkEvent.labelFor(endDate, zone: zone, dateStyle: dateStyle))"
+    }
+    private static func labelFor(_ date: Date, zone: TimeZone, dateStyle: DateFormatter.Style) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = zone
+        formatter.dateStyle = dateStyle
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    /// What the event says about who it is for. Public wears nothing: a chip
+    /// on every row would say nothing at all.
+    var tierLabel: String? {
+        switch visibility {
+        case "followers": return "Followers"
+        case "members": return "Members only"
+        default: return nil
+        }
+    }
+    /// Events on unclaimed patches wear the community-submitted label away
+    /// from their patch.
+    var communitySubmitted: Bool { nodeStatus == "unclaimed" }
+    var awaitingReview: Bool { status == "pending_review" }
+    /// The word an organizer stored, told the truth: nothing expands a
+    /// recurrence, so this page is one date of whatever they meant.
+    var recurrenceNote: String? {
+        let labels = [
+            "daily": "The organizer says this repeats daily",
+            "weekly": "The organizer says this repeats weekly",
+            "biweekly": "The organizer says this repeats every two weeks",
+            "monthly": "The organizer says this repeats monthly",
+        ]
+        guard let recurrence, let label = labels[recurrence] else { return nil }
+        return label + " — only this date is on the calendar"
+    }
+    /// "with X": only a settled handshake is anybody else's business.
+    var confirmedLinks: [EventLink] { (links ?? []).filter { $0.status == "confirmed" } }
+    var flyerURL: URL? {
+        guard let imageUrl, !imageUrl.isEmpty else { return nil }
+        guard let url = URL(string: imageUrl), url.scheme == "https" || url.scheme == "http" else { return nil }
+        return url
+    }
+    /// The event's own page out on the web, only where the scheme is one a
+    /// browser can follow — an imported event gets this straight from a feed.
+    var externalURL: URL? {
+        guard let eventUrl, !eventUrl.isEmpty else { return nil }
+        guard let url = URL(string: eventUrl), url.scheme == "https" || url.scheme == "http" else { return nil }
+        return url
+    }
+}
+
+/// A patch's presence on another patch's event, once both sides agreed.
+struct EventLink: Decodable, Identifiable, Hashable {
+    let id: String
+    let nodeId: String?
+    let nodeName: String?
+    let nodeSlug: String?
+    let nodeStatus: String?
+    let status: String?
+}
+
+/// A display-only doorway to a patch on another quilt.
+struct EventMention: Decodable, Identifiable, Hashable {
+    let id: String
+    let host: String
+    let slug: String
+    let name: String?
+    var title: String { name?.isEmpty == false ? name! : slug }
+    var url: URL? { URL(string: "https://\(host)/patches/\(slug)") }
 }
 
 struct EventPage: Decodable {

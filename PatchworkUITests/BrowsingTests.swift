@@ -197,6 +197,63 @@ final class BrowsingTests: XCTestCase {
         app.buttons["Done"].tap()
     }
 
+    /// The events calendar: the date filter narrows it to one day and says
+    /// so when nothing is left, and an event's detail offers the calendar
+    /// without asking for it until it is chosen.
+    func testEventsDateFilterAndCalendarAffordance() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview"]
+        app.launch()
+        app.buttons["quiltChoice"].firstMatch.tap()
+        let explore = app.buttons["exploreQuilt"]
+        XCTAssertTrue(explore.waitForExistence(timeout: 10))
+        explore.tap()
+        XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
+
+        app.buttons["Events"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Events"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["eventRow"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Fall mending circle"].exists, "the whole calendar reads soonest first")
+        capture(app, "10 Events list")
+
+        // One preset, applied: only tonight's event survives it.
+        app.buttons["dateFilter"].tap()
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 5))
+        app.buttons["Today"].tap()
+        XCTAssertTrue(app.staticTexts["Saturday open studio"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Fall mending circle"].exists, "a later day is outside today")
+        capture(app, "10a Events filtered to today")
+
+        // Tomorrow has nothing on it, and the range says that rather than
+        // claiming the calendar is empty.
+        app.buttons["dateFilter"].tap()
+        XCTAssertTrue(app.buttons["Tomorrow"].waitForExistence(timeout: 5))
+        app.buttons["Tomorrow"].tap()
+        XCTAssertTrue(app.staticTexts["No events in this range"].waitForExistence(timeout: 10))
+        capture(app, "10b Empty date range")
+
+        app.buttons["dateFilter"].tap()
+        XCTAssertTrue(app.buttons["Any date"].waitForExistence(timeout: 5))
+        app.buttons["Any date"].tap()
+        XCTAssertTrue(app.buttons["eventRow"].firstMatch.waitForExistence(timeout: 10))
+
+        app.buttons["eventRow"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Event"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["eventHost"].exists, "the host patch is a door")
+        capture(app, "11 Event detail")
+        // The flyer, the map and the actions sit below the fold, and a List
+        // builds its rows as they come into view.
+        XCTAssertTrue(scroll(app, to: app.buttons["Open in Maps"]), "coordinates earn a map")
+
+        // The calendar affordance is offered and commits to nothing: opening
+        // it asks for no permission, and the test stops at the offer rather
+        // than at the system prompt behind it.
+        let calendar = app.buttons["addToCalendarMenu"]
+        XCTAssertTrue(scroll(app, to: calendar), "an active event offers its calendar")
+        calendar.tap()
+        capture(app, "11a Add to calendar")
+    }
+
     func testLargeTextAndDarkAppearance() {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL", "--dark-preview"]
@@ -215,6 +272,14 @@ final class BrowsingTests: XCTestCase {
         app.buttons["patchRow"].firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
         capture(app, "09 Large text patch")
+    }
+
+    private func scroll(_ app: XCUIApplication, to element: XCUIElement, swipes: Int = 8) -> Bool {
+        for _ in 0..<swipes {
+            if element.exists && element.isHittable { return true }
+            app.swipeUp()
+        }
+        return element.exists && element.isHittable
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {

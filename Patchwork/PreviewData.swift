@@ -4,21 +4,100 @@
 import Foundation
 
 /// Fictional, offline design fixtures. Only enabled by an explicit debug launch argument.
-///
-/// The two demo patches are deliberately opposite readers: Common Thread
-/// publishes its roster and its record, and The Listening Room withholds both
-/// — which is how the withheld wording ("doesn't publish its member list",
-/// "not public") stays exercised offline rather than only on a quilt that
-/// happens to be configured that way.
 enum PreviewData {
-    static func response<T: Decodable>(_ path: String) throws -> T {
+    /// The events are dated from the day the fixtures are read rather than
+    /// pinned to a calendar date, so the date presets mean something offline:
+    /// one tonight, one in two days, one next week. Counted in the sample
+    /// quilt's own zone, because that is the zone the presets resolve in —
+    /// counting in UTC put the evening fixture on the quilt's *next* day for
+    /// the four hours a New York evening runs past midnight in Greenwich.
+    private static func instant(daysFromToday days: Int, hour: Int = 18) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let midnight = calendar.startOfDay(for: Date())
+        let day = calendar.date(byAdding: .day, value: days, to: midnight) ?? midnight
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: day.addingTimeInterval(TimeInterval(hour * 3600)))
+    }
+
+    private static var events: [(id: String, json: String)] {
+        let tonight = """
+        {"id":"demo-event","node_id":"demo-patch","title":"Saturday open studio",\
+        "description":"Bring something you’re working on, or try something new. There will be fabric, paper, and a pot of coffee. Everyone is welcome; no experience needed.",\
+        "location":"12 Example Street","latitude":40.0379,"longitude":-76.3055,\
+        "starts_at":"\(instant(daysFromToday: 0))","ends_at":"\(instant(daysFromToday: 0, hour: 21))",\
+        "timezone":"America/New_York","recurrence":"weekly","visibility":"public","status":"active",\
+        "image_url":"https://quilt.example.org/flyers/open-studio.jpg","image_alt":"A hand-lettered flyer for open studio night",\
+        "event_url":"https://quilt.example.org/whats-on/open-studio",\
+        "node_name":"Common Thread Studio","node_slug":"common-thread","node_status":"active",\
+        "links":[{"id":"link-1","node_id":"demo-patch-2","node_name":"The Listening Room","node_slug":"listening-room","node_status":"active","status":"confirmed"},\
+        {"id":"link-2","node_id":"extra-0","node_name":"Community Garden","node_slug":"extra-0","node_status":"active","status":"pending"}],\
+        "mentions":[{"id":"mention-1","host":"neighbor.example.org","slug":"paper-mill","name":"The Paper Mill"}]}
+        """
+        let soon = """
+        {"id":"demo-event-2","node_id":"demo-patch","title":"Fall mending circle",\
+        "description":"Bring the thing with the hole in it.","location":"12 Example Street",\
+        "starts_at":"\(instant(daysFromToday: 2))","ends_at":"\(instant(daysFromToday: 2, hour: 20))",\
+        "timezone":"America/New_York","recurrence":"","visibility":"followers","status":"active",\
+        "image_url":"","image_alt":"","event_url":"",\
+        "node_name":"Common Thread Studio","node_slug":"common-thread","node_status":"active"}
+        """
+        let later = """
+        {"id":"demo-event-3","node_id":"demo-patch-2","title":"Records and coffee",\
+        "description":"Somebody brings a record, everybody listens to it.","location":"The Listening Room",\
+        "starts_at":"\(instant(daysFromToday: 9))","timezone":"America/New_York",\
+        "recurrence":"","visibility":"members","status":"active","image_url":"","image_alt":"","event_url":"",\
+        "node_name":"The Listening Room","node_slug":"listening-room","node_status":"unclaimed"}
+        """
+        return [("demo-event", tonight), ("demo-event-2", soon), ("demo-event-3", later)]
+    }
+
+    /// The offline stand-in for `events/{id}/event.ics`, so the share
+    /// fallback has a file to hand over with no network.
+    static func calendarFile(_ id: String) -> Data {
+        let stamp = instant(daysFromToday: 0)
+            .replacingOccurrences(of: "-", with: "").replacingOccurrences(of: ":", with: "")
+        return Data("""
+        BEGIN:VCALENDAR\r
+        PRODID:-//Patchwork//quilt.example.org//EN\r
+        VERSION:2.0\r
+        BEGIN:VEVENT\r
+        UID:\(id)@quilt.example.org\r
+        SUMMARY:Saturday open studio\r
+        DTSTART:\(stamp)\r
+        END:VEVENT\r
+        END:VCALENDAR\r
+        """.utf8)
+    }
+
+    /// The feed the way the server serves it: `starts_at` compared as text
+    /// against the `from`/`to` instants, ascending, so the date presets
+    /// behave offline the way they do against a quilt.
+    private static func eventsPage(_ query: [URLQueryItem]) -> String {
+        let value = { (name: String) in query.first { $0.name == name }?.value ?? "" }
+        let slug = value("node_slug"), from = value("from"), to = value("to")
+        let items = events.map(\.json).filter { json in
+            if !slug.isEmpty && !json.contains("\"node_slug\":\"\(slug)\"") { return false }
+            guard let range = json.range(of: "\"starts_at\":\"") else { return true }
+            let rest = json[range.upperBound...]
+            guard let end = rest.firstIndex(of: "\"") else { return true }
+            let startsAt = String(rest[..<end])
+            if !from.isEmpty && startsAt < from { return false }
+            if !to.isEmpty && startsAt > to { return false }
+            return true
+        }
+        return "{\"items\":[\(items.joined(separator: ","))],\"next_cursor\":\"\"}"
+    }
+
+    static func response<T: Decodable>(_ path: String, query: [URLQueryItem] = []) throws -> T {
         let patch = #"{"id":"demo-patch","name":"Common Thread Studio","slug":"common-thread","description":"A place to make things and meet your neighbors. Open studio evenings, shared tools, and room for your next idea.","tags":["craft","community"],"member_count":12,"follower_count":34,"upcoming_event_count":4,"appearance":{"palette":"anthem","block":"ohioStar","rotation":90,"icon":"scissors"},"address":"12 Example Street","latitude":40.04,"longitude":-76.3,"website":"https://commonthread.example.org","links":[{"url":"https://makers.example.org/common-thread","label":"Our makers’ directory"}],"did":"did:web:commonthread.example.org","visibility":"public","public_member_list":"everyone","public_governance_record":"everyone"}"#
         let second = ##"{"id":"demo-patch-2","name":"The Listening Room","slug":"listening-room","description":"Independent music in good company.","tags":["music","venue"],"visibility":"public","public_member_list":"nobody","public_governance_record":"nobody","member_count":8,"follower_count":15,"appearance":{"block":{"grid":3,"colors":{"0,1":[1],"0,2":[2],"1,0":[1],"1,2":[1],"2,0":[2],"2,1":[1]}},"rotation":0,"bundle":["#2E7D5B","#204B4B","#D9D6AF","#D89E13"]}}"##
         let names = ["Community Garden", "Bike Kitchen", "Neighborhood Books", "River Walkers", "Pottery Circle", "Market Friends", "Repair Cafe", "Film Club", "Food Share", "Evening Choir"]
         let extras = names.enumerated().map { index, name in
             "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")}"
         }
-        let event = #"{"id":"demo-event","title":"Saturday open studio","description":"Bring something you’re working on, or try something new. There will be fabric, paper, and a pot of coffee. Everyone is welcome; no experience needed.","location":"Common Thread Studio","starts_at":"2026-09-26T14:00:00Z","ends_at":"2026-09-26T17:00:00Z","timezone":"America/New_York","node_name":"Common Thread Studio","node_slug":"common-thread"}"#
         let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
         let document = #"{"id":"demo-doc","node_id":"demo-patch","title":"How we decide","body":"This patch keeps its own copy of the shared standards, and adds one paragraph of its own.\n\n## Open studio hours\n\nAnyone may use the studio during open hours. Tools go back where they were found, and whoever is last out locks the door.\n\n## Changing this\n\nAny member may propose a change. A majority carries it.","kind":"charter","visibility":"public","version":3,"created_at":"2026-04-02T10:00:00Z","updated_at":"2026-08-14T10:00:00Z"}"#
@@ -36,13 +115,10 @@ enum PreviewData {
         case "legal/privacy": json = ###"{"doc":"privacy","title":"Privacy Policy","markdown":"## The short version\n\nNothing here is real, so nothing here is collected. This document exists so the app has a document to render.\n\n- No ads.\n- No trackers.","customized":true,"updated_at":"2026-01-01T00:00:00.000Z"}"###
         case "legal/terms": json = ###"{"doc":"terms","title":"User Agreement","markdown":"## The short version\n\nBe someone your community would vouch for. This fictional agreement has no force anywhere.","customized":false,"updated_at":"2026-01-01T00:00:00.000Z"}"###
         case "nodes/tree": json = "{\"tree\":{\"children\":[\(([patch, second] + extras).joined(separator: ","))]}}"
-        // The envelope carries what the node object cannot: whether anybody
-        // runs this patch, and whether its lining is its own writing.
         case "nodes/common-thread": json = "{\"node\":\(patch),\"is_unclaimed\":false,\"lining_status\":\"diverged\"}"
         case "nodes/listening-room": json = "{\"node\":\(second),\"is_unclaimed\":false,\"lining_status\":\"pristine\"}"
         case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":1},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6}]"#
-        case "events": json = "{\"items\":[\(event)],\"next_cursor\":\"\"}"
-        case "events/demo-event": json = event
+        case "events": json = eventsPage(query)
         case "nodes/common-thread/members": json = members
         case "nodes/listening-room/members": json = withheldMembers
         case "nodes/common-thread/governance": json = "{\"items\":[\(document),\(lining)],\"published_only\":true}"
@@ -58,7 +134,8 @@ enum PreviewData {
         case "proposals/demo-proposal": json = proposal
         case "proposals/demo-proposal-2": json = lapsed
         default:
-            if let index = Int(path.replacingOccurrences(of: "nodes/extra-", with: "")), extras.indices.contains(index) { json = "{\"node\":\(extras[index])}" }
+            if let event = events.first(where: { "events/\($0.id)" == path }) { json = event.json }
+            else if let index = Int(path.replacingOccurrences(of: "nodes/extra-", with: "")), extras.indices.contains(index) { json = "{\"node\":\(extras[index])}" }
             else { throw APIError.status(404) }
         }
         let decoder = JSONDecoder()
