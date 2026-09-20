@@ -19,8 +19,9 @@ Normal launches use live APIs. Add `--preview` to the scheme's launch arguments 
 3. Explore the interactive quilt — it runs under the bars — pinch to zoom, pan, and filter by the quilt's most-worn tags to repack it. Switch to map or list from the floating control; all three read the same filter.
 4. Search patches and upcoming events from the top bar's field (or the tab bar's Search button); one explicit row narrows the quilt to the query.
 5. Tap a patch to dock its profile at the head's height; pull up for its upcoming events, directions, and links. Open an event, use native sharing, or follow a link to its website.
-6. Ask Discover what you're drawn to and get the patches wearing those tags, soonest event first.
-7. Hold the Quilt tab (or use the account menu) to switch quilts; connected quilts appear as doorways. Saved quilts are local to the device; no quilt is preselected at launch.
+6. Narrow the Events tab by date — today, tomorrow, this weekend, this week, next week, this month, or a custom range — resolved in the quilt's own time zone. An event's detail adds the flyer, the map and Maps directions, “with X” links, the host patch as a door, tickets on the source's own site, and Add to calendar.
+7. Ask Discover what you're drawn to and get the patches wearing those tags, soonest event first.
+8. Hold the Quilt tab (or use the account menu) to switch quilts; connected quilts appear as doorways. Saved quilts are local to the device; no quilt is preselected at launch.
 
 Lancaster is one directory entry, not the default. Direct connection does not depend on directory inclusion. HTTPS root origins only in this prototype; subpath hosting, invitations, registry URLs, QR codes, directory administration, and location discovery are not implemented.
 
@@ -36,7 +37,7 @@ Lancaster is one directory entry, not the default. Direct connection does not de
 | Map and list | MapKit coordinates; quilt-order, name, and newest list sorts; the view pill floats at the foot |
 | Docked profile (ADR 094) | Sheet at the head's height, full screen on the pull, events fetched by the pull, ShareLink, Maps directions |
 | Discovery mode (ADR 075) | Discover tab: most-worn tags with counts, patches wearing them, soonest event first; ends in the patch |
-| Event list and detail | Native lists, push navigation, event-local time zones, cursor pagination |
+| Event list and detail | Native lists, push navigation, event-local time zones, cursor pagination; a Menu of the web's date presets, tier and community-submitted badges, MapKit and EventKit on the detail |
 | Mobile navigation | System TabView: Quilt, Events, Discover, Search (a button). Dashboard and notifications wait for sign-in |
 | Visual identity | Blue action tint, system surfaces and SF Symbols, patch/quilt vocabulary |
 
@@ -44,15 +45,15 @@ System typography and surfaces adapt to appearance and Dynamic Type. The quilt r
 
 ## API boundary
 
-Reads `instance`, `instance/icon`, `nodes/tree` (including each patch's `appearance`), `nodes/{slug}`, `tags` (for tag motifs), `events` (including `node_slug`, `after`, and `limit`), and `events/{id}`. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
+Reads `instance` (including `geography.timezone`, which is the zone the date presets resolve in), `instance/icon`, `nodes/tree` (including each patch's `appearance`), `nodes/{slug}`, `tags` (for tag motifs), `events` (`node_slug`, `after`, `limit`, `from`, `to`, `include_past`), `events/{id}` (which adds `visibility`, `node_status`, `node_id`, `latitude`/`longitude`, `recurrence`, `image_url`/`image_alt`, `status`, `source_id`, `links[]` and `mentions[]`), `events/{id}/event.ics`, and a patch's standing feeds `nodes/{slug}/events.ics` (handed to Calendar as `webcal:`) and `nodes/{slug}/events.rss`. `from`/`to` always travel as instants, never bare dates: the server compares `starts_at` as text, so a bare date as `to` would drop the day it names. No `scope=my` — this client is a signed-out reader. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
 
 The client's direct visit to a selected quilt is not a cross-quilt blended read. It does not use `multi_quilt: false` as permission to blend data from other instances.
 
-Authentication, passkey associated domains, mutations, notifications, account deletion, authenticated content, and moderation are follow-on work. The web remains the explicit route to joining, following, and governance. No disabled pretend buttons represent these actions.
+Authentication, passkey associated domains, mutations, notifications, account deletion, authenticated content, and moderation are follow-on work. The web remains the explicit route to joining, following, governance, and submitting or editing an event. No disabled pretend buttons represent these actions.
 
 ## Verification
 
-Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, explicit selection, layout parity, filter matching, and canvas lifetime. UI tests use fictional Debug data to exercise explicit quilt selection, pinch and fit, docked-profile return without changing the viewport, the filter sheet and its Clear, search that narrows only through its one row, map/list browsing, the profile's pull to events, Discover's question and answer, and quilt switching from the account menu, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
+Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, explicit selection, layout parity, filter matching, canvas lifetime, the date presets' boundary rules (ported from the web's `datetime.test.js`), the extended event's decoding, which links become “with X” chips, and the calendar-entry mapping. UI tests use fictional Debug data to exercise explicit quilt selection, pinch and fit, docked-profile return without changing the viewport, the filter sheet and its Clear, search that narrows only through its one row, map/list browsing, the profile's pull to events, Discover's question and answer, quilt switching from the account menu, and the events calendar's date presets, the empty state a range earns, and the detail's map and add-to-calendar offer, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
 
 ```sh
 xcodebuild -project Patchwork.xcodeproj -scheme Patchwork \

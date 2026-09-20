@@ -25,7 +25,7 @@ struct PatchworkAPI {
     func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") {
-            return try PreviewData.response(path)
+            return try PreviewData.response(path, query: query)
         }
         #endif
         var parts = URLComponents(url: base.appendingPathComponent("api/v1/" + path), resolvingAgainstBaseURL: false)!
@@ -40,12 +40,38 @@ struct PatchworkAPI {
         do { return try decoder.decode(T.self, from: data) }
         catch { throw APIError.response }
     }
-    func events(slug: String? = nil, after: String? = nil, limit: Int = 30) async throws -> EventPage {
+    /// The events feed. `from`/`to` are instants, not bare dates: the server
+    /// compares `starts_at` as text, so a day has to travel as the two
+    /// instants that bound it (see EventDateBounds). `includePast` drops the
+    /// lower bound entirely, which is what a patch's whole calendar wants;
+    /// an explicit `from` always wins over it, as it does on the server.
+    func events(slug: String? = nil, after: String? = nil, limit: Int = 30,
+                from: String? = nil, to: String? = nil, includePast: Bool = false) async throws -> EventPage {
         var query = [URLQueryItem(name: "limit", value: String(limit))]
         if let slug { query.append(URLQueryItem(name: "node_slug", value: slug)) }
+        if let from, !from.isEmpty { query.append(URLQueryItem(name: "from", value: from)) }
+        if let to, !to.isEmpty { query.append(URLQueryItem(name: "to", value: to)) }
+        if includePast, from == nil { query.append(URLQueryItem(name: "include_past", value: "true")) }
         if let after, !after.isEmpty { query.append(URLQueryItem(name: "after", value: after)) }
         return try await get("events", query: query)
     }
+    /// One event as a calendar file, exactly as the quilt serves it to the
+    /// web. Nothing here parses it — it is handed straight to a share sheet.
+    func eventCalendar(_ id: String) async throws -> Data {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") { return PreviewData.calendarFile(id) }
+        #endif
+        return try await data("events/\(id)/event.ics")
+    }
+    /// A patch's standing calendar, for a reader who wants every night rather
+    /// than one: `webcal:` hands the subscription to the Calendar app, and the
+    /// RSS feed is for everybody else's reader.
+    func subscriptionURL(slug: String) -> URL? {
+        guard var parts = URLComponents(url: base.appendingPathComponent("api/v1/nodes/\(slug)/events.ics"), resolvingAgainstBaseURL: false) else { return nil }
+        parts.scheme = "webcal"
+        return parts.url
+    }
+    func feedURL(slug: String) -> URL { base.appendingPathComponent("api/v1/nodes/\(slug)/events.rss") }
     func webURL(_ path: String) -> URL { base.appendingPathComponent(path) }
     /// Raw bytes, for the quilt's icon. Preview data serves no images.
     func data(_ path: String) async throws -> Data {

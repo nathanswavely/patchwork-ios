@@ -146,6 +146,16 @@ The patch's own profile opens in a native sheet over the surface that opened it 
 
 Asks one question — "What are you drawn to?" — with the eight most-worn tags on this quilt (counts shown here and nowhere else) and a way to show all. The answer lists the patches wearing what was picked, the ones with something coming up first, read from the upcoming-events feed rather than claimed; each row opens the docked profile. Following stays on the website until sign-in exists here.
 
+### Events
+
+- **The list:** one flat, grouped `List`, soonest first — no day headers, which made a quiet week read as a wall of empty headings. Each row is when (the event's own zone, accent-tinted), what, where, and whose, with "Community-submitted" beside the patch name where the patch is unclaimed. A cursor "Load more events" sits at the foot; pull to refresh.
+- **The date filter:** one row at the head of the list opens a `Menu` holding a `Picker` of the web's presets — Any date, Today, Tomorrow, This weekend, This week, Next week, This month — with the live one checked, and a Custom range… that opens a sheet of two system `DatePicker`s. The presets resolve in the quilt's own time zone, not the reader's. The quilt's tag chips and search chip narrow the calendar too, through the event's host patch.
+- **Empty states:** two, and they say different things. A filter that empties the list is standing state — "No events match your filter" with a **Clear filter** button beside it. An empty calendar is not a mistake and gets "No upcoming events" with no action.
+- **Badges:** a tier chip (`Followers`, `Members only`) and `Community-submitted` are quiet outlined capsules in caption-2 semibold, secondary foreground, `Color(.separator)` border. A public event wears nothing — a chip on every row says nothing at all. Status wears words, never a colour.
+- **The detail:** title, "Hosted by {patch}" as a door into the docked profile, badges, then "with X" capsules for confirmed links and cross-quilt mentions as external doorways. When and where carry the `ends_at` range (same-day reads as one date), the event's zone, the recurrence caveat, and the location. A flyer is a full-bleed `AsyncImage` row; coordinates earn a still, non-interactive `Map` with a marker plus **Open in Maps** and **Directions**. Actions close the page: Add to calendar, "Tickets & details on {host}" where the source says so, and the quilt's own web page. Nothing authenticated appears — no submit, edit, or RSVP.
+- **Add to calendar:** a `Menu`, so opening it commits to nothing; the calendar is only asked for once **Add to Calendar** is chosen, which presents the system `EKEventEditViewController`. **Share calendar file** hands the quilt's `.ics` to a share sheet for a reader who keeps their calendar elsewhere. Hidden while a submission is awaiting review.
+- **Subscribe:** a patch's own events screen carries a Subscribe menu in the bar — the `webcal:` calendar subscription and the RSS feed.
+
 ### Navigation
 
 Use SF Symbols, `TabView`, `NavigationStack`, grouped `List`, `Map`, native sheets, and system materials. Quilt choice is always explicit; Lancaster is a directory entry, never an implicit launch selection. Quilts the instance names as neighbours appear in the switcher under Connected quilts as doorways to their own inspect-and-confirm.
@@ -159,4 +169,4 @@ Use SF Symbols, `TabView`, `NavigationStack`, grouped `List`, `Map`, native shee
 - **Don't** invent appearance: a tile is what the patch chose or what the hash assigned, and an unknown key falls back rather than being guessed at. Don't paint names onto fabric, scale marks or seam ink with the quilt, or add hand lettering or generated raster assets.
 - **Don't** mean status with colour: identity wears the patch's own colour, status wears a neutral disc.
 - **Don't** replace native controls with web-shaped buttons, custom global navigation, or hover-only affordances.
-- **Don't** silently select a quilt or invent authenticated actions; joining, following, and governance remain website links in this browsing pass, and Dashboard and notifications wait for sign-in rather than standing in the shell as stubs.
+- **Don't** silently select a quilt or invent authenticated actions; joining, following, governance, and submitting or editing an event remain website links in this browsing pass, and Dashboard and notifications wait for sign-in rather than standing in the shell as stubs.

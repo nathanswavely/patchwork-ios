@@ -16,6 +16,7 @@
 		508CED8BCC4991BFAE2BFAE2 /* layout-fixtures.json in Resources */ = {isa = PBXBuildFile; fileRef = CFF1AEE9C2A0DF5127851BCB /* layout-fixtures.json */; };
 		5D600B7F9841C69CCB97B0F9 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF358FEA7BC11AA077E2E5A1 /* API.swift */; };
 		65550D118F2245A37FE3B05B /* PatchProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C217C3BCE3AF77E084E40D6 /* PatchProfile.swift */; };
+		6623188FDAB4C4383325994F /* EventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 093E6D05E99D110AC6D41CED /* EventsTests.swift */; };
 		734A0612AF1C3409A9EF80C2 /* QuiltTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8958EDC97FC429B38CD2DAE /* QuiltTheme.swift */; };
 		73BF506CA5671806F1D8BABC /* FilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF781619947A025A8719BEC3 /* FilterSheet.swift */; };
 		78D5163BC45D8AC695285A44 /* QuiltLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 529B45CF7173A2EF95492E0C /* QuiltLayout.swift */; };
@@ -30,6 +31,8 @@
 		F02D6A66065C1CBB63F082A6 /* QuiltLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */; };
 		F22887B76A0A581F1DBBE60B /* PreviewData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC491BDA8B532F53F22BCE42 /* PreviewData.swift */; };
 		F29C25AADC39146B0395F955 /* QuiltCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4510113B947EAF0DB94F046F /* QuiltCanvas.swift */; };
+		F5A038362F8CE362C9910F8A /* AddToCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DA231C2A9285F4CAA73CF96 /* AddToCalendar.swift */; };
+		F7A0A9DC9AAE33C4BA61C974 /* EventFilters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F97CCB0BD8BCE06F5556360 /* EventFilters.swift */; };
 		F90B0CC8F8B2D7BDE47569B3 /* PatchworkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */; };
 		F9CF8075479F7C3713A6C557 /* Events.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5EDD8A87C7355F760C72A6 /* Events.swift */; };
 /* End PBXBuildFile section */
@@ -52,6 +55,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		093E6D05E99D110AC6D41CED /* EventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsTests.swift; sourceTree = "<group>"; };
+		0F97CCB0BD8BCE06F5556360 /* EventFilters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventFilters.swift; sourceTree = "<group>"; };
 		15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltLayoutTests.swift; sourceTree = "<group>"; };
 		1B1F0F4B4C66C9D11B2A8662 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
 		1C5EDD8A87C7355F760C72A6 /* Events.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Events.swift; sourceTree = "<group>"; };
@@ -66,6 +71,7 @@
 		5D86AEE1D626D1AB55DDD14F /* QuiltBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltBrowser.swift; sourceTree = "<group>"; };
 		6280253991897DC2B3FDDF06 /* Motifs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motifs.swift; sourceTree = "<group>"; };
 		66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
+		8DA231C2A9285F4CAA73CF96 /* AddToCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddToCalendar.swift; sourceTree = "<group>"; };
 		AF781619947A025A8719BEC3 /* FilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSheet.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE32844B5FEA95B9FA7EBDC5 /* QuiltHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltHome.swift; sourceTree = "<group>"; };
@@ -94,9 +100,11 @@
 		95A7FADD0F55CADA06FA6668 /* Patchwork */ = {
 			isa = PBXGroup;
 			children = (
+				8DA231C2A9285F4CAA73CF96 /* AddToCalendar.swift */,
 				EF358FEA7BC11AA077E2E5A1 /* API.swift */,
 				4858D666E2FE8B480005EB38 /* Assets.xcassets */,
 				F4E90AA0007CCFBCD3D80C16 /* Discover.swift */,
+				0F97CCB0BD8BCE06F5556360 /* EventFilters.swift */,
 				1C5EDD8A87C7355F760C72A6 /* Events.swift */,
 				AF781619947A025A8719BEC3 /* FilterSheet.swift */,
 				293BA8AA195974A4AA7FD88F /* Models.swift */,
@@ -132,6 +140,7 @@
 			isa = PBXGroup;
 			children = (
 				1B1F0F4B4C66C9D11B2A8662 /* ContractTests.swift */,
+				093E6D05E99D110AC6D41CED /* EventsTests.swift */,
 				CFF1AEE9C2A0DF5127851BCB /* layout-fixtures.json */,
 				F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */,
 				15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */,
@@ -274,7 +283,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				5D600B7F9841C69CCB97B0F9 /* API.swift in Sources */,
+				F5A038362F8CE362C9910F8A /* AddToCalendar.swift in Sources */,
 				151CC357CA100483033629EF /* Discover.swift in Sources */,
+				F7A0A9DC9AAE33C4BA61C974 /* EventFilters.swift in Sources */,
 				F9CF8075479F7C3713A6C557 /* Events.swift in Sources */,
 				73BF506CA5671806F1D8BABC /* FilterSheet.swift in Sources */,
 				503FB17375BC29E7E8FC1201 /* Models.swift in Sources */,
@@ -300,6 +311,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				89154EF7862741EE0E4EE6BC /* ContractTests.swift in Sources */,
+				6623188FDAB4C4383325994F /* EventsTests.swift in Sources */,
 				BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */,
 				F02D6A66065C1CBB63F082A6 /* QuiltLayoutTests.swift in Sources */,
 			);
@@ -467,6 +479,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_CFBundleDisplayName = Patchwork;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Patchwork adds an event you choose to your calendar. It never reads your calendar.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -532,6 +545,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_CFBundleDisplayName = Patchwork;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Patchwork adds an event you choose to your calendar. It never reads your calendar.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

@@ -24,6 +24,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.patchwork.prototype
         INFOPLIST_KEY_CFBundleDisplayName: Patchwork
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        # Write-only: the app puts one night a reader chose into their
+        # calendar and never reads what else is in it.
+        INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription: Patchwork adds an event you choose to your calendar. It never reads your calendar.
   PatchworkTests:
     type: bundle.unit-test
     platform: iOS

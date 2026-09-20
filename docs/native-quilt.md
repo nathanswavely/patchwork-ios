@@ -50,3 +50,49 @@ The quilt now draws what each patch chose. No API change was needed: `nodes/tree
 Rendering: each tile is a unit-square `CALayer` scaled and rotated to its frame, one `CAShapeLayer` per fabric with a hairline seal stroke; seams are one deduplicated path on the board (0.6pt) with the outer edge as a 2.4pt binding, both counter-scaled on every zoom tick; corner marks are anchored on their corner and counter-scaled so the inset holds in screen points; name badges live in a screen-space layer over the canvas, clipped to the safe area, planned each scroll/zoom tick by `QuiltBadges.plan` with the web's thresholds (52/44pt, 32→26pt gap over 52→80pt, 8.5em cap, three balanced lines) and hysteresis. A tap on a badge hands the touch to the badge's patch while the pan still belongs to the scroll view.
 
 Not yet drawn, deliberately: the cloth (docs/adr/066 — the wandering lattice, block warp, bevel, doming, weave, folds, topstitch), Muted colours (docs/adr/112 — a viewer setting the app has no Display menu for), the viewer's role mark (needs sign-in), and hover dim (desktop only). Motif glyphs are Phosphor Icons' fill weight, generated into `Assets.xcassets/Motifs` from the web's dependency; MIT licence in `docs/third-party/phosphor-icons-LICENSE.txt`.
+
+## Events parity — 2026-09-20
+
+The Events tab and an event's detail were brought level with the web's public
+(signed-out) calendar, with the native wins the web has no way to offer.
+
+- **Flat, soonest first, with the web's date presets.** No day grouping: a
+  gathering is one row among the next ones. `EventFilters.swift` ports
+  `eventDateRange` from `web/src/lib/datetime.js` — Monday-start weeks, a
+  weekend that is this week's and never next week's, Sunday as the end of its
+  week, a `to` that is the day's last whole second — and resolves it in the
+  quilt's own zone (`instance.geography.timezone`) rather than the reader's,
+  so "tonight" on a Lancaster calendar means Lancaster's night. The bounds go
+  out as `from`/`to` instants; `PatchworkAPI.events` also speaks
+  `include_past` for a patch's whole calendar.
+- **Tags and the search chip narrow through the host patch**, as they do on
+  the web: an event has no tags of its own, so the filter resolves
+  `node_id` (falling back to `node_slug`) against `session.patches`. The two
+  silences stay distinct — "No events match your filter" with a Clear beside
+  it, against "No upcoming events", which is nobody's mistake.
+- **Rows** state when, what, where and whose, wear "Community-submitted"
+  where the patch is unclaimed, and wear a tier chip — words, never a colour
+  — only where the event is not everyone's.
+- **The detail** adds the `ends_at` range (same-day reads as one date, judged
+  in the event's own zone rather than by slicing the UTC string), the flyer,
+  the recurrence caveat, "with X" chips for confirmed links, cross-quilt
+  mentions as plain doorways, and "Tickets & details on {host}" for http/https
+  only. "Hosted by X" is a door: the patch the session already knows opens
+  straight away, and one it does not is fetched by slug first.
+- **Add to calendar** builds the `EKEvent` from the event's own fields and
+  hands it to `EKEventEditViewController`, so the calendar, alert and
+  invitees are chosen where a person already knows how to choose them. The
+  quilt's `events/{id}/event.ics` is still fetched, unparsed, for the share
+  fallback. Write-only access
+  (`NSCalendarsWriteOnlyAccessUsageDescription`): the app puts one night in
+  and never reads what else is there. Withheld while a submission is in
+  review, where the endpoint 404s.
+- **The place, on a map** — a still, non-interactive `Map` with a marker
+  where the event carries coordinates, and Open in Maps / Directions handed
+  to `MKMapItem`. The web has no equivalent; it stays modest.
+- **A patch's own calendar** offers the standing subscriptions from its
+  events screen: `webcal://{host}/api/v1/nodes/{slug}/events.ics` and the
+  `.rss` feed.
+
+Nothing authenticated is stubbed: no submit, no edit, no RSVP (the web has
+none either), and no `scope=my`.
