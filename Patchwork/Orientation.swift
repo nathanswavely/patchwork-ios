@@ -20,28 +20,38 @@ struct IntroCard: View {
     @State private var page: InfoPage?
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // The quilt saying its own name, which is the display face's one
+            // job — and this card is two short lines, never a paragraph of it.
             Text("\(quiltName) is a quilt of the communities around you.")
-                .font(.subheadline.weight(.semibold))
+                .font(Font.pw.displayTitle2)
+                .foregroundStyle(Color.pwText)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Every tile is a real group, placed near the groups it shares people with. No ads, no personalized algorithm. Run by people here.")
-                .font(.footnote).foregroundStyle(Color.secondary)
+                .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 16) {
+                // A door into the About page, so it wears the chevron rather
+                // than a colour — hugging its text, because the decline
+                // shares the line with it.
                 Button("What is Patchwork?") { page = .about }
-                    .font(.footnote.weight(.medium))
+                    .font(Font.pw.footnoteSemibold)
                     .accessibilityIdentifier("introAbout")
+                    .inkRow(fills: false)
                 Spacer(minLength: 0)
                 // A worded decline, not an ✕: the card's actual question is
                 // whether you need an account, and this answers it.
                 Button("I’ll lurk for now") { dismiss() }
-                    .font(.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                     .accessibilityIdentifier("introDismiss")
             }
         }
         .padding(14)
         .frame(maxWidth: 420, alignment: .leading)
+        // Material, not the card surface: this one floats over a live quilt
+        // that pans and opens underneath it, and an opaque panel over moving
+        // cloth would read as the modal the card exists in order not to be.
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color(.separator)))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.pwBorder))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)

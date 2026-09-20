@@ -41,7 +41,9 @@ struct QuiltMark: View {
     var body: some View {
         Image(systemName: "square.grid.2x2.fill")
             .font(Font.pw.title2)
-            .foregroundStyle(.tint)
+            // Ink, not the tint: this mark stands in for the quilt's own icon
+            // where it has none, and identity is never what a tint means.
+            .foregroundStyle(Color.pwText)
             .frame(width: 42, height: 42)
         .accessibilityHidden(true)
     }
@@ -53,6 +55,10 @@ struct FailureView: View {
     var body: some View {
         ContentUnavailableView {
             Label("Couldn’t load this quilt", systemImage: "wifi.exclamationmark")
-        } description: { Text(message) } actions: { Button("Try again", action: retry) }
+        } description: {
+            Text(message).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+        } actions: {
+            Button("Try again", action: retry).font(Font.pw.headline).buttonStyle(.borderedProminent)
+        }
     }
 }

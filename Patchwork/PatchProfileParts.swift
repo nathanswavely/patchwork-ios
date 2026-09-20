@@ -14,8 +14,8 @@ struct GlimpseHeading<Destination: View>: View {
     var body: some View {
         NavigationLink(destination: destination) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(Font.pw.headline).foregroundStyle(Color.primary)
-                if let trailing { Text(trailing).font(Font.pw.subheadline).foregroundStyle(Color.secondary) }
+                Text(title).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                if let trailing { Text(trailing).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted) }
                 Spacer()
                 Image(systemName: "chevron.right").font(Font.pw.footnoteSemibold).foregroundStyle(Color(.tertiaryLabel))
             }
@@ -42,7 +42,7 @@ struct PersonRow: View {
             AvatarMark(initial: initial, avatar: avatar)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                if let detail { Text(detail).font(Font.pw.caption).foregroundStyle(.secondary) }
+                if let detail { Text(detail).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted) }
             }
             Spacer(minLength: 8)
             if let role, !role.isEmpty {
@@ -50,7 +50,7 @@ struct PersonRow: View {
                     .font(Font.pw.caption2Semibold)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Color(.secondarySystemFill), in: Capsule())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.pwTextMuted)
                     .accessibilityLabel("Role: \(role)")
             }
         }
@@ -77,7 +77,7 @@ struct AvatarMark: View {
     private var placeholder: some View {
         ZStack {
             Color(.tertiarySystemFill)
-            Text(initial).font(Font.pw.subheadlineSemibold).foregroundStyle(.secondary)
+            Text(initial).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwTextMuted)
         }
     }
 }
@@ -149,6 +149,6 @@ struct DocumentBody: View {
 struct WebsiteOnlyNote: View {
     let text: String
     var body: some View {
-        Text(text).font(Font.pw.footnote).foregroundStyle(Color.secondary)
+        Text(text).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
     }
 }

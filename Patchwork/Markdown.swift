@@ -120,21 +120,23 @@ struct MarkdownText: View {
                 switch block {
                 case .heading(let level, let text):
                     Text(Markdown.inline(text, base: base))
-                        .font(level <= 1 ? .title2.bold() : (level == 2 ? .title3.bold() : .headline))
+                        .font(level <= 1 ? Font.pw.title2 : (level == 2 ? Font.pw.title3 : Font.pw.headline))
+                        .foregroundStyle(Color.pwText)
                         .padding(.top, 4)
                 case .paragraph(let text):
-                    Text(Markdown.inline(text, base: base))
+                    Text(Markdown.inline(text, base: base)).font(Font.pw.body)
                 case .bullets(let items):
                     itemList(items) { _ in Text("•") }
                 case .numbers(let items):
                     itemList(items) { index in Text("\(index + 1).") }
                 case .quote(let text):
                     Text(Markdown.inline(text, base: base))
-                        .foregroundStyle(Color.secondary)
+                        .font(Font.pw.body)
+                        .foregroundStyle(Color.pwTextMuted)
                         .padding(.leading, 12)
-                        .overlay(alignment: .leading) { Rectangle().frame(width: 3).foregroundStyle(Color(.separator)) }
+                        .overlay(alignment: .leading) { Rectangle().frame(width: 3).foregroundStyle(Color.pwBorder) }
                 case .rule:
-                    Divider()
+                    Divider().overlay(Color.pwBorder)
                 }
             }
         }
@@ -147,8 +149,8 @@ struct MarkdownText: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    marker(index).foregroundStyle(Color.secondary)
-                    Text(Markdown.inline(item, base: base)).frame(maxWidth: .infinity, alignment: .leading)
+                    marker(index).font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                    Text(Markdown.inline(item, base: base)).font(Font.pw.body).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }

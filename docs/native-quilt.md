@@ -304,3 +304,62 @@ surface on the textile ground in both, the miniatures match the tiles behind
 them, and the profile's head now shares the card's clothes. Not verified: a
 physical device, VoiceOver, iPad, and Increase Contrast beyond the declared
 values.
+
+## Identity finish — 2026-09-20
+
+Slices D and F landed in parallel, so F could not touch the two surfaces D had
+open. This pass closed that gap and then swept the rest: Discover, search
+results, the orientation card, the filter sheet, Display, the quilt info stack,
+the Label, members, governance, the patch calendar, the remote patch and the
+quilt picker are all on `Font.pw.*`, the palette tokens and the ink rules, and
+every grouped `List` in the app is now re-grounded.
+
+**The compact card.** Discover's answer and the search results are ranked
+shortlists, not the quilt read back, so the full card's 100pt cover strip was
+the wrong instrument: eight of them turn an answer into a scroll, and in search
+they bury the one row that narrows the quilt. `CompactPatchCard` (PatchCard.swift)
+keeps everything the card says — the motif disc before the name, the counts in
+the web's own wording, the `Moved` chip — and turns the cover into the quilt's
+own 44pt square, `TileMiniature` at its `.tile` fit with both corner marks,
+beside the body rather than above it. Only the cloth gets smaller, and a patch
+still wears one drawing everywhere it is named. Each surface passes its own
+accessibility identifier, so `patchRow`, `discoverRow` and `searchPatch` stay
+three names for the same shape.
+
+**One new display moment.** "What are you drawn to?" is now Shantell. It is not
+a screen naming itself, which is the face's usual job, but it is the one
+sentence the app says in its own voice, it is five words nobody reads at
+length, and asking it is the whole reason the surface exists. Everything under
+it — the answer's headings included — stays Space Grotesk.
+
+**A third ink rule.** `exitLink()` and `inkRow()` cover a way out and a door.
+The sweep turned up a third kind of coloured word the tint had been doing the
+work for: an act that is neither — "Try again", "Load more", "Show all tags",
+"Show what already happened", "Show the rest of the quilt". `inkAction(_:)`
+gives those ink and their own leading glyph. `inkRow()` gained the `fills`
+parameter `exitLink()` already had, for a door that shares its line.
+
+**Two things the grounding taught.** A `.plain` list pins its section headers,
+and a pinned header sliding over a stack of cards is exactly what a card stack
+must not do — Discover and search are `.listStyle(.grouped)` with `plainRow()`
+rows (clear background, no rule, 16pt gutter) so the cards sit on the ground
+with nothing drawn under them. And the quilt mark lost the tint: it stands in
+for the quilt's own icon, and identity is never what a tint means.
+
+**Leftovers, before and after.** `.foregroundStyle(.tint)` 1 → 0,
+`Color.accentColor` 0 → 0, `.blue` 0 → 0, `Color(.separator)` as a decorative
+border 6 → 0, `Color.secondary`/`.secondary` 78 → 0, `Color.primary` 9 → 0,
+system text-style fonts on reading text 15 → 0, and default-coloured `Link` or
+`NavigationLink` text 15 → 1. The one that stays is the "Join or sign in on the
+web" row inside the account `Menu`: a system menu owns its own colours, the way
+the tab bar and the segmented pill do. Six `.font(.footnote)`/`.subheadline`
+calls also remain on purpose — four are SF Symbol glyph sizes inside the ink
+modifiers and the follow heart, and two are the monospaced variants DESIGN.md
+reserves for a technical origin (an atproto handle) and for money read against
+money.
+
+**Verification.** 119 unit tests and 6 UI tests pass on an iPhone 17 Pro
+simulator, with no test changed. Contrast sampled by pixel on every screen this
+pass touched, in light and dark: ink 12.9–14.1:1, muted 5.1–6.0:1, the active
+filter chip 5.2:1 light and 7.0:1 dark — AA throughout. Not verified: a physical
+device, VoiceOver, iPad, and Increase Contrast beyond the declared values.

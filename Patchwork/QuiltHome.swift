@@ -132,13 +132,13 @@ struct DiscoveryToolbar: ViewModifier {
     @ViewBuilder private var field: some View {
         if session.searching {
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Color.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(Color.pwTextMuted)
                 TextField("Search patches and events", text: $session.searchText)
                     .focused($focused).submitLabel(.search).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit { session.showMatches() }
                     .accessibilityIdentifier("searchField")
                 if !session.searchText.isEmpty {
-                    Button { session.searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.secondary) }.accessibilityLabel("Clear text")
+                    Button { session.searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.pwTextMuted) }.accessibilityLabel("Clear text")
                 }
             }
             .modifier(FieldChrome(width: fieldWidth))
@@ -150,7 +150,7 @@ struct DiscoveryToolbar: ViewModifier {
                     Text("Search patches and events").lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(Color.pwTextMuted)
                 .modifier(FieldChrome(width: fieldWidth))
             }
             .buttonStyle(.plain)

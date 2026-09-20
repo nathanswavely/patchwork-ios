@@ -34,44 +34,58 @@ struct PatchCalendar: View {
     private var feedsAvailable: Bool { patch.visibility == "public" }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             Section {
                 ForEach(upcoming) { row($0) }
                 if let cursor = upcomingCursor, !cursor.isEmpty {
-                    Button("Load more") { Task { await loadUpcoming(after: cursor) } }.disabled(loading)
+                    Button("Load more") { Task { await loadUpcoming(after: cursor) } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.down.circle").disabled(loading)
                 }
-                if loaded && upcoming.isEmpty { Text("Nothing coming up.").foregroundStyle(.secondary) }
-            } header: { Text("Upcoming") } footer: {
+                if loaded && upcoming.isEmpty {
+                    Text("Nothing coming up.").font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                }
+            } header: { heading("Upcoming") } footer: {
                 if patch.communityListing && !upcoming.isEmpty {
                     // Every event on a patch nobody runs was put there by the
                     // community, derived from its status and said once.
-                    Text("Community-submitted.")
+                    footnote("Community-submitted.")
                 }
             }
             Section {
                 if askedForEarlier {
                     ForEach(earlier) { row($0) }
                     if let cursor = earlierCursor, !cursor.isEmpty {
-                        Button("Load more") { Task { await loadEarlier(after: cursor) } }.disabled(loading)
+                        Button("Load more") { Task { await loadEarlier(after: cursor) } }
+                            .font(Font.pw.subheadlineMedium).inkAction("arrow.down.circle").disabled(loading)
                     }
-                    if !loading && earlier.isEmpty { Text("Nothing on the calendar before today.").foregroundStyle(.secondary) }
+                    if !loading && earlier.isEmpty {
+                        Text("Nothing on the calendar before today.").font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                    }
                 } else {
                     Button("Show what already happened") { Task { await loadEarlier() } }
+                        .font(Font.pw.subheadlineMedium)
                         .accessibilityIdentifier("showEarlierEvents")
+                        .inkAction("clock.arrow.circlepath")
                 }
-            } header: { Text("Earlier") } footer: {
-                if askedForEarlier { Text("Oldest first, from the beginning of this patch’s calendar.") }
+            } header: { heading("Earlier") } footer: {
+                if askedForEarlier { footnote("Oldest first, from the beginning of this patch’s calendar.") }
             }
             if loading { ProgressView("Loading calendar…") }
             if let error {
                 Section {
-                    Text(error).foregroundStyle(.secondary)
+                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     Button("Try again") { Task { await loadUpcoming() } }
+                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
             Section {
-                Text("Times are shown in each event’s local time zone.").font(Font.pw.footnote).foregroundStyle(.secondary)
+                Text("Times are shown in each event’s local time zone.").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Calendar").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if feedsAvailable {
@@ -89,13 +103,19 @@ struct PatchCalendar: View {
         .task { if !loaded { await loadUpcoming() } }
         .refreshable { await loadUpcoming() }
     }
+    private func heading(_ text: String) -> some View {
+        Text(text).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+    }
+    private func footnote(_ text: String) -> some View {
+        Text(text).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).textCase(nil)
+    }
     private func row(_ event: PatchworkEvent) -> some View {
         NavigationLink { EventDetail(quilt: quilt, initial: event, close: close) } label: {
             VStack(alignment: .leading, spacing: 5) {
-                Text(event.title).font(Font.pw.headline)
-                Text(event.dateLabel).font(Font.pw.subheadline).foregroundStyle(.secondary)
+                Text(event.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                Text(event.dateLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                 if let location = event.location, !location.isEmpty {
-                    Text(location).font(Font.pw.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(location).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).lineLimit(1)
                 }
             }.padding(.vertical, 5)
         }.accessibilityIdentifier("calendarRow")
@@ -134,24 +154,38 @@ struct SubscribeToPatch: View {
     let slug: String
     let name: String
     @Environment(\.dismiss) private var dismiss
+    private func heading(_ text: String) -> some View {
+        Text(text).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+    }
+    private func footnote(_ text: String) -> some View {
+        Text(text).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).textCase(nil)
+    }
     private var ics: URL { api.apiURL("nodes/\(slug)/events.ics") }
     private var rss: URL { api.apiURL("nodes/\(slug)/events.rss") }
     var body: some View {
         List {
+            Group {
             Section {
                 if let subscription = api.subscriptionURL("nodes/\(slug)/events.ics") {
                     Link(destination: subscription) { Label("Add to Calendar", systemImage: "calendar.badge.plus") }
                         .accessibilityIdentifier("addToCalendar")
+                        .exitLink()
                 }
+                // A share sheet is the system's own control and keeps the
+                // platform's chrome; only the words that leave are ink.
                 ShareLink(item: ics) { Label("Share the calendar address", systemImage: "square.and.arrow.up") }
-            } header: { Text("Calendar (ICS)") }
-              footer: { Text("Your calendar app keeps this patch’s events up to date once it has the address.") }
+                    .foregroundStyle(Color.pwText)
+            } header: { heading("Calendar (ICS)") }
+              footer: { footnote("Your calendar app keeps this patch’s events up to date once it has the address.") }
             Section {
-                Link(destination: rss) { Label("Open the events feed", systemImage: "dot.radiowaves.up.forward") }
+                Link(destination: rss) { Label("Open the events feed", systemImage: "dot.radiowaves.up.forward") }.exitLink()
                 ShareLink(item: rss) { Label("Share the feed address", systemImage: "square.and.arrow.up") }
-            } header: { Text("RSS") }
-              footer: { Text("New events from \(name) arrive in any feed reader.") }
+                    .foregroundStyle(Color.pwText)
+            } header: { heading("RSS") }
+              footer: { footnote("New events from \(name) arrive in any feed reader.") }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Subscribe").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
     }
