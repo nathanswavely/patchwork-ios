@@ -18,6 +18,11 @@ import WebKit
     /// Tag name → motif slug from the quilt's vocabulary: how a patch that
     /// chose no motif still wears a mark that says what it is.
     @Published private(set) var tagMotifs: [String: String] = [:]
+    /// The quilt's tag vocabulary as the server sent it. Kept whole rather
+    /// than reduced to motifs, because `node_count` is the quilt's own answer
+    /// to "how many patches wear this" — a whole-quilt, public number that the
+    /// tree this client happens to hold is only an approximation of.
+    @Published private(set) var tagTerms: [TagTerm] = []
     /// The search chip. Set only by "Show matches on the quilt", never by typing.
     @Published var query = "" { didSet { repack() } }
     @Published var tags = Set<String>() { didSet { repack() } }
@@ -46,10 +51,28 @@ import WebKit
     var activeFilterCount: Int { tags.count + (query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1) }
     var mapEnabled: Bool { instance?.modules?["map"] != false }
     /// Tags by how many patches wear them, most-worn first; ties read A to Z.
-    var rankedTags: [(tag: String, count: Int)] {
-        var counts: [String: Int] = [:]
-        for patch in patches { for tag in Set(patch.tags ?? []) { counts[tag, default: 0] += 1 } }
-        return counts.map { (tag: $0.key, count: $0.value) }
+    var rankedTags: [(tag: String, count: Int)] { Self.rank(patches: patches, terms: tagTerms) }
+    /// The ranking, as a value so it can be checked without a quilt.
+    ///
+    /// The count is the server's `node_count` wherever the vocabulary
+    /// endpoint answered for that tag, and the count derived from the patches
+    /// in hand only where it did not — a quilt that will not serve `tags` gets
+    /// a number that is honest about the tree rather than no number at all.
+    /// Ordering is the web's: count descending, ties A to Z.
+    ///
+    /// A term nothing wears is dropped, which is where this parts company
+    /// with the web. The web lists the whole vocabulary and prints the zero;
+    /// here the same array is also the filter sheet's chips, and a chip that
+    /// can only empty the quilt is worse than an absent one.
+    nonisolated static func rank(patches: [Patch], terms: [TagTerm]) -> [(tag: String, count: Int)] {
+        var derived: [String: Int] = [:]
+        for patch in patches { for tag in Set(patch.tags ?? []) { derived[tag, default: 0] += 1 } }
+        var served: [String: Int] = [:]
+        for term in terms { if let count = term.nodeCount { served[term.name] = count } }
+        var names = Set(derived.keys)
+        for (name, count) in served where count > 0 { names.insert(name) }
+        return names.map { (tag: $0, count: served[$0] ?? derived[$0] ?? 0) }
+            .filter { $0.count > 0 }
             .sorted { $0.count == $1.count ? $0.tag.localizedStandardCompare($1.tag) == .orderedAscending : $0.count > $1.count }
     }
     func clearFilters() { query = ""; tags = [] }
@@ -76,7 +99,8 @@ import WebKit
             repack()
         } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         if instance == nil { instance = try? await api.get("instance") }
-        if tagMotifs.isEmpty, let terms: [TagTerm] = try? await api.get("tags") {
+        if tagTerms.isEmpty, let terms: [TagTerm] = try? await api.get("tags") {
+            tagTerms = terms
             tagMotifs = Dictionary(terms.compactMap { term in term.motif.map { (term.name, $0) } }, uniquingKeysWith: { a, _ in a })
         }
         if icon == nil, let data = try? await api.data("instance/icon") {
@@ -84,6 +108,32 @@ import WebKit
             if image == nil { image = await SVGRasterizer().render(data, side: 50) }
             if let image { icon = image; tabIcon = image.tabIcon(); tabIconDim = image.tabIcon(dimmed: true) }
         }
+    }
+}
+
+/// The two exits that have to carry something with them. Every authenticated
+/// act still happens on the quilt's website, and a link that arrives there
+/// blank makes the reader do the work twice: retype what they searched for, or
+/// find again the patch they were reading when they decided to sign in.
+extension PatchworkAPI {
+    func webURL(_ path: String, query: [URLQueryItem]) -> URL {
+        var parts = URLComponents(url: webURL(path), resolvingAgainstBaseURL: false)
+        parts?.queryItems = query.isEmpty ? nil : query
+        return parts?.url ?? webURL(path)
+    }
+    /// The website's sign-in, which is where following, joining and posting
+    /// live. `redirect` is the web's own parameter: it lands the reader back
+    /// on the page they left rather than on a signed-in home they never asked
+    /// for.
+    func loginURL(returningTo path: String? = nil) -> URL {
+        guard let path, !path.isEmpty else { return webURL("login") }
+        return webURL("login", query: [URLQueryItem(name: "redirect", value: path)])
+    }
+    /// The website's suggestion form, carrying the name the reader typed.
+    func suggestURL(name: String) -> URL {
+        let text = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return webURL("submit") }
+        return webURL("submit", query: [URLQueryItem(name: "name", value: text)])
     }
 }
 

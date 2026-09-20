@@ -149,8 +149,14 @@ struct PatchSheet: View {
             VStack(alignment: .leading, spacing: 10) {
                 Divider()
                 Link(destination: api.webURL("patches/\(patch.slug)")) { Label("Visit patch website", systemImage: "safari") }
-                Text("Joining, following, and posting are available on this quilt’s website while the native app is being developed.")
-                    .font(.footnote).foregroundStyle(Color.secondary)
+                // The sentence is the door. A Follow button here would be a
+                // control this client cannot honour; the words that say where
+                // following happens can carry the reader there instead, and
+                // back to this patch once they are signed in.
+                Link(destination: api.loginURL(returningTo: "/patches/\(patch.slug)")) {
+                    Text("Joining, following, and posting are available on this quilt’s website while the native app is being developed.")
+                        .font(.footnote).multilineTextAlignment(.leading)
+                }.accessibilityIdentifier("followOnWebsite")
             }
             if let error {
                 Text(error).foregroundStyle(Color.secondary)

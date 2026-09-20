@@ -48,10 +48,13 @@ struct SearchResults: View {
                 // quilt is missing. Suggesting it needs an account, so this is
                 // a link to the website rather than a form that cannot submit,
                 // and only where the quilt says it takes suggestions at all.
+                // It carries the name they typed, the way the web's own
+                // suggest row does — arriving at an empty form would make them
+                // type it a second time to say the same thing.
                 if patches.isEmpty, matchingEvents.isEmpty, session.instance?.submissionsEnabled == true {
                     Section {
-                        Link(destination: session.api.webURL("submit")) {
-                            Label("Suggest a patch on the website", systemImage: "arrow.up.right.square")
+                        Link(destination: session.api.suggestURL(name: trimmed)) {
+                            Label("Suggest \u{201C}\(trimmed)\u{201D} as a patch", systemImage: "arrow.up.right.square")
                         }.accessibilityIdentifier("suggestPatch")
                     } footer: {
                         Text("Nothing here matches \u{201C}\(trimmed)\u{201D}. Suggesting a patch happens on this quilt\u{2019}s website.")
