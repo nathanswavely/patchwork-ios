@@ -27,7 +27,7 @@ struct QuiltBrowser: View {
                     Label("No patches match", systemImage: "line.3.horizontal.decrease")
                 } description: { Text("Nothing on this quilt matches your filters.") } actions: { Button("Clear filters") { session.clearFilters() } }
             } else if mode == "Quilt" {
-                QuiltCanvas(tiles: session.tiles, patches: filtered) { open($0) }
+                QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs) { open($0) }
                     .ignoresSafeArea()
             } else if mode == "Map" {
                 if located.isEmpty { ContentUnavailableView("No locations to show", systemImage: "map", description: Text("These patches haven’t shared map coordinates.")) }

@@ -47,7 +47,57 @@ struct Patch: Decodable, Identifiable, Hashable {
     let links: [PatchLink]?
     let activatedAt: String?
     let createdAt: String?
+    let appearance: Appearance?
     var communityListing: Bool { isUnclaimed == true || status == "unclaimed" }
+}
+
+/// What a patch chose for its tile — palette, block, rotation, bundle, motif —
+/// as one concept (docs/adr/004). Every key is optional and every value is
+/// opaque until a registry recognises it; an unknown key falls back to the
+/// hash-assigned tile rather than erroring, so a foreign quilt's custom
+/// palette degrades instead of breaking the quilt.
+struct Appearance: Decodable, Hashable {
+    let palette: String?
+    let block: Block?
+    let rotation: Int?
+    let bundle: [String]?
+    let icon: String?
+    /// A curated slug, or a drafted block embedded inline (docs/adr/029).
+    enum Block: Hashable {
+        case curated(String)
+        case drafted(DraftedBlock)
+    }
+    private enum CodingKeys: String, CodingKey { case palette, block, rotation, bundle, icon }
+    init(palette: String? = nil, block: Block? = nil, rotation: Int? = nil, bundle: [String]? = nil, icon: String? = nil) {
+        self.palette = palette; self.block = block; self.rotation = rotation; self.bundle = bundle; self.icon = icon
+    }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        palette = try container.decodeIfPresent(String.self, forKey: .palette)
+        rotation = try container.decodeIfPresent(Int.self, forKey: .rotation)
+        bundle = try container.decodeIfPresent([String].self, forKey: .bundle)
+        icon = try container.decodeIfPresent(String.self, forKey: .icon)
+        if let slug = try? container.decodeIfPresent(String.self, forKey: .block) { block = .curated(slug) }
+        else if let draft = try? container.decodeIfPresent(DraftedBlock.self, forKey: .block) { block = .drafted(draft) }
+        else { block = nil }
+    }
+}
+
+/// A drafted block: a square grid, seams between wall anchors, and the bundle
+/// slot each piece is cut from, all in quarter-cell units (docs/adr/029).
+struct DraftedBlock: Decodable, Hashable {
+    let grid: Int
+    let seams: [[Int]]?
+    let colors: [String: [Int]]?
+    init(grid: Int, seams: [[Int]]? = nil, colors: [String: [Int]]? = nil) { self.grid = grid; self.seams = seams; self.colors = colors }
+}
+
+/// One term of the quilt's tag vocabulary. A tag may carry a motif, which is
+/// how a patch that chose none still wears a mark that says what it is.
+struct TagTerm: Decodable, Hashable {
+    let name: String
+    let motif: String?
+    let nodeCount: Int?
 }
 
 struct PatchLink: Decodable, Hashable {

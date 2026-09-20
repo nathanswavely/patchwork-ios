@@ -32,7 +32,7 @@ final class QuiltLayoutTests: XCTestCase {
         autoreleasepool {
             let view = CanvasScrollView(frame: .zero)
             released = view
-            view.update(tiles: [.init(id: "1", x: 0, y: 0, size: 2)], patches: [patch], select: { _ in })
+            view.update(tiles: [.init(id: "1", x: 0, y: 0, size: 2)], patches: [patch], tagMotifs: [:], select: { _ in })
         }
         XCTAssertNil(released)
     }

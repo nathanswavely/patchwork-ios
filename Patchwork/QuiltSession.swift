@@ -15,6 +15,9 @@ import WebKit
     @Published private(set) var affinity: [Affinity] = []
     @Published private(set) var baseline: [QuiltLayout.Tile] = []
     @Published private(set) var tiles: [QuiltLayout.Tile] = []
+    /// Tag name → motif slug from the quilt's vocabulary: how a patch that
+    /// chose no motif still wears a mark that says what it is.
+    @Published private(set) var tagMotifs: [String: String] = [:]
     /// The search chip. Set only by "Show matches on the quilt", never by typing.
     @Published var query = "" { didSet { repack() } }
     @Published var tags = Set<String>() { didSet { repack() } }
@@ -62,6 +65,9 @@ import WebKit
             repack()
         } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         if instance == nil { instance = try? await api.get("instance") }
+        if tagMotifs.isEmpty, let terms: [TagTerm] = try? await api.get("tags") {
+            tagMotifs = Dictionary(terms.compactMap { term in term.motif.map { (term.name, $0) } }, uniquingKeysWith: { a, _ in a })
+        }
         if icon == nil, let data = try? await api.data("instance/icon") {
             var image = UIImage(data: data)
             if image == nil { image = await SVGRasterizer().render(data, side: 50) }

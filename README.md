@@ -2,7 +2,7 @@
 
 An open-source native client for [Patchwork](https://github.com/nathanswavely/patchwork). **Early browsing prototype, not an App Store release.**
 
-SwiftUI, iOS 17+, no third-party dependencies. Connects directly to an explicitly selected quilt using its public `/api/v1` endpoints. No account credentials, writes, analytics, or central proxy. A normal launch reads only the quilt you explicitly inspect or select.
+SwiftUI, iOS 17+, no third-party code dependencies (the only bundled third-party material is a set of Phosphor motif glyphs). Connects directly to an explicitly selected quilt using its public `/api/v1` endpoints. No account credentials, writes, analytics, or central proxy. A normal launch reads only the quilt you explicitly inspect or select.
 
 ## Run
 
@@ -44,7 +44,7 @@ System typography and surfaces adapt to appearance and Dynamic Type. The quilt r
 
 ## API boundary
 
-Reads `instance`, `instance/icon`, `nodes/tree`, `nodes/{slug}`, `events` (including `node_slug`, `after`, and `limit`), and `events/{id}`. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
+Reads `instance`, `instance/icon`, `nodes/tree` (including each patch's `appearance`), `nodes/{slug}`, `tags` (for tag motifs), `events` (including `node_slug`, `after`, and `limit`), and `events/{id}`. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
 
 The client's direct visit to a selected quilt is not a cross-quilt blended read. It does not use `multi_quilt: false` as permission to blend data from other instances.
 
@@ -62,7 +62,7 @@ xcodebuild -project Patchwork.xcodeproj -scheme Patchwork \
 
 ## Distribution and licensing
 
-The source code, project configuration, documentation, and original assets in this repository are licensed under the **Mozilla Public License 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) and [PROVENANCE.md](PROVENANCE.md). This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+The motif glyphs under `Patchwork/Assets.xcassets/Motifs` are [Phosphor Icons](https://phosphoricons.com) (MIT; see `docs/third-party/phosphor-icons-LICENSE.txt`). The source code, project configuration, documentation, and original assets in this repository are licensed under the **Mozilla Public License 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) and [PROVENANCE.md](PROVENANCE.md). This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 
 Distributed modifications to MPL-covered files must remain available under MPL 2.0. Independently written files can use other licenses, subject to the license's terms. The separate Patchwork server retains its AGPLv3 license; this client communicates with it over HTTP and does not include the server or web implementation.
 

@@ -37,7 +37,7 @@ components:
 
 **Creative North Star: "The Quiet Public Map"**
 
-Patchwork is a direct, native iOS reader for independently operated communities. It keeps the web quilt's spatial behavior and vocabulary while using system typography, semantic surfaces, SF Symbols, and familiar navigation. The native client has no textile patterns, stitching, fabric texture, hand lettering, or generated raster decoration.
+Patchwork is a direct, native iOS reader for independently operated communities. It keeps the web quilt's spatial behavior and vocabulary while using system typography, semantic surfaces, SF Symbols, and familiar navigation. The quilt itself is the patches' own: each tile is drawn from the palette, block, rotation and motif its admins chose (or the hash assigned), with seam ink between tiles and corner marks on them, exactly as the web draws it. The chrome around the quilt stays system; the app adds no hand lettering or generated raster decoration of its own, and it does not yet draw the web's cloth (the wandering lattice, batting, weave and folds).
 
 The quilt, map, and list are one discovery instrument. Filtering repacks the matching patches, the list follows quilt placement by default, and a selected patch opens its profile without losing the active filter or viewport. The AccentColor asset supplies the light and dark tint for actions and selection.
 
@@ -47,6 +47,7 @@ The quilt, map, and list are one discovery instrument. Filtering repacks the mat
 - SF Pro and Dynamic Type for all reading content and controls.
 - Semantic system colors and materials in light and dark appearances.
 - UIKit-backed quilt canvas with direct pinch and pan gestures.
+- Vector tiles from the shared palette and block registries; seam ink, corner marks and name badges that hold their size on screen at any zoom.
 
 ## Colors
 
@@ -63,6 +64,12 @@ Use semantic system roles in SwiftUI/UIKit: `Color.accentColor`, `Color.primary`
 - **Separators:** use the system separator color only where grouped lists provide one.
 
 **The One Tint Rule.** One tint communicates interaction. Meaning must remain available through text, shape, position, and VoiceOver state.
+
+### Fabric
+
+The quilt's colours are the patches', never the app's. A tile draws from its **bundle** (up to six fabrics off the curated fabric wall), else its pinned **palette** (eight album palettes and eighteen wall cuts, in the web's registry order), else the palette the web's `hashStr` assigns from the patch id — bit for bit the same hash, so a patch wears the same tile here as on the site. Slot one is the **identity colour**, the one colour that stands for the patch anywhere it is not a full tile (its motif disc). Ink on a fabric is `#151820` or white by WCAG luminance, threshold 0.18, as the web decides it.
+
+Ink around the fabric follows the web's textile tokens and flips with the theme: seam ink `rgba(28,24,18,0.55)` light / `rgba(0,0,0,0.72)` dark; thread `#c8c0b0` / `#2e3240` (badge border); heavy thread `#7a746a` / `#4a5060` (mark rings); badge fill `rgba(250,246,238,0.45)` / `rgba(0,0,0,0.5)` with text `#2a2520` / `#e8e6e3`. Status discs are `rgba(0,0,0,0.55)` in both themes, so a tile's own colour never means "unclaimed". The canvas ground stays `systemGroupedBackground`.
 
 ## Typography
 
@@ -88,21 +95,21 @@ Controls stay inside safe areas; the canvas itself runs under the status bar, th
 
 One top bar sits on every discovery surface: **Filter** leading (badged with the active count; present only where the surface narrows), the **search field** in the centre — a glass capsule that is the field itself, not a door to one — and the **account** menu trailing (join or sign in on the web, About this quilt, Switch quilt), which gives way to Cancel while the field is live. The tab bar's Search button focuses that field. Detail screens use inline navigation titles and preserve the edge-swipe back gesture.
 
-The Quilt/Map/List switch is a native segmented control floating over the foot of the canvas above the tab bar, in thumb reach. There is no fit or recentre control; the initial fit and pinch are enough. Quilt uses `QuiltCanvas`, a UIKit `UIScrollView` with zoom and pan; its minimum gesture zoom is 0.3 and its initial fit is clamped to at least 0.65. Filtering matches selected interests with OR semantics and intersects them with the search chip, case and diacritic insensitively over name and description. Matching patches repack from their original sizes, while clearing filters restores the baseline arrangement. Map uses actual coordinates and the same narrowed collection; List uses quilt placement order, Name, or Newest, and states the count in its header.
+The Quilt/Map/List switch is a native segmented control floating over the foot of the canvas above the tab bar, in thumb reach. There is no fit or recentre control; the initial fit and pinch are enough. Quilt uses `QuiltCanvas`, a UIKit `UIScrollView` with zoom and pan; its gesture zoom runs 0.3–6, and on a viewport 700pt wide or narrower the initial fit is floored so a 1×1 tile is at least 60pt (the badge threshold plus 8) and capped at 2.4 — a quilt fitted whole into a phone is anonymous confetti, so it starts legible and lets the person pan. Filtering matches selected interests with OR semantics and intersects them with the search chip, case and diacritic insensitively over name and description. Matching patches repack from their original sizes, while clearing filters restores the baseline arrangement. Map uses actual coordinates and the same narrowed collection; List uses quilt placement order, Name, or Newest, and states the count in its header.
 
-At initial fit, the smallest tile is at least 46.8pt wide. Manual zooming out can make tiles smaller; List provides conventional full-size targets. The canvas label is inset 8pt, capped at three lines with tail truncation, and counter-scales its caption font to a maximum of 18pt. The full patch name is the accessibility label and the tap opens its profile.
+At initial fit on a phone, the smallest tile is at least 60pt wide. Manual zooming out can make tiles smaller; List provides conventional full-size targets. Names are not painted on tiles: they float as name badges that appear as tiles earn room (see Quilt Tiles). The full patch name is the tile's accessibility label and the tap opens its profile.
 
 The canvas fills the available iPhone or iPad viewport. Profiles dock as native sheets on both device classes; a persistent side-by-side profile is not implemented.
 
 ## Elevation & Depth
 
-Use grouped system backgrounds, separators, and native sheet/material presentation. Resting tiles and rows stay quiet; there is no custom shadow or glass system. Reduce Motion disables animated repacking and uses the platform's reduced transition behavior.
+Use grouped system backgrounds, separators, and native sheet/material presentation. Rows stay quiet; there is no custom shadow or glass system beyond the quilt's own ink — a corner mark's one-point drop shadow and the seam stroke between tiles are the quilt's, not the app's. Reduce Motion disables animated repacking and uses the platform's reduced transition behavior.
 
 **The Live Surface Rule.** Opening a profile keeps the quilt's filter and viewport alive behind it. Filtering never dismisses the profile; changing quilts does. One temporary overlay at a time: a tap on the canvas behind the filter sheet closes the sheet first, then docks the patch.
 
 ## Shapes
 
-Use system-rounded controls and native sheet corners; the only fixed project geometry is the 8pt quilt tile radius. Prefer grouped lists and system separators over bespoke card stacks. Keep tile geometry square and legible; do not add irregular textile edges or decorative seams.
+Use system-rounded controls and native sheet corners. Tiles are square and meet edge to edge; the only line between them is the seam ink drawn on top, never a gap or a per-tile outline. Corner marks are discs of 22pt; badges are pills with a half-em radius. Prefer grouped lists and system separators over bespoke card stacks. The web's wandering lattice and raw-edge wobble are not drawn yet — when they are, the seam still belongs to the boundary, not to either tile.
 
 ## Components
 
@@ -125,9 +132,11 @@ Use system-rounded controls and native sheet corners; the only fixed project geo
 
 ### Quilt Tiles
 
-- **Surface:** `secondarySystemGroupedBackground`, 8pt corner radius, and no image or texture.
-- **Label:** bounded UILabel with 8pt inset, three lines, tail ellipsis, and counter-scaled caption text.
-- **Interaction:** UIKit pinch/pan belongs to the canvas; tile taps are native buttons with full accessibility names and the hint “Opens patch details.”
+- **Block:** one of the twelve curated blocks (Pinwheel, Ohio Star, Broken Dishes, Flying Geese, Four Patch, Nine Patch, Hourglass, Sawtooth Star, Rail Fence, Log Cabin, Bear's Paw, Windmill) or the patch's drafted block (a grid, seams between wall anchors, pieces coloured by bundle slot), rotated 0/90/180/270 about the tile centre. Every piece cut from one fabric is one shape layer, sealed with a hairline stroke of its own colour so no ground shows between two fabrics. A filler cell is a ghost block at 15% opacity, never named, never tappable. Unknown palette, block or motif keys degrade to the hash-assigned tile rather than erroring.
+- **Seams:** 0.6pt of seam ink along every unique boundary segment, stroked once however many tiles share it; the quilt's outer edge wears a 2.4pt binding. Both are screen pixels — they read the same at 0.3× and 6×. While a repack animates, the ink waits for the tiles to land rather than morphing.
+- **Corner marks:** the **motif** (top-left, on the patch's identity colour) on every tile, and the **unclaimed mark** (top-right, a broken chain link on a neutral disc) on community listings. A disc is 22pt, inset 6pt, with a 1.5pt heavy-thread ring and a 1pt shadow; the glyph is 14pt Phosphor fill. One size per tile — `min(22, tile × zoom × 0.3)` — so a tile's marks appear and vanish together, and below 9pt they go. The motif resolves chosen → first motif-bearing tag (from the quilt's `tags` vocabulary) → quilt mark.
+- **Name badge:** the name, centred, and nothing else, in a frosted pill (caption size semibold, bounded at 17pt, 1.3 line height, 0.2em/0.4em padding, half-em radius, thread border) floating in screen space. A tile earns a badge at 52pt on screen and an incumbent holds its badge down to 44pt; a new badge owes its neighbours 32pt of visible quilt and an incumbent 26pt on an 80pt tile, sliding toward the full gap near the floor. Incumbents are placed first, then larger tiles. A name sits flat until its neighbours leave no room, then stacks to two or three balanced lines (width cap 8.5em); only a name that fits at no depth gives up its badge. Badges clip at the safe area rather than reshaping, and are never drawn under the status bar or the tab bar.
+- **Interaction:** UIKit pinch/pan belongs to the canvas; tiles are native controls with full accessibility names and the hint “Opens patch details.” A tap on a badge opens that badge's patch, even where the pill overhangs a neighbour; the quilt still pans under it. Badges are not accessibility elements — the tile is.
 
 ### Docked Profile
 
@@ -147,6 +156,7 @@ Use SF Symbols, `TabView`, `NavigationStack`, grouped `List`, `Map`, native shee
 - **Do** preserve placement order, repack filtered subsets, and share one filter state across Quilt, Map, and List.
 - **Do** honor Reduce Motion for repacking and native transitions.
 - **Do** preserve the active viewport and filters while a profile is open.
-- **Don't** add textile patterns, fabric artwork, stitching, hand lettering, generated raster assets, or a web icon set.
+- **Don't** invent appearance: a tile is what the patch chose or what the hash assigned, and an unknown key falls back rather than being guessed at. Don't paint names onto fabric, scale marks or seam ink with the quilt, or add hand lettering or generated raster assets.
+- **Don't** mean status with colour: identity wears the patch's own colour, status wears a neutral disc.
 - **Don't** replace native controls with web-shaped buttons, custom global navigation, or hover-only affordances.
 - **Don't** silently select a quilt or invent authenticated actions; joining, following, and governance remain website links in this browsing pass, and Dashboard and notifications wait for sign-in rather than standing in the shell as stubs.
