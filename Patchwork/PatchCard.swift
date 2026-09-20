@@ -21,11 +21,19 @@ import SwiftUI
 /// decorations of it. Nothing here is invented: an unknown key falls back
 /// exactly as the canvas's does, because both ask the same registries.
 struct TileMiniature: View {
+    /// How the block meets its frame. A **tile** is the quilt's own square,
+    /// rounded like a tile and wearing both corner marks. A **cover** is the
+    /// web's `.card-image`: the same square laid across a wide strip and
+    /// cropped, centred — `preserveAspectRatio="xMidYMid slice"` — so the card
+    /// leads with the patch's cloth rather than a stamp of it.
+    enum Fit { case tile, cover }
+
     let patch: Patch
     /// The quilt's tag vocabulary, which is how a patch that chose no motif
     /// still wears a mark that says what it is. Absent, the mark resolves to
     /// the chosen motif or the quilt mark.
     var tagMotifs: [String: String] = [:]
+    var fit: Fit = .tile
     var side: CGFloat = 60
     /// Republished by the session; held so the miniature recuts when the
     /// reader changes register, the way the canvas does (docs/adr/112).
@@ -33,21 +41,34 @@ struct TileMiniature: View {
 
     private var palette: QuiltTheme.Palette { QuiltTheme.palette(for: patch) }
     private var rotation: Int { QuiltBlocks.rotation(id: patch.id, appearance: patch.appearance) }
-    /// The corner mark's size here is the canvas's rule read at this scale:
-    /// a share of the tile, capped at the full 22pt disc.
-    private var markSize: CGFloat { min(QuiltInk.markSize, side * QuiltInk.markShare) }
-    private var inset: CGFloat { max(2, QuiltInk.markInset * side / QuiltInk.unit) }
+    /// The corner mark's size: the canvas's own rule read at this scale for a
+    /// tile, and the web's flat 22pt disc on a cover strip.
+    private var markSize: CGFloat { fit == .cover ? QuiltInk.markSize : min(QuiltInk.markSize, side * QuiltInk.markShare) }
+    private var inset: CGFloat { fit == .cover ? 8 : max(2, QuiltInk.markInset * side / QuiltInk.unit) }
 
     var body: some View {
-        Canvas { context, size in
-            context.translateBy(x: size.width / 2, y: size.height / 2)
+        block
+            .overlay(alignment: .topLeading) { leadingMark }
+            .overlay(alignment: .topTrailing) { trailingMark }
+            .accessibilityHidden(true)
+            .id(colorMode)
+    }
+
+    @ViewBuilder private var block: some View {
+        let canvas = Canvas { context, size in
+            // The square is drawn at whichever edge is longer and centred on
+            // the frame; the clip does the cropping. At `.tile` the two are
+            // equal and this is the identity.
+            let square = max(size.width, size.height)
+            context.translateBy(x: (size.width - square) / 2, y: (size.height - square) / 2)
+            context.translateBy(x: square / 2, y: square / 2)
             context.rotate(by: .degrees(Double(rotation)))
-            context.translateBy(x: -size.width / 2, y: -size.height / 2)
+            context.translateBy(x: -square / 2, y: -square / 2)
             for cut in QuiltBlocks.cuts(id: patch.id, appearance: patch.appearance, palette: palette) {
                 guard let uiColor = UIColor(hex: cut.hex) else { continue }
                 let color = Color(uiColor)
                 var path = Path()
-                path.addLines(cut.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) })
+                path.addLines(cut.points.map { CGPoint(x: $0.x * square, y: $0.y * square) })
                 path.closeSubpath()
                 context.fill(path, with: .color(color))
                 // The canvas's hairline seal, for the same reason: no ground
@@ -55,23 +76,40 @@ struct TileMiniature: View {
                 context.stroke(path, with: .color(color), lineWidth: 0.5)
             }
         }
-        .frame(width: side, height: side)
         .background(Color(UIColor(hex: palette.bg) ?? .clear))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(alignment: .topLeading) {
+        switch fit {
+        case .tile:
+            canvas.frame(width: side, height: side)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        case .cover:
+            canvas.frame(maxWidth: .infinity).frame(height: side).clipped()
+        }
+    }
+
+    /// The motif, on the patch's identity colour — its mark anywhere it is not
+    /// a full tile. A cover strip does not wear it: the card's title carries
+    /// the motif disc instead, where it sits beside the name it stands for.
+    @ViewBuilder private var leadingMark: some View {
+        switch fit {
+        case .tile:
             mark(Motifs.image(Motifs.key(for: patch, tagMotifs: tagMotifs)),
                  disc: Color(UIColor(hex: palette.primary) ?? .label),
                  ink: Color(QuiltTheme.textOnColor(palette.primary)))
+        case .cover:
+            // The web puts the unclaimed mark at the strip's top-left, because
+            // the right corner is spoken for by the follow chip.
+            if patch.communityListing { unclaimedMark }
         }
-        .overlay(alignment: .topTrailing) {
-            // Status wears a neutral disc in both themes, never the patch's
-            // own colour (DESIGN.md "Don't mean status with colour").
-            if patch.communityListing {
-                mark(Motifs.unclaimed, disc: Color(QuiltInk.statusDisc), ink: .white)
-            }
-        }
-        .accessibilityHidden(true)
-        .id(colorMode)
+    }
+
+    @ViewBuilder private var trailingMark: some View {
+        if fit == .tile, patch.communityListing { unclaimedMark }
+    }
+
+    /// Status wears a neutral disc in both themes, never the patch's own
+    /// colour (DESIGN.md "Don't mean status with colour").
+    private var unclaimedMark: some View {
+        mark(Motifs.unclaimed, disc: Color(QuiltInk.statusDisc), ink: .white)
     }
 
     @ViewBuilder private func mark(_ image: UIImage?, disc: Color, ink: Color) -> some View {
@@ -92,12 +130,40 @@ struct TileMiniature: View {
     }
 }
 
+/// The patch's identity colour as a small disc with its motif in it — the
+/// web's `.card-motif`, which stands beside the name the way a corner mark
+/// stands on a tile.
+struct MotifDisc: View {
+    let patch: Patch
+    var tagMotifs: [String: String] = [:]
+    var side: CGFloat = 18
+    var colorMode: ColorMode = QuiltTheme.colorMode
+    var body: some View {
+        let hex = QuiltTheme.palette(for: patch).primary
+        Circle()
+            .fill(Color(UIColor(hex: hex) ?? .label))
+            .overlay {
+                if let image = Motifs.image(Motifs.key(for: patch, tagMotifs: tagMotifs)) {
+                    Image(uiImage: image)
+                        .renderingMode(.template)
+                        .resizable()
+                        .frame(width: side * 0.62, height: side * 0.62)
+                        .foregroundStyle(Color(QuiltTheme.textOnColor(hex)))
+                }
+            }
+            .frame(width: side, height: side)
+            .accessibilityHidden(true)
+            .id(colorMode)
+    }
+}
+
 // MARK: - The card
 
-/// One patch, as the web's cards pane shows it to a signed-out visitor: the
-/// tile, the name, the counts, the state it wears, and what it says about
-/// itself. The whole card is the door into the patch; the only other thing on
-/// it is the follow heart, which is an exit to the website.
+/// One patch, as the web's cards pane shows it to a signed-out visitor
+/// (`.patch-card` in SocialHome.svelte): a cover strip of the patch's own
+/// cloth, then a body that names it, counts it and lets it speak. The whole
+/// card is the door into the patch; the only other thing on it is the follow
+/// heart, which is an exit to the website.
 struct PatchCard: View {
     let patch: Patch
     var tagMotifs: [String: String] = [:]
@@ -107,65 +173,89 @@ struct PatchCard: View {
     /// to fake (DESIGN.md "Don't … invent authenticated actions").
     var followURL: URL?
     let open: () -> Void
+    @Environment(\.colorScheme) private var scheme
+
+    /// The site's own `--radius`. Tighter than iOS would choose, and that is
+    /// the point: it is the corner the web's cards turn.
+    private let radius: CGFloat = 6
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
 
     var body: some View {
         Button(action: open) {
-            HStack(alignment: .top, spacing: 12) {
-                TileMiniature(patch: patch, tagMotifs: tagMotifs, side: 60, colorMode: colorMode)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(patch.name)
-                        .font(.headline)
-                        .foregroundStyle(Color.pwText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 6) {
-                        Text(patch.cardCountsLabel)
-                            .font(.subheadline)
-                            .foregroundStyle(Color.pwTextMuted)
-                        if patch.movedTo?.isEmpty == false { movedChip }
-                    }
-                    if let description = patch.description, !description.isEmpty {
-                        Text(description)
-                            .font(.subheadline)
-                            .foregroundStyle(Color.pwTextMuted)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                // Room for the heart, which is laid over the card rather than
-                // inside this button: a link inside a button is a target that
-                // swallows the card's own tap.
-                Spacer(minLength: followURL == nil ? 0 : 28)
+            VStack(alignment: .leading, spacing: 0) {
+                TileMiniature(patch: patch, tagMotifs: tagMotifs, fit: .cover, side: 100, colorMode: colorMode)
+                body(for: patch)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .cardSurface()
+        .background(Color.pwSurface)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.pwBorder, lineWidth: 1))
+        // The web's `0 2px 10px var(--color-shadow)`. On denim there is
+        // nothing for a shadow to fall on, so it all but goes.
+        .shadow(color: .black.opacity(scheme == .dark ? 0.05 : 0.08), radius: 5, y: 2)
         .overlay(alignment: .topTrailing) { follow }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("patchRow")
         .accessibilityHint("Opens patch details.")
     }
 
+    private func body(for patch: Patch) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                MotifDisc(patch: patch, tagMotifs: tagMotifs, colorMode: colorMode)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
+                Text(patch.name)
+                    .font(Font.pw.cardTitle)
+                    .foregroundStyle(Color.pwText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 6) {
+                Text(patch.cardCountsLabel)
+                    .font(Font.pw.captionSemibold)
+                    .foregroundStyle(Color.pwText)
+                if patch.movedTo?.isEmpty == false { movedChip }
+            }
+            if let description = patch.description, !description.isEmpty {
+                Text(description)
+                    .font(Font.pw.caption)
+                    .foregroundStyle(Color.pwTextMuted)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+    }
+
     /// A fact, not a chip that does anything: this patch left, and the profile
     /// is where its forwarding address is.
     private var movedChip: some View {
         Text("Moved")
-            .font(.caption2.weight(.semibold))
+            .font(Font.pw.caption2Semibold)
             .foregroundStyle(Color.pwTextMuted)
             .padding(.horizontal, 7).padding(.vertical, 2)
             .overlay(Capsule().strokeBorder(Color.pwBorder))
     }
 
+    /// The web's `.card-corner`: a glass chip on the strip's top-right. The
+    /// heart is one of the few places the tint belongs — it is a control, not
+    /// a phrase — and it carries no state, because this client has none.
     @ViewBuilder private var follow: some View {
         if let followURL {
             Link(destination: followURL) {
                 Image(systemName: "heart")
-                    .font(.subheadline)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.pwAccent)
+                    .frame(width: 30, height: 30)
+                    .background(.regularMaterial, in: Circle())
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Follow \(patch.name)")
-            .accessibilityHint("Opens this quilt’s website to sign in.")
+            .accessibilityHint("Opens this quilt\u{2019}s website to sign in.")
         }
     }
 }

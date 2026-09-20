@@ -2,8 +2,8 @@
 name: Patchwork for iOS
 description: Clean native browsing for independently operated community quilts.
 colors:
-  accent-light: "#0272B5"
-  accent-dark: "#39B4F6"
+  accent-light: "#C43D07"
+  accent-dark: "#E8734A"
   ground-light: "#F4F0E8"
   ground-dark: "#151820"
   surface-light: "#FAF6EE"
@@ -16,16 +16,16 @@ colors:
   text-muted-dark: "#9B958C"
 typography:
   display:
-    fontFamily: "SF Pro Display, SF Pro, -apple-system, sans-serif"
+    fontFamily: "Shantell Sans, SF Pro Display, -apple-system, sans-serif"
   headline:
-    fontFamily: "SF Pro Display, SF Pro, -apple-system, sans-serif"
+    fontFamily: "Space Grotesk, SF Pro Text, -apple-system, sans-serif"
   body:
-    fontFamily: "SF Pro Text, SF Pro, -apple-system, sans-serif"
+    fontFamily: "Space Grotesk, SF Pro Text, -apple-system, sans-serif"
   label:
-    fontFamily: "SF Pro Text, SF Pro, -apple-system, sans-serif"
+    fontFamily: "Space Grotesk, SF Pro Text, -apple-system, sans-serif"
 rounded:
   tile: "8pt"
-  card: "14pt"
+  card: "6pt"
 spacing:
   sm: "8pt"
   card: "14pt"
@@ -41,7 +41,8 @@ components:
     borderColor: "{colors.border-light}"
     textColor: "{colors.text-light}"
     rounded: "{rounded.card}"
-    padding: "{spacing.card}"
+    padding: "10pt 12pt"
+    coverHeight: "100pt"
   patch-tile:
     backgroundColor: "{colors.surface-light}"
     textColor: "{colors.text-light}"
@@ -73,7 +74,9 @@ The app is native but not anonymous. Its six colours are the site's, not iOS's d
 
 ### Primary
 
-- **AccentColor light** (`{colors.accent-light}`) and **AccentColor dark** (`{colors.accent-dark}`): the web's `--color-primary`. Links, prominent actions, selected controls, and map/list selection through the asset-backed `Color.accentColor`. Default system blue was replaced by it; nothing else in the chrome is allowed to mean "action".
+- **AccentColor light** (`{colors.accent-light}`) and **AccentColor dark** (`{colors.accent-dark}`): the web's `--color-accent`, a rust that belongs to the same fabric wall as the tiles (Rust `#A0430A`, Safety Orange `#E3480B`). It replaced the site's primary blue, because a blue tint on a white-ish list is indistinguishable from stock iOS however carefully it is chosen. Read it as `Color.pwAccent`, which names the asset: `Color.accentColor` answers with whatever tint the environment is carrying, and until something sets it that is the system's own blue — the app was drawing iOS blue for exactly that reason.
+
+**The tint is for controls, not for words.** It marks a selected segment, a toggle, a prominent button, the follow heart, a chip standing for a live state. Interactive *text* is ink: a link reads as `pwText` with a small exit arrow (`View.exitLink()`), a text door within the app reads as ink with the platform's chevron (`View.inkRow()`), and a link inside prose is underlined rather than coloured. Colouring every tappable phrase is what made the app read as a web page in iOS clothing, and a page full of coloured phrases stops saying anything at all.
 
 ### Neutral
 
@@ -112,17 +115,23 @@ Ink around the fabric follows the web's textile tokens and flips with the theme:
 
 ## Typography
 
-**Display Font:** SF Pro Display through system text styles
-**Body Font:** SF Pro Text through system text styles
-**Label/Mono Font:** SF Pro Text; use a monospaced system variant only for technical origins.
+The site's two typefaces, bundled and registered (`Patchwork/Fonts`, `UIAppFonts` in `Patchwork/Info.plist`), reached only through `Font.pw.*` / `PWType` (`Typography.swift`).
 
-Use `largeTitle`, `title2`, `headline`, `body`, `subheadline`, and `caption`; Dynamic Type and the operating system control their metrics.
+**Body/UI Font:** **Space Grotesk** (variable, `wght` 300–700; PostScript `SpaceGrotesk-Light`) — everything a person reads or operates.
+**Display Font:** **Shantell Sans** (variable, `wght` 300–800; PostScript `ShantellSans-Light`) — the hand-lettered voice, and only where a screen or a patch says its own name: the large navigation titles, "Patches", the quilt's name in the picker and the info stack, the patch name in the profile's head.
+**Mono:** a monospaced system variant, only for technical origins (an atproto handle).
+
+Both are SIL Open Font Licence 1.1; the texts are in `docs/third-party/`. Both are shipped as their single variable TTF, so a weight is a coordinate on the `wght` axis rather than another file, applied through `kCTFontVariationAttribute` and clamped to the axis range — an out-of-range coordinate silently returns the font's default instance, which is Light for both. Every size is the system's own for its text style at the Large content size and is then scaled by `UIFontMetrics`, so Dynamic Type reaches the bundled faces exactly as it reaches SF Pro, up to the accessibility sizes. If a face fails to register, every call falls back to SF Pro at the same style and weight: the app is legible with no bundled fonts at all.
+
+The UIKit chrome SwiftUI does not reach — navigation bar titles, tab bar labels, the quilt's name badges — is set once through `PWType.install()` and `PWType.baseFont`.
+
+Use `Font.pw.largeTitle`, `.title2`, `.headline`, `.body`, `.subheadline`, `.caption` and their semibold variants; Dynamic Type and the operating system still control their metrics.
 
 ### Hierarchy
 
-- **Display** (bold, Large Title system style): patch and event detail titles.
-- **Headline** (semibold, Headline system style): patch and event names.
-- **Title** (bold, Title 2 system style): quilt identity and sheet introductions.
+- **Display** (Shantell Sans, 700): a screen or a patch naming itself — the large navigation titles, "Patches", the quilt's name, the profile head's patch name.
+- **Headline** (Space Grotesk 600): patch and event names in a list.
+- **Title** (Space Grotesk 700): sheet introductions and section titles that are not a name.
 - **Body** (regular, Body system style): descriptions and explanatory copy.
 - **Label** (medium, Caption or Footnote system style): dates, hosts, filters, and metadata.
 
@@ -142,18 +151,19 @@ The canvas fills the available iPhone or iPad viewport. Profiles dock as native 
 
 ## Elevation & Depth
 
-Depth is stated by surface and hairline, never by shadow. A card is `pwSurface` on `pwGround`, cut out with a ⅓pt `pwBorder` stroke at a 14pt continuous radius; that is the whole elevation system. There is no custom shadow or glass beyond the quilt's own ink — a corner mark's one-point drop shadow and the seam stroke between tiles are the quilt's, not the app's — and the system's materials are used unaltered where the system presents them. Where a grouped `List` remains, it is re-grounded rather than restyled: `scrollContentBackground(.hidden)` over `pwGround` with `pwSurface` rows (`View.groundedList()`). Reduce Motion disables animated repacking and uses the platform's reduced transition behavior.
+Depth is stated by surface and hairline, with the one soft shadow the web itself carries. A card is `pwSurface` on `pwGround`, cut out with a 1pt `pwBorder` stroke at the site's 6pt radius and lifted by its `0 2px 10px var(--color-shadow)` — faint in light, all but absent in dark. That is the whole elevation system. There is no other custom shadow or glass beyond the quilt's own ink — a corner mark's one-point drop shadow and the seam stroke between tiles are the quilt's, not the app's — and the system's materials are used unaltered where the system presents them. Where a grouped `List` remains, it is re-grounded rather than restyled: `scrollContentBackground(.hidden)` over `pwGround` with `pwSurface` rows (`View.groundedList()`). Reduce Motion disables animated repacking and uses the platform's reduced transition behavior.
 
 **The Live Surface Rule.** Opening a profile keeps the quilt's filter and viewport alive behind it. Filtering never dismisses the profile; changing quilts does. One temporary overlay at a time: a tap on the canvas behind the filter sheet closes the sheet first, then docks the patch.
 
 ## Shapes
 
-Use system-rounded controls and native sheet corners. Tiles are square and meet edge to edge; the only line between them is the seam ink drawn on top, never a gap or a per-tile outline. Corner marks are discs of 22pt; badges are pills with a half-em radius. Cards are 14pt continuous-radius rectangles with a hairline border and 14pt of their own padding; their tile miniature is an 8pt-radius square, the same corner the quilt's tiles wear. Prefer a re-grounded system list wherever the content is a setting or a document; a card is for a thing that could move to another surface — a patch, an event, a member. The web's wandering lattice and raw-edge wobble are not drawn yet — when they are, the seam still belongs to the boundary, not to either tile.
+Use system-rounded controls and native sheet corners. Tiles are square and meet edge to edge; the only line between them is the seam ink drawn on top, never a gap or a per-tile outline. Corner marks are discs of 22pt; badges are pills with a half-em radius. Cards are 6pt continuous-radius rectangles — the site's `--radius` — with a 1pt border, a 100pt cover strip and a 10 × 12pt body; a standalone tile miniature is an 8pt-radius square, the same corner the quilt's tiles wear. Prefer a re-grounded system list wherever the content is a setting or a document; a card is for a thing that could move to another surface — a patch, an event, a member. The web's wandering lattice and raw-edge wobble are not drawn yet — when they are, the seam still belongs to the boundary, not to either tile.
 
 ## Components
 
 ### Buttons
 
+- **Rule:** the tint fills a control; it never colours a word (see Colors).
 - **Shape:** native button styles with a 44pt minimum hit area.
 - **Primary:** `.borderedProminent` for Find quilt and Explore quilt using `Color.accentColor`.
 - **Secondary:** `.bordered`, `.plain`, or `Link` for Cancel, Done, website, directions, and sharing.
@@ -174,10 +184,12 @@ Use system-rounded controls and native sheet corners. Tiles are square and meet 
 
 The one shape in the app that is not a system row. A card is "a bordered surface holding something that could move" (web CONTEXT.md), and a patch is exactly that, so List is a scrolling stack of cards on `pwGround` rather than a grouped list — which read as settings where the web reads as patches.
 
-- **Anatomy** (web SocialHome's cards pane, ADR 078): a 60pt **tile miniature** at the leading edge, then the name (Headline), the counts line, a `Moved` chip where the patch left, and up to three lines of the patch's own description. The whole card is the door into the docked profile.
-- **Tile miniature:** the *same* drawing the canvas makes — `QuiltBlocks.cuts` over `QuiltTheme.palette`, rotated about the centre, hairline-sealed — clipped to an 8pt square, with the motif disc on the patch's identity colour in the top-left corner and the neutral unclaimed mark in the top-right, at the canvas's own `min(22, side × 0.3)` rule. It is decorative to VoiceOver: the card already names the patch.
+- **The card:** `pwSurface`, a 1pt `pwBorder` border, the site's own `--radius` of 6pt, and the site's soft `0 2px 10px var(--color-shadow)` — faint in light, all but gone in dark, where there is nothing for a shadow to fall on. Cards stack vertically with 12pt between them inside a 16pt gutter. The whole card is the door into the docked profile.
+- **Cover strip** (`.card-image`): 100pt tall, full width, filled with the patch's own block — the same `QuiltBlocks.cuts` over `QuiltTheme.palette` the canvas draws, rotated about the centre and hairline-sealed, rendered square and cropped centre (`xMidYMid slice`). The unclaimed mark rides its top-left as the quilt's own 22pt dark disc with the white broken link; the follow chip takes the top-right, as it does on the web.
+- **Body** (`.card-body`, 10pt × 12pt): the name at 15/700 with an 18pt **motif disc** inline before it — identity colour, ink or white glyph by luminance — then the counts at 12/600 in `pwText`, a `Moved` chip where the patch left, then up to two lines of the patch's own description in `pwTextMuted`. The card is one accessibility element: it already names the patch, so the drawing is decorative to VoiceOver.
 - **Counts:** `N Members · N Events`, or `N Following · N Events` on a community listing, worded as the web's card words it. The event figure is every active event the patch owns — not the head's upcoming count, which answers a different question.
-- **Follow:** a heart in the top-right corner, and it is a `Link` to `{quilt}/login?redirect=/patches/{slug}`. Signed out is the only state this client has, so the heart is an exit rather than a control with a state to fake, and it is withheld from a patch that has moved.
+- **Follow:** a heart in a material chip on the strip's top-right, and it is a `Link` to `{quilt}/login?redirect=/patches/{slug}`. Signed out is the only state this client has, so the heart is an exit rather than a control with a state to fake, and it is withheld from a patch that has moved. It is one of the few places the tint belongs: a control, not a phrase.
+- **`TileMiniature`** draws either fit — the square `.tile` with both corner marks, or the `.cover` strip — so anywhere else that names a patch gets the same drawing rather than a second decoration of it.
 - **Header:** "Patches", then `N results` — or `N of M` while the quilt is narrowed, so the filter's work is visible — and a `Menu` of the web's three orders: **Quilt order** (the placement the canvas is drawing, read back), **Recently added** (arrival, else listing, ties A to Z), **A→Z**.
 - **Empty states:** a filter that empties the list says "No patches match your filter" with **Clear filter**, plus **Suggest a patch** to the website where `submissions_enabled`; an empty quilt says "No patches here yet" and offers only the suggestion. The list ends in the quiet footer strip.
 - **Reuse:** `PatchCard` and `TileMiniature` live in `PatchCard.swift` so Discover rows and search results can adopt the same language.
@@ -230,7 +242,8 @@ Use SF Symbols, `TabView`, `NavigationStack`, a re-grounded `List`, a card stack
 ## Do's and Don'ts
 
 - **Do** use the `Palette` tokens for ground, surface, hairline and text, and semantic system colours wherever a system component owns them; use Dynamic Type, SF Symbols, VoiceOver labels, safe areas, and 44pt targets.
-- **Do** reach a colour through `Color.pwGround` / `.pwSurface` / `.pwBorder` / `.pwText` / `.pwTextMuted`, never a literal or a second definition of the same value.
+- **Do** reach a colour through `Color.pwGround` / `.pwSurface` / `.pwBorder` / `.pwText` / `.pwTextMuted` / `.pwAccent`, never a literal, `Color.accentColor`, or a second definition of the same value.
+- **Do** set type through `Font.pw.*`, so a screen grows with Dynamic Type in the bundled faces and falls back to SF Pro as one piece if they are ever missing.
 - **Do** give a patch its tile wherever it is named outside the quilt: the miniature is the same drawing, not a second decoration of it.
 - **Do** preserve placement order, repack filtered subsets, and share one filter state across Quilt, Map, and List.
 - **Do** honor Reduce Motion for repacking and native transitions.
@@ -238,5 +251,7 @@ Use SF Symbols, `TabView`, `NavigationStack`, a re-grounded `List`, a card stack
 - **Don't** invent appearance: a tile is what the patch chose or what the hash assigned, and an unknown key falls back rather than being guessed at. Don't paint names onto fabric, scale marks or seam ink with the quilt, or add hand lettering or generated raster assets.
 - **Don't** mean status with colour: identity wears the patch's own colour, status wears a neutral disc.
 - **Don't** replace native controls with web-shaped buttons, custom global navigation, or hover-only affordances. A card is not a licence to restyle the system: materials, sheets, the tab bar and the segmented pill stay the platform's.
-- **Don't** add shadows, gradients or a second elevation step; a surface and a hairline are the whole system. Don't tint a neutral: one tint means action, and nothing else may.
+- **Don't** add gradients or a second elevation step beyond the card's one soft shadow; a surface and a hairline do the work. Don't tint a neutral: one tint means action, and nothing else may.
+- **Don't** colour interactive text. A link is ink with an exit arrow, a text door is ink with a chevron, and a link inside prose is underlined — the tint fills controls.
+- **Don't** set Shantell Sans on anything a person has to read at length; it is a name's voice, not a paragraph's.
 - **Don't** silently select a quilt or invent authenticated actions; joining, following, suggesting a patch, governance, and submitting or editing an event remain website links in this browsing pass, and Dashboard and notifications wait for sign-in rather than standing in the shell as stubs.

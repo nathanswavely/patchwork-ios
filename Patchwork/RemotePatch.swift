@@ -30,17 +30,17 @@ struct RemotePatchView: View {
                         Image(uiImage: icon).resizable().frame(width: 18, height: 18)
                             .clipShape(RoundedRectangle(cornerRadius: 3)).accessibilityHidden(true)
                     } else {
-                        Image(systemName: "square.grid.2x2").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+                        Image(systemName: "square.grid.2x2").font(Font.pw.caption).foregroundStyle(.secondary).accessibilityHidden(true)
                     }
-                    Text("On \(quiltName), another quilt").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("On \(quiltName), another quilt").font(Font.pw.captionSemibold).foregroundStyle(.secondary)
                 }
             }
             if let patch {
                 Section {
-                    Text(patch.name).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
-                    Text(patch.countsLabel).font(.subheadline).foregroundStyle(.secondary)
+                    Text(patch.name).font(Font.pw.title2).fixedSize(horizontal: false, vertical: true)
+                    Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(.secondary)
                     if let tags = patch.tags, !tags.isEmpty {
-                        Text(tags.joined(separator: " · ")).font(.footnote).foregroundStyle(.secondary)
+                        Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(.secondary)
                     }
                     if let description = patch.description, !description.isEmpty {
                         Text(description).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
@@ -51,9 +51,9 @@ struct RemotePatchView: View {
                         ForEach(events) { event in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(event.title)
-                                Text(event.shortDateLabel).font(.subheadline).foregroundStyle(.secondary)
+                                Text(event.shortDateLabel).font(Font.pw.subheadline).foregroundStyle(.secondary)
                                 if let location = event.location, !location.isEmpty {
-                                    Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(location).font(Font.pw.caption).foregroundStyle(.secondary).lineLimit(1)
                                 }
                             }.padding(.vertical, 2).accessibilityIdentifier("remoteEventRow")
                         }

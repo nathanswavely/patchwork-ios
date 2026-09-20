@@ -20,7 +20,7 @@ struct LabelView: View {
                 published(label)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("No Label yet").font(.title.bold())
+                    Text("No Label yet").font(Font.pw.title)
                     Text("Nobody has written this quilt’s Label yet.").foregroundStyle(Color.secondary)
                 }
             }
@@ -37,10 +37,10 @@ struct LabelView: View {
     @ViewBuilder private func published(_ label: QuiltLabel) -> some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("The Label").font(.caption.weight(.bold)).foregroundStyle(Color.accentColor).textCase(.uppercase)
-                Text("How \(session.quilt.name) is run").font(.title.bold())
+                Text("The Label").font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted).textCase(.uppercase)
+                Text("How \(session.quilt.name) is run").font(Font.pw.title)
                 Text("Quilts carry a label on the back that says who made them and when. This is ours.")
-                    .font(.subheadline).foregroundStyle(Color.secondary)
+                    .font(Font.pw.subheadline).foregroundStyle(Color.secondary)
             }
             if !stewards.isEmpty { stewardRoster }
             if let prose = label.prose, !prose.isEmpty { MarkdownText(source: prose, base: session.quilt.url) }
@@ -60,9 +60,9 @@ struct LabelView: View {
                 HStack(alignment: .top, spacing: 12) {
                     StewardAvatar(steward: steward)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(steward.title).font(.headline)
-                        Text("@" + steward.username).font(.subheadline).foregroundStyle(Color.secondary)
-                        if let blurb = steward.blurb, !blurb.isEmpty { Text(blurb).font(.subheadline) }
+                        Text(steward.title).font(Font.pw.headline)
+                        Text("@" + steward.username).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
+                        if let blurb = steward.blurb, !blurb.isEmpty { Text(blurb).font(Font.pw.subheadline) }
                     }
                     Spacer(minLength: 0)
                 }
@@ -77,12 +77,12 @@ struct LabelView: View {
     /// the stewards have typed in what the services cost.
     @ViewBuilder private func costs(_ label: QuiltLabel) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What this runs on").font(.title3.bold())
+            Text("What this runs on").font(Font.pw.title3)
             if !items.isEmpty {
                 if label.stale == true {
                     Label {
                         Text("These figures haven’t been reviewed since \(label.statedOn ?? "they were stated"). They may be out of date.")
-                            .font(.subheadline)
+                            .font(Font.pw.subheadline)
                     } icon: {
                         Image(systemName: "clock")
                     }
@@ -95,24 +95,24 @@ struct LabelView: View {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline) {
-                                Text(item.service ?? "—").font(.headline)
+                                Text(item.service ?? "—").font(Font.pw.headline)
                                 Spacer(minLength: 8)
                                 Text(QuiltLabel.money(item.amountMinor, label.currency) + item.periodWord)
                                     .font(.subheadline.monospacedDigit())
                             }
                             if let purpose = item.purpose, !purpose.isEmpty {
-                                Text(purpose).font(.subheadline).foregroundStyle(Color.secondary)
+                                Text(purpose).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                             }
                             if let why = item.why, !why.isEmpty {
-                                Text(why).font(.footnote).foregroundStyle(Color.secondary)
+                                Text(why).font(Font.pw.footnote).foregroundStyle(Color.secondary)
                             }
                         }
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("About \(QuiltLabel.money(label.totalMonthlyMinor, label.currency))/month to keep running").font(.headline)
+                    Text("About \(QuiltLabel.money(label.totalMonthlyMinor, label.currency))/month to keep running").font(Font.pw.headline)
                     Text("The stewards typed these numbers in themselves. Nobody audits this.")
-                        .font(.footnote).foregroundStyle(Color.secondary)
+                        .font(Font.pw.footnote).foregroundStyle(Color.secondary)
                 }
             }
             // The version and the two cross-quilt capabilities, each stated in
@@ -120,16 +120,16 @@ struct LabelView: View {
             // made of, not settings a reader is being offered.
             VStack(alignment: .leading, spacing: 4) {
                 if let version = label.version, !version.isEmpty {
-                    Text("Running Patchwork \(version).").font(.footnote).foregroundStyle(Color.secondary)
+                    Text("Running Patchwork \(version).").font(Font.pw.footnote).foregroundStyle(Color.secondary)
                 }
                 Text(label.federation == true
                      ? "Federating. Public patches here can be followed from Mastodon and other ActivityPub sites."
                      : "Not federating. Patches here can’t be followed from other sites.")
-                    .font(.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
                 Text(label.multiQuilt == true
                      ? "Readable by other quilts. Their sites can show this quilt’s public patches and events alongside their own."
                      : "Not readable by other quilts. They can link here, but people have to follow the link to see anything.")
-                    .font(.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
             }
         }
     }
@@ -139,8 +139,8 @@ struct LabelView: View {
         let feedback = label.feedbackUrl.flatMap(webLink)
         if support != nil || feedback != nil {
             VStack(alignment: .leading, spacing: 10) {
-                if let support { Link(destination: support) { Label("Support this quilt", systemImage: "cup.and.saucer") } }
-                if let feedback { Link(destination: feedback) { Label("Send feedback", systemImage: "bubble.left.and.bubble.right") } }
+                if let support { Link(destination: support) { Label("Support this quilt", systemImage: "cup.and.saucer") }.exitLink() }
+                if let feedback { Link(destination: feedback) { Label("Send feedback", systemImage: "bubble.left.and.bubble.right") }.exitLink() }
             }
         }
     }
@@ -149,12 +149,12 @@ struct LabelView: View {
         Group {
             if let url = label.seamrippedFromUrl.flatMap(webLink) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Link(from, destination: url)
-                    Text("This quilt started as a fork of it.").font(.footnote).foregroundStyle(Color.secondary)
+                    Link(from, destination: url).exitLink()
+                    Text("This quilt started as a fork of it.").font(Font.pw.footnote).foregroundStyle(Color.secondary)
                 }
             } else {
                 Text("Seamripped from \(from). This quilt started as a fork of it.")
-                    .font(.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
             }
         }
     }
@@ -164,11 +164,11 @@ struct LabelView: View {
     @ViewBuilder private func theDoor(_ label: QuiltLabel) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Divider()
-            Label("If you don’t like how this is run", systemImage: "scissors").font(.title3.bold())
+            Label("If you don’t like how this is run", systemImage: "scissors").font(Font.pw.title3)
             Text("Real people run this, and real people sometimes run things poorly, so the exit is built in. Any member can export what they can already see and start the community over somewhere else, under different stewards.")
             if label.federation == true {
                 Text("Only the community travels: members, events, charters, and the threads between patches. This quilt’s addresses do not. A patch that leaves keeps its people and starts over with the followers it had on other sites.")
-                    .font(.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
             }
         }
     }
@@ -204,7 +204,7 @@ private struct StewardAvatar: View {
     private var initial: some View {
         ZStack {
             Circle().fill(Color(.tertiarySystemGroupedBackground))
-            Text(String(steward.title.replacingOccurrences(of: "@", with: "").prefix(1)).uppercased()).font(.headline)
+            Text(String(steward.title.replacingOccurrences(of: "@", with: "").prefix(1)).uppercased()).font(Font.pw.headline)
         }
     }
 }

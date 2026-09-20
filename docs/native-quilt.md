@@ -172,6 +172,80 @@ results can adopt the language later. They were **not** applied there in this
 pass: `Discover.swift` and `SearchResults.swift` were being edited in parallel
 and are untouched here.
 
+### Revised the same day, after review
+
+Three things were wrong with the first cut, and the fixes are what the section
+above now describes.
+
+**The tint was still a blue.** `--color-primary` is the site's blue, and a blue
+tint over a near-white list is stock iOS however carefully it is chosen. The one
+tint is now the site's `--color-accent` — rust `#C43D07` light, `#E8734A` dark —
+which belongs to the same fabric wall as the tiles. Two failures were found
+underneath it. The asset was never actually in force: `Color.accentColor` in
+SwiftUI answers with whatever tint the environment carries, and until something
+sets it that is the system's blue, so the app had been drawing `#0088FF` while
+the asset said otherwise; every reader now names the asset as `Color.pwAccent`.
+And the tint was doing a job that is not a tint's: **colouring text**. Links,
+"Get directions", "Visit patch website", "N more upcoming", the order menu, the
+footer strip and the fine-print eyebrows were all coloured phrases. The rule is
+now stated in DESIGN.md and carried by two modifiers: `exitLink()` — ink plus a
+small arrow, for a link that leaves the app — and `inkRow()` — ink plus the
+platform's chevron, for a text door inside it. A link inside prose is underlined
+by `Markdown.inline` rather than coloured. The tint fills controls: the selected
+segment, the tab bar's selection, a prominent button, the follow heart, a live
+state chip. An event row's date, which used to be tinted, is ink at semibold:
+emphasis is weight, and the tint means "you can press this".
+
+**The app had no typeface of its own.** Both of the site's faces are bundled
+under `Patchwork/Fonts` as their single variable TTF and registered through
+`UIAppFonts` in `Patchwork/Info.plist` (an explicit `INFOPLIST_FILE` that the
+generated plist merges onto, since the `INFOPLIST_KEY_*` settings have no
+spelling for that key): **Space Grotesk** (`wght` 300–700, PostScript
+`SpaceGrotesk-Light`) for body and UI, and **Shantell Sans** (`wght` 300–800,
+`ShantellSans-Light`) for display only — the large navigation titles, "Patches",
+the quilt's name in the picker and the info stack, and the patch name in the
+profile's head. That is the web's own division (`--font` and `--font-display`,
+"for big headings where it's personality, not strain"). Both are OFL 1.1, texts
+in `docs/third-party/`. `Typography.swift` holds the scale: a weight is a
+coordinate on the `wght` axis via `kCTFontVariationAttribute`, clamped to the
+axis range because an out-of-range coordinate silently returns the default
+instance — Light for both, which is how a whole app can quietly render thin.
+Sizes are the system's own per text style and are scaled by `UIFontMetrics`, so
+Dynamic Type reaches these faces as it reaches SF Pro; a face that fails to
+register falls back to SF Pro at the same style and weight, so nothing can crash
+or disappear. `PWType.install()` puts the faces on the two surfaces SwiftUI does
+not reach — the navigation bar's titles and the tab bar's labels — and the
+quilt's name badges take Space Grotesk through `PWType.baseFont`, as the web
+sets them. The root sets the body face as the environment's default, which is
+how it reaches the two files this slice may not edit.
+
+**The cards were an iOS row wearing a card's clothes.** They are now the web's
+`.patch-card`: a 100pt cover strip of the patch's own block, rendered square and
+cropped centre the way `PatchTile.svelte` slices it, with the unclaimed mark on
+its top-left and the follow heart in a material chip on its top-right; then a
+10 × 12pt body whose name carries an 18pt motif disc inline before it, counts at
+12/600 in ink, and two lines of description. The card itself is `pwSurface`, a
+1pt `pwBorder` border, the site's 6pt `--radius`, and the site's
+`0 2px 10px var(--color-shadow)`, kept faint in light and near-absent in dark;
+cards stack with 12pt between them. `TileMiniature` grew a `Fit` so the same
+drawing serves the square tile and the cropped strip. On a phone the card is
+full width where the web's is half a pane, so the centre crop is tighter than
+the site's — the fit rule is the same one, seen through a wider window.
+
+One more thing surfaced while checking: `listRowBackground` applied to a `List`
+does not reach its rows, so every re-grounded list had kept iOS's white rows
+under the cotton ground. Each now wraps its sections in `Group { … }.listRows()`,
+which does propagate, and the event detail joined the grounded screens.
+
+**Re-verified.** 105 unit tests (4 new on the fonts: both faces register, the
+weight axis actually moves, it is clamped, and the scale grows with Dynamic
+Type) and 5 UI tests, including the accessibility-XXXL pass, on an iPhone 17 Pro
+simulator. Captured against Lancaster live in light and dark. Not grounded yet,
+deliberately left for a pass that owns those files: the patch calendar,
+governance, members, the Label and Display sheets still sit on the system's
+grouped background, and `Discover.swift` and `SearchResults.swift` keep the
+system type scale and the tint on their own link text.
+
 **Verification.** 101 unit tests (11 new, covering the card's counts wording,
 the head's differing one, and the three orders including the unplaced tail and
 the A→Z collation) and 5 UI tests pass on an iPhone 17 Pro simulator. Launched

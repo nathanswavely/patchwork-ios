@@ -69,7 +69,7 @@ struct PatchCalendar: View {
                 }
             }
             Section {
-                Text("Times are shown in each event’s local time zone.").font(.footnote).foregroundStyle(.secondary)
+                Text("Times are shown in each event’s local time zone.").font(Font.pw.footnote).foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Calendar").navigationBarTitleDisplayMode(.inline)
@@ -92,10 +92,10 @@ struct PatchCalendar: View {
     private func row(_ event: PatchworkEvent) -> some View {
         NavigationLink { EventDetail(quilt: quilt, initial: event, close: close) } label: {
             VStack(alignment: .leading, spacing: 5) {
-                Text(event.title).font(.headline)
-                Text(event.dateLabel).font(.subheadline).foregroundStyle(.secondary)
+                Text(event.title).font(Font.pw.headline)
+                Text(event.dateLabel).font(Font.pw.subheadline).foregroundStyle(.secondary)
                 if let location = event.location, !location.isEmpty {
-                    Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(location).font(Font.pw.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }.padding(.vertical, 5)
         }.accessibilityIdentifier("calendarRow")

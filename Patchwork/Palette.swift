@@ -46,6 +46,11 @@ extension Color {
     static let pwText = Color("PWText")
     /// Everything that is true but secondary: counts, captions, the aside.
     static let pwTextMuted = Color("PWTextMuted")
+    /// The one tint, read from the asset by name rather than through
+    /// `Color.accentColor`: that one answers with whatever tint the
+    /// environment is carrying, which is the system's blue until something
+    /// sets it, and the app was quietly drawing iOS blue because of it.
+    static let pwAccent = Color("AccentColor")
 }
 
 extension UIColor {
@@ -80,16 +85,65 @@ struct CardSurface: ViewModifier {
 /// A grouped `List` re-grounded: the quilt's canvas colour behind it and the
 /// card surface under its rows, so a system list stops announcing itself as
 /// iOS default grey and belongs to the same room as the patch cards.
+///
+/// The row colour is *not* set here. `listRowBackground` applied to the `List`
+/// itself does not reach the rows — the list's own white keeps winning — so
+/// each list wraps its sections in `Group { … }.listRows()`, which does.
 struct GroundedList: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scrollContentBackground(.hidden)
             .background(Color.pwGround.ignoresSafeArea())
-            .listRowBackground(Color.pwSurface)
+    }
+}
+
+/// A link reads as ink with an exit mark beside it, never as coloured text.
+///
+/// The tint is rust and it belongs to *controls* — a selected segment, a
+/// toggle, the follow heart, a prominent button. Text that happens to be
+/// tappable is still text: colouring it is what made the app look like a web
+/// page rendered in iOS blue, and a page of coloured phrases says "link" so
+/// often that it stops saying anything. The arrow says where the tap goes —
+/// out of the app — which the colour never did.
+struct ExitLink: ViewModifier {
+    /// Where a row already ends in something else, the arrow hugs the text
+    /// instead of taking the width.
+    var fills = true
+    func body(content: Content) -> some View {
+        HStack(spacing: 6) {
+            content.foregroundStyle(Color.pwText)
+            Image(systemName: "arrow.up.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.pwTextMuted)
+                .accessibilityHidden(true)
+            if fills { Spacer(minLength: 0) }
+        }
+    }
+}
+
+/// The same rule for a door that stays inside the app: ink, and the platform's
+/// own chevron to say it opens something.
+struct InkRow: ViewModifier {
+    func body(content: Content) -> some View {
+        HStack(spacing: 6) {
+            content.foregroundStyle(Color.pwText)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.pwTextMuted)
+                .accessibilityHidden(true)
+            Spacer(minLength: 0)
+        }
     }
 }
 
 extension View {
     func cardSurface(padding: CGFloat = PatchworkCard.padding) -> some View { modifier(CardSurface(padding: padding)) }
     func groundedList() -> some View { modifier(GroundedList()) }
+    /// The card surface under a list's rows. Applied to a `Group` of sections
+    /// inside the list, which is the one place it propagates from.
+    func listRows() -> some View { listRowBackground(Color.pwSurface) }
+    /// A link out of the app: ink text, and an arrow that says so.
+    func exitLink(fills: Bool = true) -> some View { modifier(ExitLink(fills: fills)) }
+    /// A door within the app that is text rather than a list row.
+    func inkRow() -> some View { modifier(InkRow()) }
 }

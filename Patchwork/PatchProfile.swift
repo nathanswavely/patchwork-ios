@@ -101,9 +101,11 @@ struct PatchSheet: View {
                     .accessibilityLabel(patch.imageAlt ?? "")
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(patch.name).font(.title.bold()).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
-                Text(patch.countsLabel).font(.subheadline).foregroundStyle(Color.pwTextMuted)
-                if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(.footnote).foregroundStyle(Color.pwTextMuted) }
+                // The patch saying its own name — a display moment, in the
+                // face the web keeps for them.
+                Text(patch.name).font(Font.pw.displayTitle).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
+                Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
                 notices
                 if let description = patch.description, !description.isEmpty { Text(description).foregroundStyle(Color.pwText).textSelection(.enabled) }
             }.padding(.horizontal, 16).padding(.vertical, 14)
@@ -121,28 +123,28 @@ struct PatchSheet: View {
         if let moved {
             VStack(alignment: .leading, spacing: 6) {
                 Label("This patch has moved to \(moved.host).", systemImage: "arrow.uturn.right")
-                    .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                    .font(Font.pw.subheadline).fixedSize(horizontal: false, vertical: true)
                 NavigationLink { RemotePatchView(host: moved.host, slug: moved.slug, close: close) } label: {
-                    Text("See it on \(moved.host)")
+                    Text("See it on \(moved.host)").inkRow()
                 }.accessibilityIdentifier("movedTo")
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
         } else if let raw = patch.movedTo, let url = URL(string: raw), url.scheme == "https" {
-            Link(destination: url) { Label("This patch has moved to \(url.host() ?? raw).", systemImage: "arrow.uturn.right") }
-                .font(.subheadline)
+            Link(destination: url) { Label("This patch has moved to \(url.host() ?? raw).", systemImage: "arrow.uturn.right") }.exitLink()
+                .font(Font.pw.subheadline)
         }
         if isUnclaimed {
             Text("No one runs this patch yet. The community added it; if it’s yours, you can claim it on this quilt’s website.")
-                .font(.subheadline).foregroundStyle(Color.secondary)
+                .font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("unclaimedNotice")
         } else if liningDiverged {
             // Public by design (web ADR 037): this patch amended the shared
             // baseline, and the divergence is worn, not whispered.
             Label("Amended lining", systemImage: "seal")
-                .font(.caption.weight(.semibold))
+                .font(Font.pw.captionSemibold)
                 .padding(.horizontal, 10).padding(.vertical, 4)
                 .background(Color(.secondarySystemFill), in: Capsule())
                 .accessibilityIdentifier("amendedLining")
@@ -157,9 +159,9 @@ struct PatchSheet: View {
             if showsGovernance { governanceGlimpse }
             VStack(alignment: .leading, spacing: 10) {
                 Divider()
-                Link(destination: api.webURL("patches/\(patch.slug)")) { Label("Visit patch website", systemImage: "safari") }
+                Link(destination: api.webURL("patches/\(patch.slug)")) { Label("Visit patch website", systemImage: "safari") }.exitLink()
                 Text("Joining, following, and posting are available on this quilt’s website while the native app is being developed.")
-                    .font(.footnote).foregroundStyle(Color.secondary)
+                    .font(Font.pw.footnote).foregroundStyle(Color.secondary)
             }
             if let error {
                 Text(error).foregroundStyle(Color.secondary)
@@ -175,16 +177,16 @@ struct PatchSheet: View {
             Divider()
             StaticHeading(title: "About")
             if let site = patch.website, let url = URL(string: site), url.scheme == "https" || url.scheme == "http" {
-                Link(destination: url) { Label(url.host() ?? site, systemImage: "link") }
+                Link(destination: url) { Label(url.host() ?? site, systemImage: "link") }.exitLink()
             }
             ForEach(patchLinks, id: \.self) { link in
                 if let url = patchLink(link) {
-                    Link(destination: url) { Label(linkLabel(link), systemImage: "arrow.up.forward") }
+                    Link(destination: url) { Label(linkLabel(link), systemImage: "arrow.up.forward") }.exitLink()
                 }
             }
             if let address = patch.address, !address.isEmpty {
                 Label(address, systemImage: "mappin.and.ellipse").fixedSize(horizontal: false, vertical: true)
-                if let url = mapsURL { Link("Get directions", destination: url) }
+                if let url = mapsURL { Link("Get directions", destination: url).exitLink() }
             }
             if let handle = atprotoHandle {
                 // Past tense on purpose (web ADR 062): the binding was checked
@@ -192,7 +194,7 @@ struct PatchSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("@\(handle)").font(.subheadline.monospaced())
                     Text("atproto handle, proved when this patch was claimed")
-                        .font(.caption).foregroundStyle(Color.secondary)
+                        .font(Font.pw.caption).foregroundStyle(Color.secondary)
                 }
             }
         }
@@ -207,7 +209,7 @@ struct PatchSheet: View {
                     NavigationLink { EventDetail(quilt: session.quilt, initial: event, close: close) } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(event.title).foregroundStyle(Color.primary)
-                            Text(event.dateLabel).font(.subheadline).foregroundStyle(Color.secondary)
+                            Text(event.dateLabel).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.accessibilityIdentifier("eventRow")
                 }
@@ -216,7 +218,7 @@ struct PatchSheet: View {
                 // a glimpse rather than let the two numbers fight.
                 if moreEvents > 0 {
                     NavigationLink { PatchCalendar(quilt: session.quilt, patch: patch, close: close) } label: {
-                        Text("\(moreEvents) more upcoming").font(.subheadline)
+                        Text("\(moreEvents) more upcoming").font(Font.pw.subheadline).inkRow()
                     }
                 }
             } else { Text("Pull up to see what’s coming.").foregroundStyle(Color.secondary) }
@@ -270,7 +272,7 @@ struct PatchSheet: View {
                         HStack {
                             Text(document.title).foregroundStyle(Color.primary)
                             Spacer()
-                            if let version = document.version { Text("v\(version)").font(.caption).foregroundStyle(Color.secondary) }
+                            if let version = document.version { Text("v\(version)").font(Font.pw.caption).foregroundStyle(Color.secondary) }
                         }
                     }.accessibilityIdentifier("documentChip")
                 }

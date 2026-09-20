@@ -8,14 +8,17 @@
 
 /* Begin PBXBuildFile section */
 		043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE5474B5736A302A83E7519 /* QuiltPicker.swift */; };
+		08B360701DD1A03A8A9C5AAA /* ShantellSans-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EC4AA9C392300C35325A88EE /* ShantellSans-Variable.ttf */; };
 		09EAD7EC52B7EA5B230CECAB /* Motifs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6280253991897DC2B3FDDF06 /* Motifs.swift */; };
 		151CC357CA100483033629EF /* Discover.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E90AA0007CCFBCD3D80C16 /* Discover.swift */; };
 		16D1A6157D7C2A3847CED277 /* ProfileDepthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FBBFCFEB1DC1DDE8E13864 /* ProfileDepthTests.swift */; };
+		224BE2E32065E7056BEEC2B0 /* SpaceGrotesk-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0AEC650C112BD2B8F7DB70EA /* SpaceGrotesk-Variable.ttf */; };
 		36ED9726FBEECCBBD1E7DC0C /* QuiltBadges.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF4CA9F8CC3EE2AA037FF27 /* QuiltBadges.swift */; };
 		46B57957AD0EAA6DD42AA457 /* PatchCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F146C3632B5D365A4DE77035 /* PatchCard.swift */; };
 		4DA43DAF095AE52D063A248D /* SearchResults.swift in Sources */ = {isa = PBXBuildFile; fileRef = C282B734B4827A544F7C1F07 /* SearchResults.swift */; };
 		503FB17375BC29E7E8FC1201 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293BA8AA195974A4AA7FD88F /* Models.swift */; };
 		508CED8BCC4991BFAE2BFAE2 /* layout-fixtures.json in Resources */ = {isa = PBXBuildFile; fileRef = CFF1AEE9C2A0DF5127851BCB /* layout-fixtures.json */; };
+		591E2530EDE882D5A8880697 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */; };
 		5D600B7F9841C69CCB97B0F9 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF358FEA7BC11AA077E2E5A1 /* API.swift */; };
 		5F4C31A2ABF0F64850F4BE91 /* QuiltInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F732AE521653E03A1A3514 /* QuiltInfoTests.swift */; };
 		65550D118F2245A37FE3B05B /* PatchProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C217C3BCE3AF77E084E40D6 /* PatchProfile.swift */; };
@@ -29,6 +32,7 @@
 		89154EF7862741EE0E4EE6BC /* ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B1F0F4B4C66C9D11B2A8662 /* ContractTests.swift */; };
 		8C6DAF1BA26021C1E73FE388 /* QuiltHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE32844B5FEA95B9FA7EBDC5 /* QuiltHome.swift */; };
 		8D322574AB01D33BA9FA22D4 /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00DAAFA46F05B23EEE22D37E /* Markdown.swift */; };
+		998C3E0187AE7B29C5E6C613 /* TypographyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F7233C3A988DA4C67073F63 /* TypographyTests.swift */; };
 		9A4183634985C2ADB100B3D4 /* QuiltBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6169EE189790BD8F3B78637 /* QuiltBlocks.swift */; };
 		A63E26FF9A6F8656D3A2E168 /* RemotePatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B63D84A048798D7CEB8109A /* RemotePatch.swift */; };
 		A647F17C9C3224259E0B39BC /* BrowsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAA546CA1C556D90F3EEA7C /* BrowsingTests.swift */; };
@@ -72,6 +76,7 @@
 		00DAAFA46F05B23EEE22D37E /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
 		08FC2691F17B5C1A733543AD /* QuiltInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltInfo.swift; sourceTree = "<group>"; };
 		093E6D05E99D110AC6D41CED /* EventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsTests.swift; sourceTree = "<group>"; };
+		0AEC650C112BD2B8F7DB70EA /* SpaceGrotesk-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SpaceGrotesk-Variable.ttf"; sourceTree = "<group>"; };
 		0F97CCB0BD8BCE06F5556360 /* EventFilters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventFilters.swift; sourceTree = "<group>"; };
 		15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltLayoutTests.swift; sourceTree = "<group>"; };
 		1B1F0F4B4C66C9D11B2A8662 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
@@ -80,6 +85,7 @@
 		293BA8AA195974A4AA7FD88F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		2A05965A09AF7E5653F37B64 /* PatchworkTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2DE5474B5736A302A83E7519 /* QuiltPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltPicker.swift; sourceTree = "<group>"; };
+		2F7233C3A988DA4C67073F63 /* TypographyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyTests.swift; sourceTree = "<group>"; };
 		3EFC7ACE15046E1958924BFE /* QuiltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSession.swift; sourceTree = "<group>"; };
 		4510113B947EAF0DB94F046F /* QuiltCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltCanvas.swift; sourceTree = "<group>"; };
 		4858D666E2FE8B480005EB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -103,16 +109,19 @@
 		C282B734B4827A544F7C1F07 /* SearchResults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchResults.swift; sourceTree = "<group>"; };
 		CC491BDA8B532F53F22BCE42 /* PreviewData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewData.swift; sourceTree = "<group>"; };
 		CEF4CA9F8CC3EE2AA037FF27 /* QuiltBadges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltBadges.swift; sourceTree = "<group>"; };
+		CFD2BD5E80A7F39881A464BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CFF1AEE9C2A0DF5127851BCB /* layout-fixtures.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "layout-fixtures.json"; sourceTree = "<group>"; };
 		D1BDCE50B380DDF4CDDCF5A3 /* PatchworkUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D6169EE189790BD8F3B78637 /* QuiltBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltBlocks.swift; sourceTree = "<group>"; };
 		D7F732AE521653E03A1A3514 /* QuiltInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltInfoTests.swift; sourceTree = "<group>"; };
 		D8958EDC97FC429B38CD2DAE /* QuiltTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltTheme.swift; sourceTree = "<group>"; };
 		DBAA546CA1C556D90F3EEA7C /* BrowsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingTests.swift; sourceTree = "<group>"; };
+		EC4AA9C392300C35325A88EE /* ShantellSans-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "ShantellSans-Variable.ttf"; sourceTree = "<group>"; };
 		EDDB8097E477A3EBCF88E550 /* PatchCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchCardTests.swift; sourceTree = "<group>"; };
 		EF358FEA7BC11AA077E2E5A1 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		F146C3632B5D365A4DE77035 /* PatchCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchCard.swift; sourceTree = "<group>"; };
 		F4E90AA0007CCFBCD3D80C16 /* Discover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discover.swift; sourceTree = "<group>"; };
+		F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
 		F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltAppearanceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -136,6 +145,7 @@
 				0F97CCB0BD8BCE06F5556360 /* EventFilters.swift */,
 				1C5EDD8A87C7355F760C72A6 /* Events.swift */,
 				AF781619947A025A8719BEC3 /* FilterSheet.swift */,
+				CFD2BD5E80A7F39881A464BE /* Info.plist */,
 				8258292508FE2DD12B36218B /* LabelView.swift */,
 				00DAAFA46F05B23EEE22D37E /* Markdown.swift */,
 				293BA8AA195974A4AA7FD88F /* Models.swift */,
@@ -161,6 +171,8 @@
 				D8958EDC97FC429B38CD2DAE /* QuiltTheme.swift */,
 				8B63D84A048798D7CEB8109A /* RemotePatch.swift */,
 				C282B734B4827A544F7C1F07 /* SearchResults.swift */,
+				F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */,
+				C9BF10AABCDDC67BA1A817E2 /* Fonts */,
 			);
 			path = Patchwork;
 			sourceTree = "<group>";
@@ -186,8 +198,18 @@
 				F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */,
 				D7F732AE521653E03A1A3514 /* QuiltInfoTests.swift */,
 				15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */,
+				2F7233C3A988DA4C67073F63 /* TypographyTests.swift */,
 			);
 			path = PatchworkTests;
+			sourceTree = "<group>";
+		};
+		C9BF10AABCDDC67BA1A817E2 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				EC4AA9C392300C35325A88EE /* ShantellSans-Variable.ttf */,
+				0AEC650C112BD2B8F7DB70EA /* SpaceGrotesk-Variable.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		FD415B9AB19D7B27E769085E = {
@@ -306,6 +328,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */,
+				08B360701DD1A03A8A9C5AAA /* ShantellSans-Variable.ttf in Resources */,
+				224BE2E32065E7056BEEC2B0 /* SpaceGrotesk-Variable.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -356,6 +380,7 @@
 				734A0612AF1C3409A9EF80C2 /* QuiltTheme.swift in Sources */,
 				A63E26FF9A6F8656D3A2E168 /* RemotePatch.swift in Sources */,
 				4DA43DAF095AE52D063A248D /* SearchResults.swift in Sources */,
+				591E2530EDE882D5A8880697 /* Typography.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -370,6 +395,7 @@
 				BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */,
 				5F4C31A2ABF0F64850F4BE91 /* QuiltInfoTests.swift in Sources */,
 				F02D6A66065C1CBB63F082A6 /* QuiltLayoutTests.swift in Sources */,
+				998C3E0187AE7B29C5E6C613 /* TypographyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -533,6 +559,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Patchwork;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Patchwork adds an event you choose to your calendar. It never reads your calendar.";
@@ -599,6 +626,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Patchwork;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Patchwork adds an event you choose to your calendar. It never reads your calendar.";

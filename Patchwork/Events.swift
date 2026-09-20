@@ -46,6 +46,8 @@ struct EventList: View {
 
     var body: some View {
         List {
+            // One Group so the rows take the card surface (see GroundedList).
+            Group {
             Section {
                 dateControl
             } footer: {
@@ -68,6 +70,7 @@ struct EventList: View {
                     Button("Try again") { Task { await load(after: events.isEmpty ? nil : cursor) } }
                 }
             }
+            }.listRows()
         }
         .groundedList()
         .navigationTitle("Events")
@@ -97,7 +100,7 @@ struct EventList: View {
                 Label("Date", systemImage: "calendar")
                 Spacer()
                 Text(dates.label(timeZone: zone)).foregroundStyle(.secondary)
-                Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.up.chevron.down").font(Font.pw.caption2).foregroundStyle(.tertiary)
             }
         }
         .accessibilityIdentifier("dateFilter")
@@ -157,17 +160,19 @@ struct EventRow: View {
     let event: PatchworkEvent
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(event.shortDateLabel).font(.subheadline.weight(.semibold)).foregroundStyle(Color.accentColor)
+            // The date is the row's own emphasis, and emphasis is weight
+            // here rather than colour: the tint means "you can press this".
+            Text(event.shortDateLabel).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(event.title).font(.headline)
+                Text(event.title).font(Font.pw.headline)
                 EventTierChip(event: event)
             }
             if let location = event.location, !location.isEmpty {
-                Text(location).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                Text(location).font(Font.pw.subheadline).foregroundStyle(.secondary).lineLimit(2)
             }
             if let name = event.nodeName {
                 HStack(spacing: 6) {
-                    Label(name, systemImage: "square.grid.2x2").font(.caption).foregroundStyle(.secondary)
+                    Label(name, systemImage: "square.grid.2x2").font(Font.pw.caption).foregroundStyle(.secondary)
                     if event.communitySubmitted { EventBadge(text: "Community-submitted") }
                 }
             }
@@ -190,7 +195,7 @@ struct EventBadge: View {
     let text: String
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
+            .font(Font.pw.caption2Semibold)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 7).padding(.vertical, 2)
             .overlay(Capsule().strokeBorder(Color(.separator)))
@@ -273,25 +278,27 @@ struct EventDetail: View {
 
     var body: some View {
         List {
+            // One Group so the rows take the card surface (see GroundedList).
+            Group {
             if event.awaitingReview {
                 Section {
-                    Label("Awaiting review", systemImage: "clock.badge.questionmark").font(.headline)
+                    Label("Awaiting review", systemImage: "clock.badge.questionmark").font(Font.pw.headline)
                     Text("The \(event.communitySubmitted ? "quilt admins" : "patch admins") will look at this event before it appears on the calendar.")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(Font.pw.subheadline).foregroundStyle(.secondary)
                 }
             }
             Section {
-                Text(event.title).font(.largeTitle.bold()).fixedSize(horizontal: false, vertical: true)
+                Text(event.title).font(Font.pw.largeTitle).fixedSize(horizontal: false, vertical: true)
                 hostRow
                 if !event.confirmedLinks.isEmpty || !(event.mentions ?? []).isEmpty { companions }
             }
             Section {
                 Label(event.rangeLabel(), systemImage: "calendar")
                 if let timezone = event.timezone {
-                    Text(timezone.replacingOccurrences(of: "_", with: " ")).font(.caption).foregroundStyle(.secondary)
+                    Text(timezone.replacingOccurrences(of: "_", with: " ")).font(Font.pw.caption).foregroundStyle(.secondary)
                 }
                 if let note = event.recurrenceNote {
-                    Label(note, systemImage: "arrow.triangle.2.circlepath").font(.subheadline).foregroundStyle(.secondary)
+                    Label(note, systemImage: "arrow.triangle.2.circlepath").font(Font.pw.subheadline).foregroundStyle(.secondary)
                 }
                 if let location = event.location, !location.isEmpty { Label(location, systemImage: "mappin.and.ellipse") }
             }
@@ -307,9 +314,9 @@ struct EventDetail: View {
                 if let url = event.externalURL {
                     Link(destination: url) {
                         Label("Tickets & details on \(url.host()?.replacingOccurrences(of: "www.", with: "") ?? "the web")", systemImage: "arrow.up.right.square")
-                    }
+                    }.exitLink()
                 }
-                Link("Open on quilt website", destination: permalink)
+                Link("Open on quilt website", destination: permalink).exitLink()
             }
             if let error {
                 Section {
@@ -317,7 +324,9 @@ struct EventDetail: View {
                     Button("Reload event") { Task { await load() } }
                 }
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Event").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { ShareLink(item: permalink) }
@@ -333,9 +342,9 @@ struct EventDetail: View {
             VStack(alignment: .leading, spacing: 6) {
                 Button { Task { await openHost() } } label: {
                     HStack(spacing: 4) {
-                        Text("Hosted by \(name)").font(.headline)
+                        Text("Hosted by \(name)").font(Font.pw.headline)
                         if openingHost { ProgressView().controlSize(.mini) }
-                        else { Image(systemName: "chevron.right").font(.footnote.bold()).foregroundStyle(Color(.tertiaryLabel)) }
+                        else { Image(systemName: "chevron.right").font(Font.pw.footnoteSemibold).foregroundStyle(Color(.tertiaryLabel)) }
                     }
                 }
                 .disabled(event.nodeSlug == nil || openingHost)
@@ -353,13 +362,13 @@ struct EventDetail: View {
     /// it, which are plain doorways to somebody else's quilt.
     private var companions: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("with").font(.subheadline).foregroundStyle(.secondary)
+            Text("with").font(Font.pw.subheadline).foregroundStyle(.secondary)
             FlowLayout(spacing: 8) {
                 ForEach(event.confirmedLinks) { link in
                     Button {
                         if let slug = link.nodeSlug { Task { await open(slug: slug) } }
                     } label: {
-                        Text(link.nodeName ?? link.nodeSlug ?? "A patch").font(.subheadline.weight(.medium))
+                        Text(link.nodeName ?? link.nodeSlug ?? "A patch").font(Font.pw.subheadlineMedium)
                     }
                     .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.gray)
                     .accessibilityIdentifier("eventLinkChip")
@@ -369,9 +378,9 @@ struct EventDetail: View {
                         Link(destination: url) {
                             HStack(spacing: 4) {
                                 Text(mention.title)
-                                Image(systemName: "arrow.up.right").font(.caption2.bold())
-                                Text(mention.host).font(.caption2).foregroundStyle(.secondary)
-                            }.font(.subheadline.weight(.medium))
+                                Image(systemName: "arrow.up.right").font(Font.pw.caption2Semibold)
+                                Text(mention.host).font(Font.pw.caption2).foregroundStyle(.secondary)
+                            }.font(Font.pw.subheadlineMedium)
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.gray)
                     }
@@ -395,7 +404,7 @@ struct EventDetail: View {
                 default:
                     Label(event.imageAlt ?? "A flyer for this event, which its host is no longer serving.",
                           systemImage: "photo")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(Font.pw.footnote).foregroundStyle(.secondary)
                         .padding(.vertical, 10)
                 }
             }

@@ -46,7 +46,7 @@ struct QuiltBrowser: View {
                     Map {
                         ForEach(located) { patch in
                             Annotation(patch.name, coordinate: CLLocationCoordinate2D(latitude: patch.latitude!, longitude: patch.longitude!)) {
-                                Button { open(patch) } label: { Image(systemName: "mappin.circle.fill").font(.title).padding(6).background(.background, in: Circle()) }.accessibilityLabel(patch.name)
+                                Button { open(patch) } label: { Image(systemName: "mappin.circle.fill").font(Font.pw.title).padding(6).background(.background, in: Circle()) }.accessibilityLabel(patch.name)
                             }
                         }
                     }.id(session.query + session.tags.sorted().joined(separator: ",")).ignoresSafeArea()
@@ -77,7 +77,7 @@ struct QuiltBrowser: View {
     /// "setting" where the web says "patch".
     private var cards: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 header
                 ForEach(ordered) { patch in
                     PatchCard(patch: patch,
@@ -102,8 +102,11 @@ struct QuiltBrowser: View {
     /// canvas, which is the thing it changes.
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Patches").font(.title2.bold()).foregroundStyle(Color.pwText)
-            Text(countLabel).font(.subheadline).foregroundStyle(Color.pwTextMuted)
+            // The screen saying its own name: the one display moment on this
+            // surface, in the hand-lettered face the web reserves for exactly
+            // that (app.css `--font-display`).
+            Text("Patches").font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
+            Text(countLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
             Spacer(minLength: 8)
             Menu {
                 Picker("Order", selection: $sort) {
@@ -111,8 +114,11 @@ struct QuiltBrowser: View {
                 }
             } label: {
                 Label(sort.rawValue, systemImage: "arrow.up.arrow.down")
-                    .font(.subheadline)
+                    .font(Font.pw.subheadline)
                     .labelStyle(.titleAndIcon)
+                    // The order is a menu, not a link: ink, with the control's
+                    // own glyph doing the work the colour used to.
+                    .foregroundStyle(Color.pwText)
             }
             .accessibilityIdentifier("patchOrder")
         }
@@ -139,6 +145,7 @@ struct QuiltBrowser: View {
     @ViewBuilder private var suggestLink: some View {
         if session.instance?.submissionsEnabled == true {
             Link("Suggest a patch", destination: session.api.webURL("submit"))
+                .exitLink(fills: false)
                 .accessibilityIdentifier("suggestPatch")
         }
     }
