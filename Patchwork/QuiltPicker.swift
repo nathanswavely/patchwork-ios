@@ -21,11 +21,14 @@ struct QuiltPicker: View {
     }
     var body: some View {
         List {
+            // One Group so every section's rows take the card surface: the
+            // modifier does not reach them from the List itself.
+            Group {
             Section {
                 HStack(alignment: .top, spacing: 16) {
                     QuiltMark()
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Find your people.").font(.title2.bold())
+                        Text("Find your people.").font(Font.pw.title2)
                         Text("Choose a quilt to explore its patches and events. Each quilt is run by its own community.")
                             .foregroundStyle(.secondary)
                     }
@@ -33,7 +36,7 @@ struct QuiltPicker: View {
             }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--preview") {
-                Text("Design preview · fictional community data").font(.footnote).foregroundStyle(.secondary)
+                Text("Design preview · fictional community data").font(Font.pw.footnote).foregroundStyle(.secondary)
             }
             #endif
             Section("Quilts") {
@@ -42,10 +45,10 @@ struct QuiltPicker: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(quilt.name).foregroundStyle(Color.primary)
-                                Text(quilt.url.host() ?? quilt.id).font(.subheadline).foregroundStyle(.secondary)
+                                Text(quilt.url.host() ?? quilt.id).font(Font.pw.subheadline).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            Image(systemName: "chevron.right").font(Font.pw.caption).foregroundStyle(.tertiary)
                         }.padding(.vertical, 6)
                     }.disabled(busy).accessibilityIdentifier("quiltChoice")
                 }
@@ -58,10 +61,10 @@ struct QuiltPicker: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(neighbor.name).foregroundStyle(Color.primary)
-                                    Text(URL(string: neighbor.url)?.host() ?? neighbor.url).font(.subheadline).foregroundStyle(.secondary)
+                                    Text(URL(string: neighbor.url)?.host() ?? neighbor.url).font(Font.pw.subheadline).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Image(systemName: "arrow.up.forward").font(.caption).foregroundStyle(.tertiary)
+                                Image(systemName: "arrow.up.forward").font(Font.pw.caption).foregroundStyle(.tertiary)
                             }.padding(.vertical, 6)
                         }.disabled(busy)
                     }
@@ -79,12 +82,14 @@ struct QuiltPicker: View {
             if busy { ProgressView("Checking quilt…") }
             if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("connectionError") } }
             Section("Open source") {
-                Link("View source code", destination: URL(string: "https://github.com/nathanswavely/patchwork-ios")!)
-                Link("Mozilla Public License 2.0", destination: URL(string: "https://www.mozilla.org/MPL/2.0/")!)
+                Link("View source code", destination: URL(string: "https://github.com/nathanswavely/patchwork-ios")!).exitLink()
+                Link("Mozilla Public License 2.0", destination: URL(string: "https://www.mozilla.org/MPL/2.0/")!).exitLink()
             }
 
 
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("Choose a quilt")
         .searchable(text: $search, prompt: "Find a quilt")
         .sheet(item: $pending) { quilt in
@@ -92,11 +97,12 @@ struct QuiltPicker: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         QuiltMark()
-                        Text(quilt.name).font(.largeTitle.bold())
+                        Text(quilt.name).font(Font.pw.display)
                         Text(quilt.url.host() ?? quilt.id).foregroundStyle(.secondary)
                         if let instance, !instance.description.isEmpty { Text(instance.description) }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
                 }
+                .background(Color.pwGround.ignoresSafeArea())
                 .navigationTitle("About this quilt").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { pending = nil } } }
                 .safeAreaInset(edge: .bottom) {

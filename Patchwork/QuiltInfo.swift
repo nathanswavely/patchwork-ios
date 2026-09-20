@@ -73,6 +73,8 @@ struct QuiltInfoList: View {
     @EnvironmentObject private var session: QuiltSession
     var body: some View {
         List {
+            // One Group so the rows take the card surface (see GroundedList).
+            Group {
             Section {
                 HStack(spacing: 12) {
                     if let icon = session.icon {
@@ -81,8 +83,9 @@ struct QuiltInfoList: View {
                         QuiltMark()
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(session.quilt.name).font(.headline)
-                        Text(session.quilt.url.host() ?? session.quilt.id).font(.subheadline).foregroundStyle(Color.secondary)
+                        // The quilt saying its own name, in the display face.
+                        Text(session.quilt.name).font(Font.pw.displayTitle2)
+                        Text(session.quilt.url.host() ?? session.quilt.id).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                     }
                 }.padding(.vertical, 4)
                 if let description = session.instance?.description, !description.isEmpty {
@@ -106,13 +109,15 @@ struct QuiltInfoList: View {
                 Text("The fine print")
             }
             Section {
-                Link(destination: session.quilt.url) { Label("Open quilt website", systemImage: "safari") }
+                Link(destination: session.quilt.url) { Label("Open quilt website", systemImage: "safari") }.exitLink()
             } footer: {
                 if let count = session.instance?.stats?.nodeCount {
                     Text("\(count) \(count == 1 ? "patch" : "patches") on this quilt.")
                 }
             }
+            }.listRows()
         }
+        .groundedList()
         .navigationTitle("About this quilt")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -134,11 +139,14 @@ struct QuiltInfoFooter: View {
                 if index > 0 { Text("·").foregroundStyle(Color.secondary) }
                 Button(entry.title) { opened = entry.page }
                     .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
+                    // Ink with a rule under it, not a coloured phrase: four
+                    // tinted words in a row read as a toolbar, not a footer.
+                    .foregroundStyle(Color.pwText)
+                    .underline()
                     .accessibilityIdentifier("footer-" + entry.page.identifier)
             }
         }
-        .font(.footnote)
+        .font(Font.pw.footnote)
         .lineLimit(1)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.top, 12)
@@ -215,10 +223,10 @@ struct AboutQuiltView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("What is \(session.quilt.name)?").font(.title.bold())
+                    Text("What is \(session.quilt.name)?").font(Font.pw.title)
                     if let count = session.instance?.stats?.nodeCount, count > 0 {
                         Text("\(count) \(count == 1 ? "patch" : "patches") on the quilt right now.")
-                            .font(.subheadline).foregroundStyle(Color.secondary)
+                            .font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                     }
                 }
                 section("What is this?") {
@@ -227,7 +235,7 @@ struct AboutQuiltView: View {
                     // a quilt speaks for itself — attributed rather than blended
                     // into the project's prose, so a reader can tell which is which.
                     if let description = session.instance?.description, !description.isEmpty {
-                        Text("This quilt describes itself as:").font(.subheadline).foregroundStyle(Color.secondary)
+                        Text("This quilt describes itself as:").font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                         Text(description)
                             .padding(.leading, 12)
                             .overlay(alignment: .leading) { Rectangle().frame(width: 3).foregroundStyle(Color(.separator)) }
@@ -248,7 +256,7 @@ struct AboutQuiltView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Divider()
                     Link("Patchwork is open source. Start your own quilt", destination: URL(string: "https://github.com/nathanswavely/patchwork")!)
-                        .font(.footnote)
+                        .font(Font.pw.footnote)
                 }
             }
             .padding(20)
@@ -258,7 +266,7 @@ struct AboutQuiltView: View {
     }
     @ViewBuilder private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.title3.bold())
+            Text(title).font(Font.pw.title3)
             content()
         }
     }
@@ -274,13 +282,13 @@ struct LabelGist: View {
         Group {
             if let label, label.published == true {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Who runs this").font(.headline)
-                    Text(stewardLine(label)).font(.subheadline).foregroundStyle(Color.secondary)
+                    Text("Who runs this").font(Font.pw.headline)
+                    Text(stewardLine(label)).font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                     if let total = label.totalMonthlyMinor, total > 0 {
                         Text("About \(QuiltLabel.money(total, label.currency))/month to keep running")
-                            .font(.subheadline).foregroundStyle(Color.secondary)
+                            .font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                     }
-                    NavigationLink("Read the Label") { InfoPage.label.view }.font(.subheadline)
+                    NavigationLink("Read the Label") { InfoPage.label.view }.font(Font.pw.subheadline)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -305,9 +313,9 @@ struct LiningView: View {
     var body: some View {
         DocumentScroll(failure: failure, ready: lining != nil) {
             VStack(alignment: .leading, spacing: 16) {
-                Text(lining?.title ?? "The Lining").font(.title.bold())
+                Text(lining?.title ?? "The Lining").font(Font.pw.title)
                 Text("The shared baseline every patch on this quilt starts from. A patch can amend its copy; amendments are public, and a patch that diverges is flagged publicly.")
-                    .font(.subheadline).foregroundStyle(Color.secondary)
+                    .font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                 if let body = lining?.body, !body.isEmpty { MarkdownText(source: body, base: session.quilt.url) }
             }
         }
@@ -335,13 +343,13 @@ struct LegalView: View {
         DocumentScroll(failure: failure, ready: document != nil) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("The fine print").font(.caption.weight(.bold)).foregroundStyle(Color.accentColor).textCase(.uppercase)
-                    Text(document?.title ?? fallbackTitle).font(.title.bold())
+                    Text("The fine print").font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted).textCase(.uppercase)
+                    Text(document?.title ?? fallbackTitle).font(Font.pw.title)
                     // Only a document the stewards actually replaced has an
                     // update worth dating; the shipped default's timestamp
                     // would be the software's, not this quilt's.
                     if let day = document?.updatedDay {
-                        Text("Last updated \(day).").font(.subheadline).foregroundStyle(Color.secondary)
+                        Text("Last updated \(day).").font(Font.pw.subheadline).foregroundStyle(Color.secondary)
                     }
                 }
                 if let markdown = document?.markdown, !markdown.isEmpty {
@@ -349,10 +357,10 @@ struct LegalView: View {
                 }
                 Divider()
                 HStack(spacing: 6) {
-                    Text("Also see the").font(.footnote).foregroundStyle(Color.secondary)
+                    Text("Also see the").font(Font.pw.footnote).foregroundStyle(Color.secondary)
                     NavigationLink(doc == .privacy ? "User Agreement" : "Privacy Policy") {
                         (doc == .privacy ? InfoPage.terms : InfoPage.privacy).view
-                    }.font(.footnote)
+                    }.font(Font.pw.footnote)
                 }
             }
         }
@@ -455,22 +463,22 @@ struct GovernanceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("How governance works").font(.title.bold())
+                    Text("How governance works").font(Font.pw.title)
                     Text(standfirst).foregroundStyle(Color.secondary)
                 }
                 section("Who decides", standfirst: whoDecides)
                 section("How a decision gets made", standfirst: howDecided)
                 section("Who leads", standfirst: whoLeads)
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("What every patch starts from").font(.title3.bold())
+                    Text("What every patch starts from").font(Font.pw.title3)
                     MarkdownText(source: startsFrom)
                     NavigationLink("Read the lining") { InfoPage.lining.view }
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Divider()
                     Text("This is about how the patches here govern themselves. For who runs this quilt and what it costs to keep on, read the Label.")
-                        .font(.footnote).foregroundStyle(Color.secondary)
-                    NavigationLink("The Label") { InfoPage.label.view }.font(.footnote)
+                        .font(Font.pw.footnote).foregroundStyle(Color.secondary)
+                    NavigationLink("The Label") { InfoPage.label.view }.font(Font.pw.footnote)
                 }
             }
             .padding(20)
@@ -480,7 +488,7 @@ struct GovernanceView: View {
     }
     private func section(_ title: String, standfirst: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.title3.bold())
+            Text(title).font(Font.pw.title3)
             MarkdownText(source: standfirst)
         }
     }

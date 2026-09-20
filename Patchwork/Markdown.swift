@@ -96,7 +96,16 @@ enum Markdown {
             interpretedSyntax: .inlineOnlyPreservingWhitespace,
             failurePolicy: .returnPartiallyParsedIfPossible
         )
-        return (try? AttributedString(markdown: text, options: options, baseURL: base)) ?? AttributedString(text)
+        guard var parsed = try? AttributedString(markdown: text, options: options, baseURL: base) else {
+            return AttributedString(text)
+        }
+        // A link inside a sentence is ink like the sentence, so the underline
+        // is what marks it. Colour would put the app back where it started:
+        // tinted phrases scattered through prose.
+        for run in parsed.runs where run.link != nil {
+            parsed[run.range].underlineStyle = .single
+        }
+        return parsed
     }
 }
 
@@ -130,7 +139,9 @@ struct MarkdownText: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .tint(Color.accentColor)
+        // A link inside prose cannot carry an arrow of its own, so it is
+        // ink like the rest of the sentence and underlined where it runs.
+        .tint(Color.pwText)
     }
     @ViewBuilder private func itemList(_ items: [String], marker: @escaping (Int) -> Text) -> some View {
         VStack(alignment: .leading, spacing: 8) {

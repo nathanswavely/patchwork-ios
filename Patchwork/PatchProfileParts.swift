@@ -14,10 +14,10 @@ struct GlimpseHeading<Destination: View>: View {
     var body: some View {
         NavigationLink(destination: destination) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.headline).foregroundStyle(Color.primary)
-                if let trailing { Text(trailing).font(.subheadline).foregroundStyle(Color.secondary) }
+                Text(title).font(Font.pw.headline).foregroundStyle(Color.primary)
+                if let trailing { Text(trailing).font(Font.pw.subheadline).foregroundStyle(Color.secondary) }
                 Spacer()
-                Image(systemName: "chevron.right").font(.footnote.bold()).foregroundStyle(Color(.tertiaryLabel))
+                Image(systemName: "chevron.right").font(Font.pw.footnoteSemibold).foregroundStyle(Color(.tertiaryLabel))
             }
         }
         .accessibilityIdentifier("glimpseDoor-\(title)")
@@ -27,7 +27,7 @@ struct GlimpseHeading<Destination: View>: View {
 /// A heading that names identity rather than a room, so it stays inert.
 struct StaticHeading: View {
     let title: String
-    var body: some View { Text(title).font(.headline) }
+    var body: some View { Text(title).font(Font.pw.headline) }
 }
 
 /// One person, rendered the same way wherever they are named.
@@ -42,12 +42,12 @@ struct PersonRow: View {
             AvatarMark(initial: initial, avatar: avatar)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                if let detail { Text(detail).font(Font.pw.caption).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 8)
             if let role, !role.isEmpty {
                 Text(role.capitalized)
-                    .font(.caption2.weight(.semibold))
+                    .font(Font.pw.caption2Semibold)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Color(.secondarySystemFill), in: Capsule())
                     .foregroundStyle(.secondary)
@@ -77,7 +77,7 @@ struct AvatarMark: View {
     private var placeholder: some View {
         ZStack {
             Color(.tertiarySystemFill)
-            Text(initial).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            Text(initial).font(Font.pw.subheadlineSemibold).foregroundStyle(.secondary)
         }
     }
 }
@@ -89,7 +89,7 @@ struct OutcomeBadge: View {
     let proposal: Proposal
     var body: some View {
         Text(proposal.outcome)
-            .font(.caption2.weight(.semibold))
+            .font(Font.pw.caption2Semibold)
             .textCase(.uppercase)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(tint.opacity(0.15), in: Capsule())
@@ -97,7 +97,7 @@ struct OutcomeBadge: View {
     }
     private var tint: Color {
         if proposal.outcomeIsDecision { return .red }
-        if proposal.outcomeIsOpen { return .accentColor }
+        if proposal.outcomeIsOpen { return .pwAccent }
         return .secondary
     }
 }
@@ -111,9 +111,9 @@ struct DocumentBody: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block.level {
-                case 1: Text(block.text).font(.title3.bold())
-                case 2: Text(block.text).font(.headline)
-                case 3: Text(block.text).font(.subheadline.weight(.semibold))
+                case 1: Text(block.text).font(Font.pw.title3)
+                case 2: Text(block.text).font(Font.pw.headline)
+                case 3: Text(block.text).font(Font.pw.subheadlineSemibold)
                 default: Text(block.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -149,6 +149,6 @@ struct DocumentBody: View {
 struct WebsiteOnlyNote: View {
     let text: String
     var body: some View {
-        Text(text).font(.footnote).foregroundStyle(Color.secondary)
+        Text(text).font(Font.pw.footnote).foregroundStyle(Color.secondary)
     }
 }

@@ -12,7 +12,7 @@ struct FilterSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("\(session.filtered.count) of \(session.patches.count) patches").font(.subheadline).foregroundStyle(.secondary)
+                    Text("\(session.filtered.count) of \(session.patches.count) patches").font(Font.pw.subheadline).foregroundStyle(.secondary)
                     FlowLayout(spacing: 8) {
                         if !query.isEmpty {
                             Chip(title: "“\(query)”", active: true, trailing: "xmark") { session.query = "" }
@@ -61,11 +61,11 @@ struct Chip: View {
     }
     private var label: some View {
         HStack(spacing: 5) {
-            if active && trailing == nil { Image(systemName: "checkmark").font(.caption.bold()) }
+            if active && trailing == nil { Image(systemName: "checkmark").font(Font.pw.captionSemibold) }
             Text(title)
-            if let count { Text("\(count)").font(.caption).opacity(0.75) }
-            if let trailing { Image(systemName: trailing).font(.caption.bold()) }
-        }.font(.subheadline.weight(.medium)).lineLimit(1)
+            if let count { Text("\(count)").font(Font.pw.caption).opacity(0.75) }
+            if let trailing { Image(systemName: trailing).font(Font.pw.captionSemibold) }
+        }.font(Font.pw.subheadlineMedium).lineLimit(1)
     }
 }
 

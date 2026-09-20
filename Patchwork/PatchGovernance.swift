@@ -35,8 +35,8 @@ struct PatchGovernanceHome: View {
                     Section {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Nominations are open for \(election.seats ?? 0) seat\((election.seats ?? 0) == 1 ? "" : "s")")
-                                .font(.headline)
-                            Text(candidateLine(election)).font(.subheadline).foregroundStyle(.secondary)
+                                .font(Font.pw.headline)
+                            Text(candidateLine(election)).font(Font.pw.subheadline).foregroundStyle(.secondary)
                         }.padding(.vertical, 2)
                     }
                 }
@@ -75,7 +75,7 @@ struct PatchGovernanceHome: View {
                     }.accessibilityIdentifier("governanceDocuments")
                     if recordWithheld {
                         Label("Proposals and decisions here are not public.", systemImage: "lock")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(Font.pw.subheadline).foregroundStyle(.secondary)
                     } else {
                         NavigationLink {
                             PatchProposalList(quilt: quilt, slug: patch.slug, close: close)
@@ -122,7 +122,7 @@ struct PatchGovernanceHome: View {
                 ForEach(seats) { seat in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(seat.holder).foregroundStyle(seat.isVacant ? Color.secondary : Color.primary)
-                        Text(seat.fate).font(.subheadline).foregroundStyle(.secondary)
+                        Text(seat.fate).font(Font.pw.subheadline).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }.padding(.vertical, 2)
                 }
@@ -174,12 +174,12 @@ struct GovernanceDocumentList: View {
             ForEach(documents) { document in
                 NavigationLink { GovernanceDocumentDetail(quilt: quilt, initial: document, close: close) } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(document.title).font(.headline)
+                        Text(document.title).font(Font.pw.headline)
                         HStack(spacing: 8) {
                             if let version = document.version { Text("v\(version)") }
                             if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
                             if document.kind == "lining" { Text("The lining") }
-                        }.font(.caption).foregroundStyle(.secondary)
+                        }.font(Font.pw.caption).foregroundStyle(.secondary)
                     }.padding(.vertical, 4)
                 }.accessibilityIdentifier("documentRow")
             }
@@ -191,7 +191,7 @@ struct GovernanceDocumentList: View {
                 }
             }
             if publishedOnly && !documents.isEmpty {
-                Section { Text("Members-only documents are not listed here.").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Members-only documents are not listed here.").font(Font.pw.footnote).foregroundStyle(.secondary) }
             }
         }
         .navigationTitle("Documents").navigationBarTitleDisplayMode(.inline)
@@ -232,14 +232,14 @@ struct GovernanceDocumentDetail: View {
     var body: some View {
         List {
             Section {
-                Text(document.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+                Text(document.title).font(Font.pw.title2).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 10) {
                     if let version = document.version { Text("v\(version)") }
                     if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
-                }.font(.caption).foregroundStyle(.secondary)
+                }.font(Font.pw.caption).foregroundStyle(.secondary)
                 if document.kind == "lining" {
                     Text("The shared baseline every patch on this quilt starts with.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(Font.pw.footnote).foregroundStyle(.secondary)
                 }
             }
             if let body = document.body, !body.isEmpty {
@@ -293,13 +293,13 @@ struct PatchProposalList: View {
             ForEach(proposals) { proposal in
                 NavigationLink { ProposalDetailView(quilt: quilt, initial: proposal, close: close) } label: {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(proposal.title).font(.headline)
+                        Text(proposal.title).font(Font.pw.headline)
                         HStack(spacing: 8) {
                             if let author = proposal.authorName, !author.isEmpty {
                                 Text("\(proposal.isDirectChange ? "applied by" : "by") \(author)")
                             }
                             if let created = ProfileDate.day(proposal.createdAt) { Text(created) }
-                        }.font(.caption).foregroundStyle(.secondary)
+                        }.font(Font.pw.caption).foregroundStyle(.secondary)
                         OutcomeBadge(proposal: proposal)
                     }.padding(.vertical, 4)
                 }.accessibilityIdentifier("proposalRow")
@@ -361,14 +361,14 @@ struct ProposalDetailView: View {
     var body: some View {
         List {
             Section {
-                Text(proposal.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+                Text(proposal.title).font(Font.pw.title2).fixedSize(horizontal: false, vertical: true)
                 OutcomeBadge(proposal: proposal)
                 if let author = proposal.authorName, !author.isEmpty {
                     Text("\(proposal.isDirectChange ? "Applied by" : "Proposed by") \(author)")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(Font.pw.subheadline).foregroundStyle(.secondary)
                 }
                 if let created = ProfileDate.day(proposal.createdAt) {
-                    Text(created).font(.caption).foregroundStyle(.secondary)
+                    Text(created).font(Font.pw.caption).foregroundStyle(.secondary)
                 }
             }
             Section {
@@ -428,16 +428,16 @@ struct GovernanceRecordList: View {
             ForEach(entries) { entry in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text(entry.kindLabel).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(entry.kindLabel).font(Font.pw.captionSemibold).foregroundStyle(.secondary)
                         Spacer()
-                        if let day = ProfileDate.day(entry.at) { Text(day).font(.caption).foregroundStyle(.secondary) }
+                        if let day = ProfileDate.day(entry.at) { Text(day).font(Font.pw.caption).foregroundStyle(.secondary) }
                     }
-                    Text(entry.title).font(.headline).fixedSize(horizontal: false, vertical: true)
-                    Text(entry.outcomeLine).font(.subheadline)
+                    Text(entry.title).font(Font.pw.headline).fixedSize(horizontal: false, vertical: true)
+                    Text(entry.outcomeLine).font(Font.pw.subheadline)
                         .foregroundStyle(entry.settled ? Color.primary : Color.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let summary = entry.summary, !summary.isEmpty {
-                        Text(summary).font(.footnote).foregroundStyle(.secondary)
+                        Text(summary).font(Font.pw.footnote).foregroundStyle(.secondary)
                     }
                 }
                 .padding(.vertical, 4)

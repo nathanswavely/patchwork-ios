@@ -4,6 +4,9 @@ import SwiftUI
 
 @main struct PatchworkApp: App {
     @StateObject private var quilts = QuiltStore()
+    /// The navigation and tab bars draw their own text, so the two faces are
+    /// put on them once, here, rather than per screen.
+    init() { PWType.install() }
     /// The reader's standing theme choice (docs/adr/112). Per device, never on
     /// an account: the reader it exists for does not have one.
     @AppStorage(DisplayDefaults.themeKey) private var theme = ThemeChoice.system.rawValue
@@ -18,7 +21,12 @@ import SwiftUI
             }
             .preferredColorScheme(previewColorScheme ?? (ThemeChoice(rawValue: theme) ?? .system).scheme)
             .environmentObject(quilts)
-            .tint(Color.accentColor)
+            // The body face is the default for every descendant that does not
+            // name its own, which is how it reaches the screens this slice
+            // does not otherwise touch.
+            .font(Font.pw.body)
+            .foregroundStyle(Color.pwText)
+            .tint(Color.pwAccent)
         }
     }
     private var previewColorScheme: ColorScheme? {
@@ -32,7 +40,7 @@ import SwiftUI
 struct QuiltMark: View {
     var body: some View {
         Image(systemName: "square.grid.2x2.fill")
-            .font(.title2)
+            .font(Font.pw.title2)
             .foregroundStyle(.tint)
             .frame(width: 42, height: 42)
         .accessibilityHidden(true)

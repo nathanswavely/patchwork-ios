@@ -95,9 +95,9 @@ struct DiscoveryToolbar: ViewModifier {
                             Image(systemName: "line.3.horizontal.decrease")
                                 .overlay(alignment: .topTrailing) {
                                     if session.activeFilterCount > 0 {
-                                        Text("\(session.activeFilterCount)").font(.caption2.bold()).foregroundStyle(Color(.systemBackground))
+                                        Text("\(session.activeFilterCount)").font(Font.pw.caption2Semibold).foregroundStyle(Color(.systemBackground))
                                             .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
-                                            .background(Color.accentColor, in: Capsule()).offset(x: 10, y: -8)
+                                            .background(Color.pwAccent, in: Capsule()).offset(x: 10, y: -8)
                                     }
                                 }
                         }
@@ -163,7 +163,7 @@ struct DiscoveryToolbar: ViewModifier {
 private struct FieldChrome: ViewModifier {
     let width: CGFloat
     func body(content: Content) -> some View {
-        content.font(.subheadline).padding(.horizontal, 14).frame(height: 44).frame(width: width).modifier(GlassCapsule())
+        content.font(Font.pw.subheadline).padding(.horizontal, 14).frame(height: 44).frame(width: width).modifier(GlassCapsule())
     }
 }
 

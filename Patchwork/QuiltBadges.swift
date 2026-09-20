@@ -40,7 +40,10 @@ enum QuiltBadges {
         let chromeY: CGFloat
         let radius: CGFloat
         init(size: CGFloat) {
-            font = .systemFont(ofSize: size, weight: .semibold)
+            // The badge is the quilt's own label and is set in the quilt's
+            // own face, as the web sets it (`--font`); SF Pro stands in only
+            // if the bundled font failed to register.
+            font = PWType.baseFont(.text, size: size, weight: 600)
             lineHeight = (size * 1.3).rounded()
             textMax = (size * QuiltBadges.textEm).rounded()
             chromeX = 2 * (0.4 * size).rounded() + 2

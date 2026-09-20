@@ -125,7 +125,9 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
         delegate = self
         minimumZoomScale = 0.3
         maximumZoomScale = 6
-        backgroundColor = .systemGroupedBackground
+        // The quilt hangs on the textile canvas — raw cotton, raw denim —
+        // not on iOS grouped grey (Palette.swift).
+        backgroundColor = .pwGround
         contentInsetAdjustmentBehavior = .never
         if #available(iOS 26.0, *) { topEdgeEffect.isHidden = true; bottomEdgeEffect.isHidden = true }
         board.backgroundColor = .clear
