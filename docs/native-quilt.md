@@ -118,3 +118,65 @@ The Events tab and an event's detail were brought level with the web's public
 
 Nothing authenticated is stubbed: no submit, no edit, no RSVP (the web has
 none either), and no `scope=my`.
+
+## App identity — 2026-09-20
+
+The app was native and anonymous: iOS blue on iOS grey, with the quilt the only
+thing in it that looked like Patchwork. It now has a room of its own, without
+becoming a second copy of the web's textile theme system.
+
+**A palette of five neutrals and one tint, all from the web's tokens.** They
+live as colour sets in `Assets.xcassets/Palette`, each with light, dark and
+**Increase Contrast** variants, and are reached only through the `Color`
+extension in `Palette.swift`: `pwGround` (`#F4F0E8` / `#151820` — `--lt-canvas`,
+raw cotton and raw denim, which is also `--color-bg`), `pwSurface` (`#FAF6EE` /
+`#1C2028`), `pwBorder` (`#DDD8CC` / `#2A2E38`, the unbleached-thread family the
+quilt's own `QuiltInk.thread` draws from), `pwText` (`#2A2520` / `#E0DBD4`) and
+`pwTextMuted` (`#6B655C` / `#9B958C`). `AccentColor` was already the web's
+`--color-primary` (`#0272B5` / `#39B4F6`) and stays the only tint. Body text
+measures 13.4:1 light and 12.9:1 dark against the ground, muted 5.1:1 and
+6.0:1, accent-as-text 4.8:1 and 7.0:1 — AA at both ends, with Increase Contrast
+only ever moving further from the ground. Nothing branches on the setting: the
+asset catalog answers it. The ground reaches the quilt canvas (which had been
+`systemGroupedBackground` under a quilt whose ink was taken from this very
+colour), List, Events, the picker, the info-stack sheets and the docked
+profile; a grouped `List` that stays a list is re-grounded rather than
+restyled (`View.groundedList()`), and every material, sheet and system control
+is left alone.
+
+**The patch list is the web's card list.** `QuiltBrowser`'s List mode was a
+grouped `List` of `PatchRow`s — chevrons and system rows, which read as
+settings where the web reads as patches. It is now a `LazyVStack` of
+`PatchCard`s on the ground, with the web's anatomy (SocialHome's cards pane,
+ADR 078): a 60pt tile miniature drawn from `QuiltBlocks.cuts` and
+`QuiltTheme.palette` — the *same* drawing the canvas makes, rotation and
+hairline seal included, with the motif disc and the unclaimed mark on the
+canvas's own `min(22, side × 0.3)` rule — then the name, `N Members · N Events`
+(`N Following · N Events` on a community listing, and the all-time event figure
+the card asks for rather than the head's upcoming one), a `Moved` chip, and
+three lines of description. The follow heart is a `Link` to
+`{quilt}/login?redirect=/patches/{slug}`: signed out is the only state this
+client has, so it is an exit rather than a control with a state to fake. The
+header carries "Patches", `N results` (or `N of M` while the quilt is narrowed)
+and the order menu under the web's names — **Quilt order**, **Recently added**,
+**A→Z** — replacing "Name" and "Newest", which were the same two orders under
+names nobody would recognise from the site. Quilt order still reads the
+placement the canvas is drawing (ADR 074), and a patch with no tile keeps the
+tail. Empty states follow the web: "No patches match your filter" with **Clear
+filter** and, where `submissions_enabled`, **Suggest a patch**; "No patches here
+yet" otherwise. The footer strip still ends the list, and `patchRow` is still
+the identifier the browsing UI test taps.
+
+`PatchCard` and `TileMiniature` are their own views so Discover rows and search
+results can adopt the language later. They were **not** applied there in this
+pass: `Discover.swift` and `SearchResults.swift` were being edited in parallel
+and are untouched here.
+
+**Verification.** 101 unit tests (11 new, covering the card's counts wording,
+the head's differing one, and the three orders including the unplaced tail and
+the A→Z collation) and 5 UI tests pass on an iPhone 17 Pro simulator. Launched
+against Lancaster's live 59 patches in light and dark: cards read as one
+surface on the textile ground in both, the miniatures match the tiles behind
+them, and the profile's head now shares the card's clothes. Not verified: a
+physical device, VoiceOver, iPad, and Increase Contrast beyond the declared
+values.

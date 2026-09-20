@@ -4,6 +4,16 @@ description: Clean native browsing for independently operated community quilts.
 colors:
   accent-light: "#0272B5"
   accent-dark: "#39B4F6"
+  ground-light: "#F4F0E8"
+  ground-dark: "#151820"
+  surface-light: "#FAF6EE"
+  surface-dark: "#1C2028"
+  border-light: "#DDD8CC"
+  border-dark: "#2A2E38"
+  text-light: "#2A2520"
+  text-dark: "#E0DBD4"
+  text-muted-light: "#6B655C"
+  text-muted-dark: "#9B958C"
 typography:
   display:
     fontFamily: "SF Pro Display, SF Pro, -apple-system, sans-serif"
@@ -15,18 +25,26 @@ typography:
     fontFamily: "SF Pro Text, SF Pro, -apple-system, sans-serif"
 rounded:
   tile: "8pt"
+  card: "14pt"
 spacing:
   sm: "8pt"
+  card: "14pt"
 components:
   primary-action:
     backgroundColor: "{colors.accent-light}"
     textColor: "#FFFFFF"
   filter-control:
-    backgroundColor: "UIColor.secondarySystemGroupedBackground"
-    textColor: "Color.primary"
+    backgroundColor: "{colors.surface-light}"
+    textColor: "{colors.text-light}"
+  patch-card:
+    backgroundColor: "{colors.surface-light}"
+    borderColor: "{colors.border-light}"
+    textColor: "{colors.text-light}"
+    rounded: "{rounded.card}"
+    padding: "{spacing.card}"
   patch-tile:
-    backgroundColor: "UIColor.secondarySystemGroupedBackground"
-    textColor: "Color.primary"
+    backgroundColor: "{colors.surface-light}"
+    textColor: "{colors.text-light}"
     rounded: "{rounded.tile}"
     padding: "{spacing.sm}"
 ---
@@ -51,19 +69,31 @@ The quilt, map, and list are one discovery instrument. Filtering repacks the mat
 
 ## Colors
 
-Use semantic system roles in SwiftUI/UIKit: `Color.accentColor`, `Color.primary`, `Color.secondary`, `Color(.systemGroupedBackground)`, `Color(.secondarySystemGroupedBackground)`, and `Color(.separator)`. The AccentColor asset has separate light and dark values.
+The app is native but not anonymous. Its six colours are the site's, not iOS's defaults: the quilt is the patches' own (see Fabric), and this is the room it hangs in. Five neutrals plus one tint, all asset-backed in `Assets.xcassets/Palette` with light, dark and Increase Contrast variants, and reached only through the `Color` extension in `Palette.swift` — never as a literal at a call site.
 
 ### Primary
 
-- **AccentColor light** (`{colors.accent-light}`) and **AccentColor dark** (`{colors.accent-dark}`): links, prominent actions, selected controls, and map/list selection through the asset-backed `Color.accentColor`.
+- **AccentColor light** (`{colors.accent-light}`) and **AccentColor dark** (`{colors.accent-dark}`): the web's `--color-primary`. Links, prominent actions, selected controls, and map/list selection through the asset-backed `Color.accentColor`. Default system blue was replaced by it; nothing else in the chrome is allowed to mean "action".
 
 ### Neutral
 
-- **Grouped surfaces:** use `systemGroupedBackground` and `secondarySystemGroupedBackground`.
-- **Labels:** use `label` and `secondaryLabel`.
-- **Separators:** use the system separator color only where grouped lists provide one.
+Each is lifted from a web token, so a reader who knows the site recognises the app.
 
-**The One Tint Rule.** One tint communicates interaction. Meaning must remain available through text, shape, position, and VoiceOver state.
+| token | light | dark | from |
+| --- | --- | --- | --- |
+| `Color.pwGround` | `{colors.ground-light}` | `{colors.ground-dark}` | `--lt-canvas` raw cotton / raw denim, which is also `--color-bg` |
+| `Color.pwSurface` | `{colors.surface-light}` | `{colors.surface-dark}` | `--color-surface`, one step off the ground |
+| `Color.pwBorder` | `{colors.border-light}` | `{colors.border-dark}` | `--color-border`, the unbleached-thread family `QuiltInk.thread` draws from |
+| `Color.pwText` | `{colors.text-light}` | `{colors.text-dark}` | `--color-text` |
+| `Color.pwTextMuted` | `{colors.text-muted-light}` | `{colors.text-muted-dark}` | `--color-text-muted` |
+
+The ground reaches the quilt canvas, List, Events, Discover, the quilt picker, the info stack and the docked profile; the surface is what a card, a row and the profile's head are made of. Increase Contrast moves each further from the ground (light `#F7F4ED` / `#FFFFFF` / `#A9A294` / `#1A1510` / `#4E483F`; dark `#0E1016` / `#242A33` / `#4A5060` / `#F5F2EC` / `#BAB4AA`), which is the asset catalog's job rather than a branch in code.
+
+Contrast (WCAG, against the ground): text 13.4:1 light and 12.9:1 dark; muted 5.1:1 light and 6.0:1 dark; accent as text on the surface 4.8:1 light and 7.0:1 dark — AA for body text at both ends. The hairline is decorative and is not asked to carry meaning.
+
+System materials stay system: the top bar's glass controls, the view-switcher pill, sheets and the tab bar are the platform's, and semantic colours stay wherever a system component owns them (`.separator` on a system list's own rules, `.red` on an error, the system's own selection).
+
+**The One Tint Rule.** One tint communicates interaction. Meaning must remain available through text, shape, position, and VoiceOver state. The five neutrals are not tints: none of them may stand for a state.
 
 ### Display settings
 
@@ -78,7 +108,7 @@ Two standing choices belong to the reader, not to the quilt, and neither needs a
 
 The quilt's colours are the patches', never the app's. A tile draws from its **bundle** (up to six fabrics off the curated fabric wall), else its pinned **palette** (eight album palettes and eighteen wall cuts, in the web's registry order), else the palette the web's `hashStr` assigns from the patch id — bit for bit the same hash, so a patch wears the same tile here as on the site. Slot one is the **identity colour**, the one colour that stands for the patch anywhere it is not a full tile (its motif disc). Ink on a fabric is `#151820` or white by WCAG luminance, threshold 0.18, as the web decides it.
 
-Ink around the fabric follows the web's textile tokens and flips with the theme: seam ink `rgba(28,24,18,0.55)` light / `rgba(0,0,0,0.72)` dark; thread `#c8c0b0` / `#2e3240` (badge border); heavy thread `#7a746a` / `#4a5060` (mark rings); badge fill `rgba(250,246,238,0.45)` / `rgba(0,0,0,0.5)` with text `#2a2520` / `#e8e6e3`. Status discs are `rgba(0,0,0,0.55)` in both themes, so a tile's own colour never means "unclaimed". The canvas ground stays `systemGroupedBackground`.
+Ink around the fabric follows the web's textile tokens and flips with the theme: seam ink `rgba(28,24,18,0.55)` light / `rgba(0,0,0,0.72)` dark; thread `#c8c0b0` / `#2e3240` (badge border); heavy thread `#7a746a` / `#4a5060` (mark rings); badge fill `rgba(250,246,238,0.45)` / `rgba(0,0,0,0.5)` with text `#2a2520` / `#e8e6e3`. Status discs are `rgba(0,0,0,0.55)` in both themes, so a tile's own colour never means "unclaimed". The canvas ground is `pwGround` — the textile canvas the ink was taken from, not iOS grouped grey.
 
 ## Typography
 
@@ -104,7 +134,7 @@ Controls stay inside safe areas; the canvas itself runs under the status bar, th
 
 One top bar sits on every discovery surface: **Filter** leading (badged with the active count; present only where the surface narrows), the **search field** in the centre — a glass capsule that is the field itself, not a door to one — and the **account** menu trailing (join or sign in on the web, About this quilt, Switch quilt), which gives way to Cancel while the field is live. The tab bar's Search button focuses that field. Detail screens use inline navigation titles and preserve the edge-swipe back gesture.
 
-The Quilt/Map/List switch is a native segmented control floating over the foot of the canvas above the tab bar, in thumb reach. There is no fit or recentre control; the initial fit and pinch are enough. Quilt uses `QuiltCanvas`, a UIKit `UIScrollView` with zoom and pan; its gesture zoom runs 0.3–6, and on a viewport 700pt wide or narrower the initial fit is floored so a 1×1 tile is at least 60pt (the badge threshold plus 8) and capped at 2.4 — a quilt fitted whole into a phone is anonymous confetti, so it starts legible and lets the person pan. Filtering matches selected interests with OR semantics and intersects them with the search chip, case and diacritic insensitively over name and description. Matching patches repack from their original sizes, while clearing filters restores the baseline arrangement. Map uses actual coordinates and the same narrowed collection; List uses quilt placement order, Name, or Newest, and states the count in its header.
+The Quilt/Map/List switch is a native segmented control floating over the foot of the canvas above the tab bar, in thumb reach. There is no fit or recentre control; the initial fit and pinch are enough. Quilt uses `QuiltCanvas`, a UIKit `UIScrollView` with zoom and pan; its gesture zoom runs 0.3–6, and on a viewport 700pt wide or narrower the initial fit is floored so a 1×1 tile is at least 60pt (the badge threshold plus 8) and capped at 2.4 — a quilt fitted whole into a phone is anonymous confetti, so it starts legible and lets the person pan. Filtering matches selected interests with OR semantics and intersects them with the search chip, case and diacritic insensitively over name and description. Matching patches repack from their original sizes, while clearing filters restores the baseline arrangement. Map uses actual coordinates and the same narrowed collection; List is a stack of patch cards, ordered by Quilt order, Recently added, or A→Z — the web's own three names — and states the count in its header.
 
 At initial fit on a phone, the smallest tile is at least 60pt wide. Manual zooming out can make tiles smaller; List provides conventional full-size targets. Names are not painted on tiles: they float as name badges that appear as tiles earn room (see Quilt Tiles). The full patch name is the tile's accessibility label and the tap opens its profile.
 
@@ -112,13 +142,13 @@ The canvas fills the available iPhone or iPad viewport. Profiles dock as native 
 
 ## Elevation & Depth
 
-Use grouped system backgrounds, separators, and native sheet/material presentation. Rows stay quiet; there is no custom shadow or glass system beyond the quilt's own ink — a corner mark's one-point drop shadow and the seam stroke between tiles are the quilt's, not the app's. Reduce Motion disables animated repacking and uses the platform's reduced transition behavior.
+Depth is stated by surface and hairline, never by shadow. A card is `pwSurface` on `pwGround`, cut out with a ⅓pt `pwBorder` stroke at a 14pt continuous radius; that is the whole elevation system. There is no custom shadow or glass beyond the quilt's own ink — a corner mark's one-point drop shadow and the seam stroke between tiles are the quilt's, not the app's — and the system's materials are used unaltered where the system presents them. Where a grouped `List` remains, it is re-grounded rather than restyled: `scrollContentBackground(.hidden)` over `pwGround` with `pwSurface` rows (`View.groundedList()`). Reduce Motion disables animated repacking and uses the platform's reduced transition behavior.
 
 **The Live Surface Rule.** Opening a profile keeps the quilt's filter and viewport alive behind it. Filtering never dismisses the profile; changing quilts does. One temporary overlay at a time: a tap on the canvas behind the filter sheet closes the sheet first, then docks the patch.
 
 ## Shapes
 
-Use system-rounded controls and native sheet corners. Tiles are square and meet edge to edge; the only line between them is the seam ink drawn on top, never a gap or a per-tile outline. Corner marks are discs of 22pt; badges are pills with a half-em radius. Prefer grouped lists and system separators over bespoke card stacks. The web's wandering lattice and raw-edge wobble are not drawn yet — when they are, the seam still belongs to the boundary, not to either tile.
+Use system-rounded controls and native sheet corners. Tiles are square and meet edge to edge; the only line between them is the seam ink drawn on top, never a gap or a per-tile outline. Corner marks are discs of 22pt; badges are pills with a half-em radius. Cards are 14pt continuous-radius rectangles with a hairline border and 14pt of their own padding; their tile miniature is an 8pt-radius square, the same corner the quilt's tiles wear. Prefer a re-grounded system list wherever the content is a setting or a document; a card is for a thing that could move to another surface — a patch, an event, a member. The web's wandering lattice and raw-edge wobble are not drawn yet — when they are, the seam still belongs to the boundary, not to either tile.
 
 ## Components
 
@@ -139,6 +169,18 @@ Use system-rounded controls and native sheet corners. Tiles are square and meet 
 - **Style:** the centre field activates in place; results list under it, over the surface, as patches (by name or description) and upcoming events (by title), each a way through to the thing itself. Cancel leaves the surface as it was.
 - **Nothing found:** where the quilt says it takes suggestions (`submissions_enabled`), the empty result offers one link to the website's submission form. There is no native form; suggesting needs an account.
 - **Rule:** typing never narrows the quilt. The last row — "Show matches on the quilt for …" — is the one act that sets the search chip.
+
+### Patch Card
+
+The one shape in the app that is not a system row. A card is "a bordered surface holding something that could move" (web CONTEXT.md), and a patch is exactly that, so List is a scrolling stack of cards on `pwGround` rather than a grouped list — which read as settings where the web reads as patches.
+
+- **Anatomy** (web SocialHome's cards pane, ADR 078): a 60pt **tile miniature** at the leading edge, then the name (Headline), the counts line, a `Moved` chip where the patch left, and up to three lines of the patch's own description. The whole card is the door into the docked profile.
+- **Tile miniature:** the *same* drawing the canvas makes — `QuiltBlocks.cuts` over `QuiltTheme.palette`, rotated about the centre, hairline-sealed — clipped to an 8pt square, with the motif disc on the patch's identity colour in the top-left corner and the neutral unclaimed mark in the top-right, at the canvas's own `min(22, side × 0.3)` rule. It is decorative to VoiceOver: the card already names the patch.
+- **Counts:** `N Members · N Events`, or `N Following · N Events` on a community listing, worded as the web's card words it. The event figure is every active event the patch owns — not the head's upcoming count, which answers a different question.
+- **Follow:** a heart in the top-right corner, and it is a `Link` to `{quilt}/login?redirect=/patches/{slug}`. Signed out is the only state this client has, so the heart is an exit rather than a control with a state to fake, and it is withheld from a patch that has moved.
+- **Header:** "Patches", then `N results` — or `N of M` while the quilt is narrowed, so the filter's work is visible — and a `Menu` of the web's three orders: **Quilt order** (the placement the canvas is drawing, read back), **Recently added** (arrival, else listing, ties A to Z), **A→Z**.
+- **Empty states:** a filter that empties the list says "No patches match your filter" with **Clear filter**, plus **Suggest a patch** to the website where `submissions_enabled`; an empty quilt says "No patches here yet" and offers only the suggestion. The list ends in the quiet footer strip.
+- **Reuse:** `PatchCard` and `TileMiniature` live in `PatchCard.swift` so Discover rows and search results can adopt the same language.
 
 ### Quilt Tiles
 
@@ -161,7 +203,7 @@ Fetched documents are markdown, read as native blocks — headings, paragraphs, 
 
 ### Docked Profile
 
-The patch's own profile opens in a native sheet over the surface that opened it — quilt, map, list, search, or Discover. At rest the sheet is the profile's head — cover, name, counts worded as the web words them ("3 Following · 32 Upcoming Events"), tags, the state the patch wears, description — plus a 96pt cut of the first glimpse, which is the invitation to pull. Pulled up it is full screen, and the pull is what fetches the rooms. Tapping behind dismisses at rest; Done and the handle work at any height. The underlying discovery state remains intact.
+The patch's own profile opens in a native sheet over the surface that opened it — quilt, map, list, search, or Discover. At rest the sheet is the profile's head — cover, name, counts worded as the web words them ("3 Following · 32 Upcoming Events"), tags, the state the patch wears, description — wearing the list's card language, the same surface, hairline and radius, so the card a reader touched and the profile it opens are visibly one thing; plus a 96pt cut of the first glimpse, which is the invitation to pull. Pulled up it is full screen, and the pull is what fetches the rooms. Tapping behind dismisses at rest; Done and the handle work at any height. The underlying discovery state remains intact.
 
 The head wears state, never a button standing in for it: a moved patch's forwarding address (which opens the read-only remote view when it names a patch on another quilt), "No one runs this patch yet" on a community listing, and an "Amended lining" badge on a patch whose lining is its own writing. Claiming, joining, following and voting stay on the website — there are no disabled pretend controls for them.
 
@@ -183,15 +225,18 @@ Asks one question — "What are you drawn to?" — with the eight most-worn tags
 
 ### Navigation
 
-Use SF Symbols, `TabView`, `NavigationStack`, grouped `List`, `Map`, native sheets, and system materials. Quilt choice is always explicit; Lancaster is a directory entry, never an implicit launch selection. Quilts the instance names as neighbours appear in the switcher under Connected quilts as doorways to their own inspect-and-confirm.
+Use SF Symbols, `TabView`, `NavigationStack`, a re-grounded `List`, a card stack where the content is patches, `Map`, native sheets, and system materials. Quilt choice is always explicit; Lancaster is a directory entry, never an implicit launch selection. Quilts the instance names as neighbours appear in the switcher under Connected quilts as doorways to their own inspect-and-confirm.
 
 ## Do's and Don'ts
 
-- **Do** use semantic colors, Dynamic Type, SF Symbols, VoiceOver labels, safe areas, and 44pt targets.
+- **Do** use the `Palette` tokens for ground, surface, hairline and text, and semantic system colours wherever a system component owns them; use Dynamic Type, SF Symbols, VoiceOver labels, safe areas, and 44pt targets.
+- **Do** reach a colour through `Color.pwGround` / `.pwSurface` / `.pwBorder` / `.pwText` / `.pwTextMuted`, never a literal or a second definition of the same value.
+- **Do** give a patch its tile wherever it is named outside the quilt: the miniature is the same drawing, not a second decoration of it.
 - **Do** preserve placement order, repack filtered subsets, and share one filter state across Quilt, Map, and List.
 - **Do** honor Reduce Motion for repacking and native transitions.
 - **Do** preserve the active viewport and filters while a profile is open.
 - **Don't** invent appearance: a tile is what the patch chose or what the hash assigned, and an unknown key falls back rather than being guessed at. Don't paint names onto fabric, scale marks or seam ink with the quilt, or add hand lettering or generated raster assets.
 - **Don't** mean status with colour: identity wears the patch's own colour, status wears a neutral disc.
-- **Don't** replace native controls with web-shaped buttons, custom global navigation, or hover-only affordances.
+- **Don't** replace native controls with web-shaped buttons, custom global navigation, or hover-only affordances. A card is not a licence to restyle the system: materials, sheets, the tab bar and the segmented pill stay the platform's.
+- **Don't** add shadows, gradients or a second elevation step; a surface and a hairline are the whole system. Don't tint a neutral: one tint means action, and nothing else may.
 - **Don't** silently select a quilt or invent authenticated actions; joining, following, suggesting a patch, governance, and submitting or editing an event remain website links in this browsing pass, and Dashboard and notifications wait for sign-in rather than standing in the shell as stubs.

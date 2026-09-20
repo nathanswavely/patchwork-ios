@@ -69,6 +69,7 @@ struct EventList: View {
                 }
             }
         }
+        .groundedList()
         .navigationTitle("Events")
         .toolbar {
             if let slug { ToolbarItem(placement: .topBarTrailing) { SubscribeMenu(api: PatchworkAPI(base: quilt.url), slug: slug) } }

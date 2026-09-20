@@ -85,6 +85,7 @@ struct QuiltPicker: View {
 
 
         }
+        .groundedList()
         .navigationTitle("Choose a quilt")
         .searchable(text: $search, prompt: "Find a quilt")
         .sheet(item: $pending) { quilt in
@@ -97,6 +98,7 @@ struct QuiltPicker: View {
                         if let instance, !instance.description.isEmpty { Text(instance.description) }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
                 }
+                .background(Color.pwGround.ignoresSafeArea())
                 .navigationTitle("About this quilt").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { pending = nil } } }
                 .safeAreaInset(edge: .bottom) {

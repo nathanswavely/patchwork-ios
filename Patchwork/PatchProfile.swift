@@ -66,6 +66,7 @@ struct PatchSheet: View {
                     glimpses
                 }
             }
+            .background(Color.pwGround)
             .navigationTitle("Patch").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { ShareLink(item: api.webURL("patches/\(patch.slug)")) }
@@ -89,21 +90,29 @@ struct PatchSheet: View {
         rest = height
         detent = .height(height)
     }
+    /// The head wears the list's card language — the same surface, the same
+    /// hairline, the same radius — so the card a reader touched and the
+    /// profile it opens are visibly one thing (Palette.swift, `PatchCard`).
     private var head: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let cover {
-                AsyncImage(url: cover) { image in image.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color(.secondarySystemGroupedBackground) }
+                AsyncImage(url: cover) { image in image.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color.pwGround }
                     .frame(height: 160).frame(maxWidth: .infinity).clipped()
                     .accessibilityLabel(patch.imageAlt ?? "")
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(patch.name).font(.title.bold()).fixedSize(horizontal: false, vertical: true)
-                Text(patch.countsLabel).font(.subheadline).foregroundStyle(Color.secondary)
-                if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(.footnote).foregroundStyle(Color.secondary) }
+                Text(patch.name).font(.title.bold()).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
+                Text(patch.countsLabel).font(.subheadline).foregroundStyle(Color.pwTextMuted)
+                if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(.footnote).foregroundStyle(Color.pwTextMuted) }
                 notices
-                if let description = patch.description, !description.isEmpty { Text(description).textSelection(.enabled) }
-            }.padding(.horizontal, 20).padding(.top, 12)
+                if let description = patch.description, !description.isEmpty { Text(description).foregroundStyle(Color.pwText).textSelection(.enabled) }
+            }.padding(.horizontal, 16).padding(.vertical, 14)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.pwSurface, in: PatchworkCard.shape)
+        .clipShape(PatchworkCard.shape)
+        .overlay(PatchworkCard.shape.strokeBorder(Color.pwBorder, lineWidth: PatchworkCard.hairline))
+        .padding(.horizontal, 16).padding(.top, 8)
     }
     /// State is worn in the head, never disguised as an action. Each of these
     /// is a fact about the patch, and none of them is a button this client
