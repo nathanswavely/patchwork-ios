@@ -4,6 +4,9 @@ import SwiftUI
 
 @main struct PatchworkApp: App {
     @StateObject private var quilts = QuiltStore()
+    /// The reader's standing theme choice (docs/adr/112). Per device, never on
+    /// an account: the reader it exists for does not have one.
+    @AppStorage(DisplayDefaults.themeKey) private var theme = ThemeChoice.system.rawValue
     var body: some Scene {
         WindowGroup {
             Group {
@@ -13,7 +16,7 @@ import SwiftUI
                     NavigationStack { QuiltPicker() }
                 }
             }
-            .preferredColorScheme(previewColorScheme)
+            .preferredColorScheme(previewColorScheme ?? (ThemeChoice(rawValue: theme) ?? .system).scheme)
             .environmentObject(quilts)
             .tint(Color.accentColor)
         }

@@ -20,7 +20,9 @@ Normal launches use live APIs. Add `--preview` to the scheme's launch arguments 
 4. Search patches and upcoming events from the top bar's field (or the tab bar's Search button); one explicit row narrows the quilt to the query.
 5. Tap a patch to dock its profile at the head's height; pull up for its upcoming events, directions, and links. Open an event, use native sharing, or follow a link to its website.
 6. Ask Discover what you're drawn to and get the patches wearing those tags, soonest event first.
-7. Hold the Quilt tab (or use the account menu) to switch quilts; connected quilts appear as doorways. Saved quilts are local to the device; no quilt is preselected at launch.
+7. Read how the quilt is run: the account menu's About this quilt opens a stack — About, The Label, The Lining, how governance works, the Privacy Policy and the User Agreement — which the end of List mode and Discover also reach by a quiet footer row.
+8. Choose how it looks to you from the account menu's Display: Theme (System/Light/Dark) and Colors (Default/Muted). Both are held on the device and need no account.
+9. Hold the Quilt tab (or use the account menu) to switch quilts; connected quilts appear as doorways. Saved quilts are local to the device; no quilt is preselected at launch.
 
 Lancaster is one directory entry, not the default. Direct connection does not depend on directory inclusion. HTTPS root origins only in this prototype; subpath hosting, invitations, registry URLs, QR codes, directory administration, and location discovery are not implemented.
 
@@ -38,13 +40,15 @@ Lancaster is one directory entry, not the default. Direct connection does not de
 | Discovery mode (ADR 075) | Discover tab: most-worn tags with counts, patches wearing them, soonest event first; ends in the patch |
 | Event list and detail | Native lists, push navigation, event-local time zones, cursor pagination |
 | Mobile navigation | System TabView: Quilt, Events, Discover, Search (a button). Dashboard and notifications wait for sign-in |
+| Label, About, lining, governance, legal pages | One quilt-info stack on the account menu, plus a quiet footer row on the reading surfaces; fetched documents read as native markdown blocks |
+| Display menu (ADR 112) | Display sheet: Theme and Colors, held per device, no account needed; Muted carries one hue onto a shared lightness ramp with chroma capped |
 | Visual identity | Blue action tint, system surfaces and SF Symbols, patch/quilt vocabulary |
 
 System typography and surfaces adapt to appearance and Dynamic Type. The quilt retains the web’s rearranging behavior with clean native blocks. Textile decoration and display fonts are intentionally omitted. Reduce Motion disables rearrangement animation; the list provides full text at accessibility sizes.
 
 ## API boundary
 
-Reads `instance`, `instance/icon`, `nodes/tree` (including each patch's `appearance`), `nodes/{slug}`, `tags` (for tag motifs), `events` (including `node_slug`, `after`, and `limit`), and `events/{id}`. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
+Reads `instance` (including `stats` and `submissions_enabled`), `instance/icon`, `instance/lining`, `nodes/tree` (including each patch's `appearance`), `nodes/{slug}`, `tags` (for tag motifs), `label`, `legal/{doc}` for `privacy` and `terms`, `events` (including `node_slug`, `after`, and `limit`), and `events/{id}`. All of them are public and readable signed out. DTOs decode only fields this client uses; unknown fields are tolerated. An ephemeral URLSession does not retain cookies or forward web sessions between quilts. Each selected quilt gets a new navigation subtree; old quilt content is discarded.
 
 The client's direct visit to a selected quilt is not a cross-quilt blended read. It does not use `multi_quilt: false` as permission to blend data from other instances.
 
@@ -52,7 +56,7 @@ Authentication, passkey associated domains, mutations, notifications, account de
 
 ## Verification
 
-Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, explicit selection, layout parity, filter matching, and canvas lifetime. UI tests use fictional Debug data to exercise explicit quilt selection, pinch and fit, docked-profile return without changing the viewport, the filter sheet and its Clear, search that narrows only through its one row, map/list browsing, the profile's pull to events, Discover's question and answer, and quilt switching from the account menu, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
+Run Product → Test in Xcode. Unit tests cover address validation, timestamp variants, optional API fields, explicit selection, layout parity, filter matching, canvas lifetime, the Label/lining/legal responses, markdown block splitting, and the muted ramp against the web's own values. UI tests use fictional Debug data to exercise explicit quilt selection, pinch and fit, docked-profile return without changing the viewport, the filter sheet and its Clear, search that narrows only through its one row, map/list browsing, the profile's pull to events, Discover's question and answer, quilt switching from the account menu, and the quilt-info stack and Display's Muted, with screenshot attachments. A separate UI check exercises the largest accessibility text size and dark appearance.
 
 ```sh
 xcodebuild -project Patchwork.xcodeproj -scheme Patchwork \

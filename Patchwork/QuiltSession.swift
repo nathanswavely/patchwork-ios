@@ -30,7 +30,18 @@ import WebKit
     @Published var searchText = ""
     @Published var loading = true
     @Published var error: String?
+    /// The register the reader is drawing in (docs/adr/112). It is the
+    /// reader's setting rather than the quilt's, but it lives here because
+    /// the quilt is what it changes: publishing it re-renders the canvas, and
+    /// setting `QuiltTheme.colorMode` from the same place keeps the palette
+    /// the layers resolve in step with the one the views were told about.
+    @Published private(set) var colorMode = QuiltTheme.colorMode
     init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
+    func apply(colorMode next: ColorMode) {
+        QuiltTheme.colorMode = next
+        guard colorMode != next else { return }
+        colorMode = next
+    }
     var filtered: [Patch] { patches.filter { QuiltLayout.matches($0, query: query, tags: tags) } }
     var activeFilterCount: Int { tags.count + (query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1) }
     var mapEnabled: Bool { instance?.modules?["map"] != false }

@@ -22,8 +22,85 @@ struct Instance: Decodable {
     let geography: Geography
     let neighborQuilts: [Neighbor]?
     let modules: [String: Bool]?
+    let stats: Stats?
+    let version: String?
+    /// Whether this quilt takes patch suggestions at all. It gates the one
+    /// exit this browsing client offers to the website's submission form; it
+    /// never stands in for a native form, which needs sign-in.
+    let submissionsEnabled: Bool?
     struct Geography: Decodable { let timezone: String? }
     struct Neighbor: Decodable { let name: String; let url: String }
+    struct Stats: Decodable { let nodeCount: Int?; let eventCount: Int?; let memberCount: Int? }
+}
+
+/// The Label (docs/adr/023): the quilt's public statement of how it is run
+/// and paid for, readable signed out because its most important reader has no
+/// account yet. Every field is optional — an unpublished Label answers with
+/// `published: false` and little else.
+struct QuiltLabel: Decodable {
+    let published: Bool?
+    let stewards: [Steward]?
+    let prose: String?
+    let costItems: [CostItem]?
+    let currency: String?
+    let totalMonthlyMinor: Int?
+    /// The figures have not been reviewed since `statedOn`.
+    let stale: Bool?
+    let statedOn: String?
+    let version: String?
+    let federation: Bool?
+    let multiQuilt: Bool?
+    let supportUrl: String?
+    let feedbackUrl: String?
+    let seamrippedFromName: String?
+    let seamrippedFromUrl: String?
+    struct Steward: Decodable, Hashable, Identifiable {
+        let username: String
+        let displayName: String?
+        let avatarUrl: String?
+        let blurb: String?
+        var id: String { username }
+        var title: String { (displayName?.isEmpty == false ? displayName : nil) ?? "@" + username }
+    }
+    struct CostItem: Decodable, Hashable {
+        let service: String?
+        let purpose: String?
+        let why: String?
+        let amountMinor: Int?
+        let period: String?
+        var periodWord: String { period == "yearly" ? "/year" : "/month" }
+    }
+    /// Minor units in the quilt's own currency, the way the web formats it.
+    static func money(_ minor: Int?, _ currency: String?) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = (currency?.isEmpty == false ? currency : nil) ?? "USD"
+        let amount = NSNumber(value: Double(minor ?? 0) / 100)
+        return formatter.string(from: amount) ?? String(format: "%.2f %@", amount.doubleValue, currency ?? "")
+    }
+}
+
+/// The lining: the shared baseline community-standards charter every active
+/// patch on this quilt starts from (docs/adr/037). This is the shipped
+/// baseline only, never one patch's amended copy.
+struct Lining: Decodable {
+    let title: String?
+    let body: String?
+}
+
+/// A legal document — the privacy policy or the user agreement (docs/adr/028).
+/// The server always has something to serve, so there is no empty state.
+struct LegalDocument: Decodable {
+    let title: String?
+    let markdown: String?
+    /// True when the stewards replaced the shipped default, which is the only
+    /// case where "last updated" says anything.
+    let customized: Bool?
+    let updatedAt: String?
+    var updatedDay: String? {
+        guard customized == true, let updatedAt, updatedAt.count >= 10 else { return nil }
+        return String(updatedAt.prefix(10))
+    }
 }
 
 struct Patch: Decodable, Identifiable, Hashable {

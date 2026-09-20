@@ -103,6 +103,64 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Choose a quilt"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Neighbor quilt"].exists, "Connected quilts are doorways in the switcher")
     }
+    /// The quilt's information stack, and the Display settings a reader with
+    /// no account can still make. Both hang off the account menu.
+    func testQuiltInfoStackAndDisplaySettings() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview"]
+        app.launch()
+        app.buttons["quiltChoice"].firstMatch.tap()
+        let explore = app.buttons["exploreQuilt"]
+        XCTAssertTrue(explore.waitForExistence(timeout: 10))
+        explore.tap()
+        XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
+
+        // About this quilt is a stack, not one sheet: the Label is a push away.
+        app.buttons["Account"].tap()
+        app.buttons["About this quilt"].tap()
+        XCTAssertTrue(app.buttons["infoLabel"].waitForExistence(timeout: 10))
+        capture(app, "10 Quilt info stack")
+        app.buttons["infoLabel"].tap()
+        XCTAssertTrue(app.staticTexts["How Sample quilt is run"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Sample Steward"].exists, "a solo steward leads with the person")
+        capture(app, "11 The Label")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["infoPrivacy"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+
+        // The footer strip at the end of List mode reaches the same pages.
+        app.segmentedControls.buttons["List"].tap()
+        let footer = app.buttons["footer-infoLabel"]
+        var swipes = 0
+        while !footer.isHittable && swipes < 10 { app.swipeUp(); swipes += 1 }
+        XCTAssertTrue(footer.isHittable, "the list ends in one quiet row of links")
+        capture(app, "11a Footer row")
+        footer.tap()
+        XCTAssertTrue(app.staticTexts["How Sample quilt is run"].waitForExistence(timeout: 10))
+        app.buttons["Done"].tap()
+        app.segmentedControls.buttons["Quilt"].tap()
+
+        // Display needs no account. Muted recuts the quilt in place.
+        XCTAssertTrue(app.buttons["quiltTile-common-thread"].waitForExistence(timeout: 10))
+        app.buttons["Account"].tap()
+        app.buttons["Display"].tap()
+        let colors = app.segmentedControls["colorsPicker"]
+        XCTAssertTrue(colors.waitForExistence(timeout: 10))
+        capture(app, "12 Display settings")
+        colors.buttons["Muted"].tap()
+        XCTAssertTrue(colors.buttons["Muted"].isSelected)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["quiltTile-common-thread"].waitForExistence(timeout: 10))
+        capture(app, "13 Muted quilt")
+
+        // Put it back, so the choice does not leak into the next launch.
+        app.buttons["Account"].tap()
+        app.buttons["Display"].tap()
+        XCTAssertTrue(colors.waitForExistence(timeout: 10))
+        colors.buttons["Default"].tap()
+        app.buttons["Done"].tap()
+    }
+
     func testLargeTextAndDarkAppearance() {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL", "--dark-preview"]
