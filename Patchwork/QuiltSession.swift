@@ -50,6 +50,20 @@ import WebKit
     /// the Dashboard alike, so no two surfaces can disagree about who the
     /// reader is to a patch. Empty is the honest answer for a signed-out one.
     @Published private(set) var memberships: [Membership] = []
+    /// How many notifications this reader has not read, on this quilt. It is
+    /// the bell's whole state and the Dashboard's first row, which is why it
+    /// lives here rather than in either of them: two surfaces counting
+    /// separately would eventually disagree.
+    ///
+    /// Reading one subtracts locally and clearing zeroes locally; the poll
+    /// below is reconciliation and nothing else (web issue #55 — a badge that
+    /// moved only on the poll sat there for up to a minute after the thing
+    /// had been read, which reads as broken). Zero is the honest answer for a
+    /// signed-out reader, and no count is asked for without a session.
+    @Published private(set) var unread = 0
+    /// The sixty-second reconciliation, alive only while a signed-in reader
+    /// has the app in front of them.
+    private var unreadPoll: Task<Void, Never>?
     init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
     func apply(colorMode next: ColorMode) {
         QuiltTheme.colorMode = next
@@ -133,6 +147,8 @@ import WebKit
         do {
             me = try await api.account()
             await refreshMemberships()
+            await refreshUnread()
+            startUnreadPoll()
         }
         catch APIError.unauthenticated { signedOut() }
         catch { /* A quilt that cannot be reached is not a quilt that signed us out. */ }
@@ -141,12 +157,65 @@ import WebKit
     /// The sheet's ending: the account menu is what confirms it.
     func signedIn(_ user: User) {
         me = user
-        Task { await refreshMemberships() }
+        Task {
+            await refreshMemberships()
+            await refreshUnread()
+            startUnreadPoll()
+        }
     }
 
     /// Any authenticated call anywhere can land here: a 401 means the session
     /// is gone, whatever was being asked for.
-    func signedOut() { me = nil; memberships = [] }
+    func signedOut() {
+        me = nil
+        memberships = []
+        unread = UnreadTally.cleared
+        stopUnreadPoll()
+    }
+
+    // MARK: The unread count
+
+    /// The server's own number. Silent on failure: a bell with a stale badge
+    /// beats an error nobody asked for, and the last known count stays.
+    func refreshUnread() async {
+        guard me != nil else { unread = UnreadTally.cleared; return }
+        do { unread = UnreadTally.reconciled(try await api.unreadNotifications()) }
+        catch APIError.unauthenticated { signedOut() }
+        catch { /* Leave the last known count in place. */ }
+    }
+
+    /// One row — or several — went from unread to read.
+    func noteRead(_ count: Int = 1) { unread = UnreadTally.read(unread, count) }
+    /// A dismissed row takes the badge with it only if it was unread.
+    func noteDismissed(wasUnread: Bool) { unread = UnreadTally.dismissed(unread, wasUnread: wasUnread) }
+    /// Mark-all-read and clear-all both empty the table server-side.
+    func clearUnread() { unread = UnreadTally.cleared }
+
+    /// What the app's foreground does to the count: read it again on the way
+    /// in, and keep the sixty-second reconciliation running only while
+    /// somebody is looking at it. A backgrounded app polling a quilt is a
+    /// request nobody asked for.
+    func scenePhaseChanged(to phase: ScenePhase) {
+        guard phase == .active else { stopUnreadPoll(); return }
+        Task { await refreshUnread() }
+        startUnreadPoll()
+    }
+
+    private func startUnreadPoll() {
+        guard unreadPoll == nil, me != nil else { return }
+        unreadPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.refreshUnread()
+            }
+        }
+    }
+
+    private func stopUnreadPoll() {
+        unreadPoll?.cancel()
+        unreadPoll = nil
+    }
 
     // MARK: The membership index
 

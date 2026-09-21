@@ -105,12 +105,24 @@ struct PatchworkAPI {
     private func postData(_ path: String, body: some Encodable) async throws -> Data {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
-        let payload = try encoder.encode(body)
+        return try await write("POST", path, payload: try encoder.encode(body))
+    }
+    /// The other two verbs, which arrived with the notifications list: marking
+    /// one read is a `PATCH`, dismissing one and clearing the lot are
+    /// `DELETE`s. They are the same write as a `POST` in every way that
+    /// matters — the quilt's CSRF gate refuses a request without
+    /// `X-Patchwork-Request` whatever the method is — so they share its body
+    /// rather than growing a second one that could drift out of step with it.
+    /// Neither carries a body: the path is the whole of what they say.
+    func patchVoid(_ path: String) async throws { _ = try await write("PATCH", path, payload: nil) }
+    func deleteVoid(_ path: String) async throws { _ = try await write("DELETE", path, payload: nil) }
+    /// One request for every non-GET this client makes.
+    private func write(_ method: String, _ path: String, payload: Data?) async throws -> Data {
         #if DEBUG
-        if Self.isPreview { return Data(try PreviewData.post(path, body: payload).utf8) }
+        if Self.isPreview { return Data(try PreviewData.write(method, path, body: payload).utf8) }
         #endif
         var request = URLRequest(url: base.appendingPathComponent("api/v1/" + path))
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.httpBody = payload
         request.setValue("true", forHTTPHeaderField: "X-Patchwork-Request")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
