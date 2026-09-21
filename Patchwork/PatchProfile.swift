@@ -90,9 +90,12 @@ struct PatchSheet: View {
         rest = height
         detent = .height(height)
     }
-    /// The head wears the list's card language — the same surface, the same
-    /// hairline, the same radius — so the card a reader touched and the
-    /// profile it opens are visibly one thing (Palette.swift, `PatchCard`).
+    /// The head is the sheet's own face, the way a place card is in Maps:
+    /// edge to edge, the sheet's rounded top as its only corners, and a
+    /// hairline underneath where the glimpses begin. It keeps the list's
+    /// surface and hairline so the card a reader touched and the profile it
+    /// opens are still one thing, but it is no longer a card floating inside
+    /// another card.
     private var head: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let cover {
@@ -112,13 +115,13 @@ struct PatchSheet: View {
                 if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
                 notices
                 if let description = patch.description, !description.isEmpty { Text(description).foregroundStyle(Color.pwText).textSelection(.enabled) }
-            }.padding(.horizontal, 16).padding(.vertical, 14)
+            // The glimpses under the head keep a 20pt margin; the head's
+            // text sits on the same line so the name and "About" align.
+            }.padding(.horizontal, 20).padding(.vertical, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.pwSurface, in: PatchworkCard.shape)
-        .clipShape(PatchworkCard.shape)
-        .overlay(PatchworkCard.shape.strokeBorder(Color.pwBorder, lineWidth: PatchworkCard.hairline))
-        .padding(.horizontal, 16).padding(.top, 8)
+        .background(Color.pwSurface)
+        .overlay(alignment: .bottom) { Color.pwBorder.frame(height: PatchworkCard.hairline) }
     }
     /// State is worn in the head, never disguised as an action. Each of these
     /// is a fact about the patch, and none of them is a button this client
