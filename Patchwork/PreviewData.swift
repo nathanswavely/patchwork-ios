@@ -140,10 +140,162 @@ enum PreviewData {
         signedIn = false
         account = sampleAccount
         held = [:]
+        notifications = []
     }
     private static func startSession() {
         signedIn = true
         held = ["listening-room": (role: "follower", status: "active")]
+        notifications = Self.freshNotifications
+    }
+
+    // MARK: The bell
+
+    /// One row of the notifications list, as the fixtures hold it. A row is
+    /// mutable here because the writes actually mutate it: marking one read,
+    /// dismissing it and clearing the lot all change what the next `GET`
+    /// answers, which is the only way the badge's arithmetic can be exercised
+    /// with no network.
+    private struct Notif {
+        let id: String
+        let type: String
+        let title: String
+        let body: String
+        let link: String
+        /// How long ago it arrived, so the relative column reads as a column
+        /// rather than as six copies of the same word.
+        let minutesAgo: Int
+        var read: Bool
+    }
+
+    /// Six rows across the categories, newest first — the order the server
+    /// serves them in (`ORDER BY id DESC`). Two are unread, one points at a
+    /// patch, one at an event, one at a proposal, one at a charter, one at
+    /// the noticeboard (which this client does not draw, so it is an exit to
+    /// the website), and the warning carries no link at all, because there is
+    /// nowhere in this app to send somebody about one.
+    private static var freshNotifications: [Notif] {
+        [
+            Notif(id: "notif-6", type: "proposal.voting_opened",
+                  title: "A proposal needs your vote",
+                  body: "Add a Tuesday evening session — voting closes on the 24th.",
+                  link: "/patches/common-thread/governance/proposals/demo-proposal",
+                  minutesAgo: 4, read: false),
+            Notif(id: "notif-5", type: "event.reminder",
+                  title: "Saturday open studio is tomorrow",
+                  body: "Common Thread Studio, 12 Example Street, 6pm.",
+                  link: "/events/demo-event",
+                  minutesAgo: 3 * 60, read: false),
+            Notif(id: "notif-4", type: "membership.request_approved",
+                  title: "You’re a member of Common Thread Studio",
+                  body: "Rowan Hale approved your request to join.",
+                  link: "/patches/common-thread",
+                  minutesAgo: 2 * 24 * 60, read: true),
+            Notif(id: "notif-3", type: "governance.document_amended",
+                  title: "“How we decide” was amended",
+                  body: "Common Thread Studio published version 3 of its charter.",
+                  link: "/patches/common-thread/governance/docs/demo-doc",
+                  minutesAgo: 5 * 24 * 60, read: true),
+            Notif(id: "notif-2", type: "notice.posted",
+                  title: "A new notice on Common Thread Studio’s board",
+                  body: "The kiln is out of action until the part arrives.",
+                  link: "/patches/common-thread/noticeboard/x",
+                  minutesAgo: 9 * 24 * 60, read: true),
+            Notif(id: "notif-1", type: "account.warned",
+                  title: "A moderator sent you a warning",
+                  body: "Warnings are read and answered on the quilt’s website.",
+                  link: "",
+                  minutesAgo: 40 * 24 * 60, read: true),
+        ]
+    }
+
+    /// The set the writes mutate. Empty while signed out, which is what makes
+    /// a signed-out fixture exactly what it was before this slice.
+    private static var notifications: [Notif] = []
+
+    /// The server's own category table (`internal/handler/notifications.go`).
+    /// Moderation is the one that is not a single prefix, and it deliberately
+    /// leaves `account.email_changed` out: an address change is account
+    /// security, not a moderation outcome.
+    private static func inCategory(_ category: String, _ row: Notif) -> Bool {
+        switch category {
+        case "proposals": return row.type.hasPrefix("proposal.")
+        case "governance": return row.type.hasPrefix("governance.")
+        case "membership": return row.type.hasPrefix("membership.")
+        case "events": return row.type.hasPrefix("event.")
+        case "moderation":
+            return row.type.hasPrefix("report.")
+                || ["account.warned", "account.suspended", "account.unsuspended"].contains(row.type)
+        default: return false
+        }
+    }
+
+    private static func json(_ row: Notif) -> String {
+        let created = stamp(minutesAgo: row.minutesAgo)
+        // Read rows carry `read_at`; unread rows carry no such key at all,
+        // which is the server's shape and the one this client reads.
+        let readAt = row.read ? ",\"read_at\":\"\(stamp(minutesAgo: max(0, row.minutesAgo - 1)))\"" : ""
+        return "{\"id\":\"\(row.id)\",\"user_id\":\"demo-user\",\"type\":\"\(row.type)\"," +
+            "\"title\":\"\(row.title)\",\"body\":\"\(row.body)\",\"link\":\"\(row.link)\"\(readAt)," +
+            "\"created_at\":\"\(created)\"}"
+    }
+
+    private static func stamp(minutesAgo: Int) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: Date().addingTimeInterval(TimeInterval(-minutesAgo * 60)))
+    }
+
+    /// `GET notifications`, with the three narrowings the list sends.
+    private static func notificationsPage(_ query: [URLQueryItem]) -> String {
+        let value = { (name: String) in query.first { $0.name == name }?.value ?? "" }
+        let limit = Int(value("limit")) ?? 20
+        var rows = notifications
+        if value("unread") == "true" { rows = rows.filter { !$0.read } }
+        let category = value("category")
+        if !category.isEmpty { rows = rows.filter { inCategory(category, $0) } }
+        // The server pages on `id < after`, newest first. The fixtures are
+        // already in that order, so the cursor is the row after the one named.
+        let after = value("after")
+        if !after.isEmpty, let index = rows.firstIndex(where: { $0.id == after }) {
+            rows = Array(rows.suffix(from: rows.index(after: index)))
+        }
+        let page = Array(rows.prefix(limit))
+        let cursor = rows.count > limit ? (page.last?.id ?? "") : ""
+        return "{\"items\":[\(page.map(json).joined(separator: ","))],\"next_cursor\":\"\(cursor)\"}"
+    }
+
+    /// The four writes the bell's sheet makes, against the set above. Nil
+    /// means "not a notifications path", so the membership writes keep their
+    /// own road through `post`.
+    private static func notificationWrite(_ method: String, _ path: String) throws -> String? {
+        guard path == "notifications" || path.hasPrefix("notifications/") else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+        let parts = path.split(separator: "/").map(String.init)
+        switch (method, parts.count) {
+        case ("POST", 2) where parts[1] == "read-all":
+            // Everything, not the page in view.
+            notifications = notifications.map { row in
+                var read = row
+                read.read = true
+                return read
+            }
+            return "{}"
+        case ("PATCH", 3) where parts[2] == "read":
+            guard let index = notifications.firstIndex(where: { $0.id == parts[1] }) else { throw APIError.status(404) }
+            notifications[index].read = true
+            return "{}"
+        case ("DELETE", 2):
+            guard notifications.contains(where: { $0.id == parts[1] }) else { throw APIError.status(404) }
+            notifications.removeAll { $0.id == parts[1] }
+            return "{}"
+        case ("DELETE", 1):
+            // Clears everything server-side, not just what is listed.
+            notifications = []
+            return "{}"
+        default:
+            throw APIError.status(404)
+        }
     }
 
     /// `GET me/nodes`. Active and pending rows only, and a pending row carries
@@ -225,10 +377,20 @@ enum PreviewData {
         }
     }
 
-    /// The offline stand-in for the three writes. The JSON is returned as text
-    /// so a post with nothing to read (`auth/logout`) runs the same path as
-    /// one with a user in the answer.
-    static func post(_ path: String, body: Data) throws -> String {
+    /// The offline stand-in for every non-GET. The JSON is returned as text so
+    /// a write with nothing to read (`auth/logout`, marking a notification
+    /// read) runs the same path as one with a user in the answer.
+    ///
+    /// `PATCH` and `DELETE` arrived with the notifications list and belong to
+    /// it alone, so they are answered first and everything else is still a
+    /// `POST`.
+    static func write(_ method: String, _ path: String, body: Data?) throws -> String {
+        if let answer = try notificationWrite(method, path) { return answer }
+        guard method == "POST" else { throw APIError.status(405) }
+        return try post(path, body: body ?? Data())
+    }
+
+    private static func post(_ path: String, body: Data) throws -> String {
         let fields = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
         switch path {
         case "auth/magic-link":
@@ -301,6 +463,15 @@ enum PreviewData {
         case "auth/me":
             guard signedIn else { throw APIError.unauthenticated }
             json = account
+        // The bell's two reads. Both are about the reader, so both are 401
+        // while there is nobody to be about — a signed-out fixture makes
+        // exactly the public reads it always did.
+        case "notifications":
+            guard signedIn else { throw APIError.unauthenticated }
+            json = notificationsPage(query)
+        case "notifications/count":
+            guard signedIn else { throw APIError.unauthenticated }
+            json = "{\"unread\":\(notifications.filter { !$0.read }.count)}"
         case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":3},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6},{"name":"archive","node_count":0}]"#
         case "events": json = eventsPage(query)
         case "nodes/common-thread/members": json = members

@@ -513,6 +513,79 @@ final class BrowsingTests: XCTestCase {
                       "a withdrawn request leaves the patch offering to be joined again")
     }
 
+    /// The bell, end to end: an account brings it, the badge says how many,
+    /// opening a row takes the reader to the thing the row is about, and the
+    /// badge moves the moment it is read rather than on the next poll.
+    func testBellShowsUnreadAndOpeningARowMarksItRead() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+        signIn(app)
+
+        let bell = app.buttons["notificationBell"]
+        XCTAssertTrue(bell.waitForExistence(timeout: 10), "an account brings the bell with it")
+        XCTAssertTrue(wait(bell, labelContains: "2 unread"), "the badge is the quilt's own count")
+        capture(app, "25 The bell with a badge")
+
+        bell.tap()
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
+        capture(app, "26 Notifications")
+
+        let reminder = app.buttons["notificationRow-notif-5"]
+        XCTAssertTrue(reminder.waitForExistence(timeout: 10))
+        reminder.tap()
+        XCTAssertTrue(app.navigationBars["Event"].waitForExistence(timeout: 10),
+                      "a row about an event opens the event, inside the sheet it was tapped in")
+        capture(app, "27 An event opened from a notification")
+
+        app.navigationBars["Event"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
+        app.buttons["Done"].tap()
+
+        XCTAssertTrue(wait(bell, labelContains: "1 unread"),
+                      "reading one takes the badge down straight away, not on the next poll")
+    }
+
+    /// The other act on the badge: everything read at once, and the empty
+    /// state a filter earns once there is nothing unread left under it.
+    func testMarkAllReadClearsTheBadge() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+        signIn(app)
+
+        let bell = app.buttons["notificationBell"]
+        XCTAssertTrue(bell.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait(bell, labelContains: "2 unread"))
+        bell.tap()
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
+
+        app.buttons["notificationsMenu"].tap()
+        let markAll = app.buttons["Mark all read"]
+        XCTAssertTrue(markAll.waitForExistence(timeout: 5))
+        markAll.tap()
+
+        // Nothing unread left, so the one filter that asks for unread rows
+        // has nothing to draw — and says which absence it is reporting.
+        app.buttons["notificationUnreadOnly"].tap()
+        XCTAssertTrue(app.staticTexts["Nothing here yet."].waitForExistence(timeout: 10))
+        capture(app, "28 A filtered empty state")
+
+        app.buttons["Done"].tap()
+        XCTAssertTrue(wait(bell, labelContains: "0 unread"),
+                      "mark all read empties the whole table, so the badge goes to zero")
+    }
+
+    /// Polls an element's label rather than its existence: a badge arrives
+    /// after the count does, which is a round trip later than the bell.
+    private func wait(_ element: XCUIElement, labelContains text: String, timeout: TimeInterval = 10) -> Bool {
+        let predicate = NSPredicate(format: "label CONTAINS %@", text)
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
     /// The sample reader, signed in by the code the fixtures answer to.
     private func signIn(_ app: XCUIApplication) {
         app.buttons["Account"].tap()

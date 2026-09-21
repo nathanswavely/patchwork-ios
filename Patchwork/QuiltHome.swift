@@ -11,6 +11,11 @@ struct QuiltHome: View {
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
     /// The one-time orientation card, over the foot of the quilt (see Orientation.swift).
     @State private var intro = false
+    /// Read here, where there is exactly one of them. The unread poll belongs
+    /// to the session, and this is the one view that can tell it whether
+    /// anybody is looking: the discovery toolbar is on four surfaces at once
+    /// and would have started four polls.
+    @Environment(\.scenePhase) private var scenePhase
     enum Pane: Hashable { case quilt, events, discover, dashboard, search }
     init(quilt: Quilt) { _session = StateObject(wrappedValue: QuiltSession(quilt: quilt)) }
     var body: some View {
@@ -58,6 +63,9 @@ struct QuiltHome: View {
             if !IntroState.seen(session.quilt) { intro = true }
         }
         .onChange(of: colors) { _, now in session.apply(colorMode: ColorMode(rawValue: now) ?? .standard) }
+        // Coming back to the app reads the count again and restarts the
+        // reconciliation; leaving it stops.
+        .onChange(of: scenePhase) { _, now in session.scenePhaseChanged(to: now) }
         .environmentObject(session)
     }
     /// The quilt, with the orientation card over the foot of it. The overlay
@@ -98,6 +106,7 @@ struct DiscoveryToolbar: ViewModifier {
     @State private var about = false
     @State private var display = false
     @State private var signIn = false
+    @State private var notifications = false
     @FocusState private var focused: Bool
     private var fieldWidth: CGFloat { min(420, max(200, UIScreen.main.bounds.width - (session.searching ? 108 : 150))) }
     func body(content: Content) -> some View {
@@ -121,6 +130,11 @@ struct DiscoveryToolbar: ViewModifier {
                     }
                 }
                 ToolbarItem(placement: .principal) { field }
+                // The bell belongs beside the account, because it is the
+                // account's: a signed-out reader has nothing to be told.
+                if session.me != nil, !session.searching {
+                    ToolbarItem(placement: .topBarTrailing) { NotificationBell(presented: $notifications) }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if session.searching {
                         Button("Cancel") { session.endSearch() }
@@ -162,6 +176,7 @@ struct DiscoveryToolbar: ViewModifier {
                     session.signedIn(user)
                 }
             }
+            .sheet(isPresented: $notifications) { NotificationsSheet() }
     }
     /// At rest the field is a button wearing the field's clothes: a text field
     /// hosted in the bar's UIKit toolbar item reports neither focus nor editing

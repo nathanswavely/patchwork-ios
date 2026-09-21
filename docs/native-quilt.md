@@ -534,3 +534,126 @@ reader no admin row by design), the badge reads, and every server refusal —
 the 409s and the only-admin sentence are rendered but were not provoked. The
 three new UI tests also pass on an iPhone 18 Pro (iOS 27) simulator, which is
 where the keyboard above found the sheet's button.
+
+## Notifications — 2026-09-21
+
+The shell had left a space for the bell since it was drawn, and the README
+has said "Notifications still wait" since the first cut. This slice ends the
+wait: the web's bell and its notifications page, native, for a signed-in
+reader, and nothing at all for anyone else.
+
+**The count is the session's.** `QuiltSession` gained
+`@Published private(set) var unread`, filled after `refreshAccount` and
+`signedIn` succeed, cleared by `signedOut()`, and read by the bell and by one
+row on the Dashboard — one number, so two surfaces cannot disagree. Its
+arithmetic is a value, `UnreadTally`: reading one subtracts and floors at
+zero, dismissing one subtracts *only if it was unread*, and mark-all-read and
+clear-all both go to zero rather than down by the rows on screen, because both
+empty the whole table server-side. The sixty-second poll is reconciliation and
+nothing else — the web learned that the hard way (issue #55: a badge that moved
+only on the poll sat there for up to a minute after the thing had been read,
+which reads as broken). The poll is a `Task` the session owns, started when a
+reader signs in, stopped by `signedOut()` and by leaving the foreground, and
+driven from `QuiltHome`'s `scenePhase` because that is the one view there is
+exactly one of — the discovery toolbar is on four surfaces at once and would
+have started four polls. Coming back to the app reads the count again on the
+way in. Every read of it is silent on failure: a stale badge beats an error
+nobody asked for.
+
+**The contract.** `GET notifications?limit=20[&after][&unread=true][&category=]`
+→ `{"items":[…],"next_cursor":""}`; `GET notifications/count` → `{"unread":N}`;
+`PATCH notifications/{id}/read`; `POST notifications/read-all`;
+`DELETE notifications/{id}`; `DELETE notifications` (everything, not the page in
+view). A row is `id, user_id, type, title, body, link, read_at?, created_at`,
+and **unread is the absence of `read_at`** — not a null, not a flag. `PATCH` and
+`DELETE` are the first two verbs this client has needed beyond `GET` and
+`POST`; they arrived as `patchVoid`/`deleteVoid` sharing `postData`'s own body,
+because the quilt's CSRF gate refuses a request without `X-Patchwork-Request`
+whatever the method is and a second copy of that request would drift. `All` is
+the *absence* of the category parameter rather than a value of it: the server
+rejects a category it does not know rather than answering with an empty list,
+and a mistyped filter must not read as "you have nothing".
+
+**Where a link goes.** `NotificationLink.route` is a pure function over the
+site-relative path the server builds in `internal/weblink`, and it is the whole
+of the slice's routing: `/patches/{slug}` docks the patch, `…/events` is the
+calendar, `…/members` (with or without `?status=pending`) the roster,
+`…/governance` the overview, `…/governance/docs/{id}` a charter, `/events/{id}`
+an event, and `/quilts/{host}/patches/{slug}` the read-only remote patch.
+Everything else — setup, the noticeboard, the submission form, a quilt's admin
+pages, anything unknown — is an exit to the website through
+`webURL(_:query:)`, which is the same rule the rest of this app follows about
+surfaces it has not built: an exit, never a stub.
+
+One thing the spec for this slice and the live server disagree about, and the
+client honours both: the spec calls a proposal
+`/patches/{slug}/governance/proposals/{id}`, and `weblink.Proposal` actually
+emits `/patches/{slug}/governance/{id}` with no word in front of the id — the
+`docs/` segment is the *only* thing separating a charter from a proposal. Both
+shapes route to `ProposalDetailView`, and both are tested. Reading only the
+spec's shape would have sent every vote notification on a live quilt out to
+the browser.
+
+Native destinations are pushed inside the sheet's own `NavigationStack`, and
+they carry the object rather than the id, because every detail screen in this
+app takes what its caller already knows and reads the rest back — so a
+proposal is fetched from `proposals/{id}`, a charter from `governance/{id}`, an
+event from `events/{id}` and a patch from the quilt's own tree (or `nodes/{slug}`
+where the tree does not carry it) before the push. Docking a patch is the
+shell's job, not the stack's, so that one closes the sheet first.
+
+**What it looks like.** The bell sits in `DiscoveryToolbar` before the account
+menu, drawn only where `session.me != nil` — `bell.fill` with a count in the
+one tint while there is one, `bell` while there is not, and "Notifications, N
+unread" to VoiceOver. The sheet is a `NavigationStack` titled Notifications on
+the app's ground: the web's own chips in the web's own order plus an
+"Unread only" toggle, then a stack of cards — the type's mark from the web's
+`NotifIcon` table in SF Symbols, the title, two lines of body, the relative
+time worded exactly as the web's `timeAgo` ("just now", "5m ago", "3h ago",
+"2d ago", then the app's own short day), and the unread dot in the accent.
+Tapping a row marks it read and then opens it; a swipe or the row's own menu
+dismisses it; the toolbar's menu holds Mark all read and a Clear all behind a
+confirmation that says out loud that it clears the quilt and not the page.
+"Load more" while there is a cursor, pull to refresh, and an empty state that
+names the filter it is empty under — "Nothing unread under Governance", not
+"you're all caught up", which would be a lie to somebody who has narrowed the
+list. The Dashboard gains one row at the top while there is anything unread,
+opening the same sheet.
+
+**Two things the screen taught.** The chips were a horizontal scroller and the
+one pushed off the end was "Unread only" — the only chip on the row that is not
+a category, and the one most likely to be wanted; they wrap now, in the
+`FlowLayout` the filter sheet already uses. And the Filter button's badge is
+offset out past its glyph, which works at the bar's leading edge and does not
+beside the account menu: the bell shares a capsule with it, and the overhanging
+badge was clipped square down its right-hand side. It is hung on a frame given
+room for it instead, with the balance put back by the opposite padding, and the
+padding is unconditional so the bell does not shift when the count arrives.
+
+**Offline.** `PreviewData` answers both reads and all four writes against an
+in-memory set of six rows seeded at sign-in and emptied at sign-out — one per
+category, two unread, one pointing at a patch, one at an event, one at a
+proposal, one at a charter, one at the noticeboard (which must leave for the
+website) and one warning with no link at all, because a warning has nowhere in
+this app to send anybody. The set honours `unread=true`, `category=` and
+`after=`, the count is read off it, and the writes mutate it. Nothing a
+signed-out fixture answers changed: both reads are 401 without a session.
+
+**Still the web's, and not stubbed here:** notification preferences, the
+noticeboard, invitations, RSVP, creating or editing anything, approving the
+requests the Dashboard counts, voting, claiming and moderation. A warning is
+rendered and read; it is answered on the website.
+
+**Verification.** 174 unit tests (23 new: every link shape including the bare
+governance id and the unknown path, the exit's query splitting, the icon table
+prefix by prefix and the unknown type's bell, `timeAgo` at every boundary and
+past a month, the badge's arithmetic in all four directions, the chips and the
+query they build, the empty line per filter, and a row decoded with and without
+`read_at`) and 13 UI tests (2 new: the badge showing 2, a row opening the event
+inside the sheet and the badge dropping to 1; and mark-all-read emptying the
+badge with the filtered empty state on the way). Screenshots of the badged
+bell, the sheet and a filtered empty state were read for clipped text and for
+iOS blue. Not verified: a live quilt, a physical device, VoiceOver, the poll's
+sixty seconds actually elapsing, the foreground transition, paging past twenty
+(the fixtures hold six), `99+`, and every server refusal — the 404s and 401s
+are handled but were not provoked.

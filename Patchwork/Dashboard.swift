@@ -19,6 +19,10 @@ struct Dashboard: View {
     @State private var requests: [String: Int] = [:]
     @State private var proposals: [String: Badge] = [:]
     @State private var loaded = false
+    /// The Dashboard's own door to the sheet the bell opens. Its own state
+    /// rather than the session's, because the discovery toolbar is on four
+    /// surfaces at once and one shared flag would ask all four to present it.
+    @State private var notifications = false
 
     /// An open-proposal count that may be a floor rather than a total.
     struct Badge: Equatable {
@@ -39,6 +43,9 @@ struct Dashboard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("dashboardWelcome")
                 }
+                // What is waiting to be read leads everything, because it is
+                // the one thing on this screen somebody is being asked about.
+                if session.unread > 0 { unreadRow }
                 if !events.isEmpty { attention }
                 if sections.isEmpty {
                     if loaded { empty } else { ProgressView().frame(maxWidth: .infinity).padding(.top, 24) }
@@ -56,8 +63,33 @@ struct Dashboard: View {
         .background(Color.pwGround.ignoresSafeArea())
         .navigationTitle("Dashboard").navigationBarTitleDisplayMode(.inline)
         .modifier(DiscoveryToolbar())
+        .sheet(isPresented: $notifications) { NotificationsSheet() }
         .refreshable { await load() }
         .task { await load() }
+    }
+
+    // MARK: What is unread
+
+    /// One row, and only while there is something in it. The same sheet the
+    /// bell opens: a reader who is already on the Dashboard should not have
+    /// to go back up to the bar to read what it is telling them about.
+    private var unreadRow: some View {
+        Button { notifications = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "bell.fill").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                    .accessibilityHidden(true)
+                Text("\(session.unread) unread notification\(session.unread == 1 ? "" : "s")")
+                    .font(Font.pw.subheadlineSemibold).inkRow()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.pwSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.pwBorder, lineWidth: 1))
+        .accessibilityIdentifier("dashboardUnread")
     }
 
     // MARK: Attention needed
@@ -227,6 +259,7 @@ struct Dashboard: View {
     /// rows, which the membership index already has.
     private func load() async {
         await session.refreshMemberships()
+        await session.refreshUnread()
         let page = try? await session.api.myEvents(from: Date())
         events = page?.items ?? []
         moreEvents = (page?.nextCursor?.isEmpty == false)
