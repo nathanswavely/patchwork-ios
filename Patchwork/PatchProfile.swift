@@ -27,12 +27,14 @@ struct PatchSheet: View {
     @State private var detent = PresentationDetent.height(320)
     @State private var headBottom: CGFloat = 0
     @State private var sheetTop: CGFloat = 0
+    /// What the last act on the cover came back with, printed under the
+    /// cover where a sentence can be read rather than over the cloth.
+    @State private var feedback: RelationshipFeedback?
     /// How much of the first glimpse shows under the head at rest: enough for
     /// its rule, its title and a line of it, cut off. The cut is the invitation.
     private let peek: CGFloat = 96
     private var patch: Patch { envelope?.node ?? initial }
     private var api: PatchworkAPI { session.api }
-    private var cover: URL? { patch.imageUrl.flatMap { URL(string: $0, relativeTo: session.quilt.url) } }
     /// The envelope's word, with the tree row's as the first frame's answer.
     private var isUnclaimed: Bool { envelope?.isUnclaimed ?? patch.communityListing }
     /// Whether this patch's lining is its own writing (web ADR 037).
@@ -69,7 +71,6 @@ struct PatchSheet: View {
             .background(Color.pwGround)
             .navigationTitle("Patch").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { ShareLink(item: api.webURL("patches/\(patch.slug)")) }
                 ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) }
             }
         }
@@ -90,28 +91,27 @@ struct PatchSheet: View {
         rest = height
         detent = .height(height)
     }
-    /// The head is the sheet's own face, the way a place card is in Maps:
-    /// edge to edge, the sheet's rounded top as its only corners, and a
-    /// hairline underneath where the glimpses begin. It keeps the list's
-    /// surface and hairline so the card a reader touched and the profile it
-    /// opens are still one thing, but it is no longer a card floating inside
-    /// another card.
+    /// The head is the web's profile head, laid out as the sheet's own face
+    /// the way a place card is in Maps: the patch's design as a cover band,
+    /// edge to edge, with a scrim rising from its foot; the name and counts
+    /// in white on the scrim; the acts riding the cover in Liquid Glass —
+    /// the overflow at the top corner, Follow and Join at the foot opposite
+    /// the name; and under the band, on the surface, everything that is
+    /// read rather than pressed. The sheet's rounded top is its only corner
+    /// and a hairline marks where the glimpses begin.
     private var head: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let cover {
-                AsyncImage(url: cover) { image in image.resizable().aspectRatio(contentMode: .fill) } placeholder: { Color.pwGround }
-                    .frame(height: 160).frame(maxWidth: .infinity).clipped()
-                    .accessibilityLabel(patch.imageAlt ?? "")
-            }
+            coverBand
             VStack(alignment: .leading, spacing: 8) {
-                // The patch saying its own name — a display moment, in the
-                // face the web keeps for them.
-                Text(patch.name).font(Font.pw.displayTitle).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
-                Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                // Follow, Join, or the standing already held. It sits under
-                // the counts it changes: what the reader is to this patch is
-                // part of the patch's own head, not an afterword at the foot.
-                RelationshipControl(patch: patch, banned: envelope?.banned ?? false) { await load() }
+                if let feedback {
+                    Label {
+                        Text(feedback.text).font(Font.pw.footnote).fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: feedback.refused ? "exclamationmark.circle" : "checkmark.circle").font(Font.pw.footnote)
+                    }
+                    .foregroundStyle(feedback.refused ? Color.pwText : Color.pwTextMuted)
+                    .accessibilityIdentifier("relationshipNote")
+                }
                 if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
                 notices
                 if let description = patch.description, !description.isEmpty { Text(description).foregroundStyle(Color.pwText).textSelection(.enabled) }
@@ -122,6 +122,58 @@ struct PatchSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.pwSurface)
         .overlay(alignment: .bottom) { Color.pwBorder.frame(height: PatchworkCard.hairline) }
+    }
+    /// The web's `.profile-cover`: the design cropped the way the card's
+    /// strip crops it, a scrim from 75% black at the foot through 30% to
+    /// nothing at the top, and the name set on it. It grows with a long
+    /// name rather than clipping the title it exists to show.
+    private var coverBand: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(patch.name).font(Font.pw.displayTitle).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+            Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(.white.opacity(0.9))
+            // The acts on their own line under the counts they change, never
+            // beside the name: a name gets the whole width, and a button
+            // never wraps mid-word to make room for one.
+            RelationshipControl(patch: patch, banned: envelope?.banned ?? false, placement: .cover, feedback: $feedback) { await load() }
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.top, 8)
+        }
+        .padding(.horizontal, 20).padding(.top, 52).padding(.bottom, 16)
+        .frame(maxWidth: .infinity, minHeight: 160, alignment: .bottomLeading)
+        // The cloth and its scrim are the band's background, so the name and
+        // the acts sit on the scrim rather than under it: glass over a scrim
+        // reads as glass, glass under one reads as mud.
+        .background {
+            ZStack {
+                TileMiniature(patch: patch, tagMotifs: session.tagMotifs, fit: .cover, side: 420)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                LinearGradient(stops: [
+                    .init(color: .black.opacity(0.75), location: 0),
+                    .init(color: .black.opacity(0.3), location: 0.45),
+                    .init(color: .clear, location: 1),
+                ], startPoint: .bottom, endPoint: .top)
+            }
+        }
+        .background(Color(UIColor(hex: QuiltTheme.palette(for: patch).bg) ?? .black))
+        .overlay(alignment: .topTrailing) { coverActs.padding(8) }
+        .clipped()
+        .accessibilityElement(children: .contain)
+    }
+    /// The acts that ride the cover's top corner, as the web's do: one glass
+    /// button holding the exits — the website, and sharing this page.
+    private var coverActs: some View {
+        Menu {
+            Link(destination: api.webURL("patches/\(patch.slug)")) { Label("Visit patch website", systemImage: "safari") }
+            ShareLink(item: api.webURL("patches/\(patch.slug)")) { Label("Share", systemImage: "square.and.arrow.up") }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(Font.pw.subheadlineSemibold)
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .modifier(GlassDisc())
+        }
+        .accessibilityLabel("More")
+        .accessibilityIdentifier("profileOverflow")
     }
     /// State is worn in the head, never disguised as an action. Each of these
     /// is a fact about the patch, and none of them is a button this client
@@ -361,4 +413,17 @@ private struct HeadBottomKey: PreferenceKey {
 private struct SheetTopKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+
+/// A round glass button for the cover's corner; a material where the system
+/// has no glass.
+private struct GlassDisc: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.glassEffect(.regular, in: Circle())
+        } else {
+            content.background(.regularMaterial, in: Circle())
+        }
+    }
 }

@@ -53,12 +53,28 @@ struct SignInAction: View {
 /// The tint fills these because they are controls (DESIGN.md "Colors"); a
 /// standing is not a control but a fact, so it wears ink in a capsule and the
 /// menu behind it holds the one exit.
+/// What an act came back with, for a head that shows the control in one
+/// place and the sentence in another.
+struct RelationshipFeedback: Equatable {
+    let text: String
+    let refused: Bool
+}
+
 struct RelationshipControl: View {
+    /// Where the control sits. Inline it is a row on the surface, in the
+    /// app's ink and accent. On the cover it rides the patch's own design
+    /// in Liquid Glass, the way the web's acts ride the cover's corner, and
+    /// hands its sentence out through `feedback` so nothing has to be read
+    /// off the cloth.
+    enum Placement { case inline, cover }
+
     @EnvironmentObject private var session: QuiltSession
     let patch: Patch
     /// Whether the quilt said this reader is banned from this patch, which
     /// rides the `nodes/{slug}` envelope rather than the node.
     var banned = false
+    var placement: Placement = .inline
+    var feedback: Binding<RelationshipFeedback?>? = nil
     /// Read the node back after an act: `follower_count` and `member_count`
     /// are the server's numbers and the head prints them.
     var reload: () async -> Void = {}
@@ -67,6 +83,7 @@ struct RelationshipControl: View {
     @State private var note: String?
     @State private var refused = false
     @State private var joining = false
+    private var onCover: Bool { placement == .cover }
 
     private var standing: Standing? { session.standing(for: patch.slug) ?? Standing.from(node: patch) }
     private var relationship: Relationship {
@@ -79,7 +96,7 @@ struct RelationshipControl: View {
         if session.me != nil {
             VStack(alignment: .leading, spacing: 6) {
                 control
-                if let note {
+                if let note, !onCover {
                     Label {
                         Text(note).font(Font.pw.footnote).fixedSize(horizontal: false, vertical: true)
                     } icon: {
@@ -134,24 +151,14 @@ struct RelationshipControl: View {
                 // Join is beside it: one filled control at a time, which is
                 // what makes the filled one mean anything.
                 if offer.follow {
-                    if offer.join == nil {
-                        Button { act { try await session.follow(patch.slug) } } label: { buttonFace("Follow", symbol: "heart") }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Color.pwAccent)
-                            .disabled(busy)
-                            .accessibilityIdentifier("relationshipFollow")
-                    } else {
-                        Button { act { try await session.follow(patch.slug) } } label: { buttonFace("Follow", symbol: "heart") }
-                            .buttonStyle(.bordered)
-                            .tint(Color.pwAccent)
-                            .disabled(busy)
-                            .accessibilityIdentifier("relationshipFollow")
-                    }
+                    Button { act { try await session.follow(patch.slug) } } label: { buttonFace("Follow", symbol: "heart") }
+                        .modifier(ActButton(prominent: offer.join == nil, onCover: onCover))
+                        .disabled(busy)
+                        .accessibilityIdentifier("relationshipFollow")
                 }
                 if let join = offer.join {
                     Button { joining = true } label: { buttonFace(join.title, symbol: "person.badge.plus") }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color.pwAccent)
+                        .modifier(ActButton(prominent: true, onCover: onCover))
                         .disabled(busy)
                         .accessibilityIdentifier("relationshipJoin")
                 }
@@ -168,12 +175,12 @@ struct RelationshipControl: View {
             HStack(spacing: 6) {
                 if busy { ProgressView().controlSize(.mini) } else { Image(systemName: symbol).font(Font.pw.footnoteSemibold) }
                 Text(title).font(Font.pw.subheadlineSemibold)
-                Image(systemName: "chevron.down").font(Font.pw.caption2Semibold).foregroundStyle(Color.pwTextMuted)
+                Image(systemName: "chevron.down").font(Font.pw.caption2Semibold).opacity(0.7)
             }
-            .foregroundStyle(Color.pwText)
+            .foregroundStyle(onCover ? Color.white : Color.pwText)
             .padding(.horizontal, 12)
             .frame(minHeight: 34)
-            .overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
+            .modifier(MarkChrome(onCover: onCover))
         }
         .disabled(busy)
         .accessibilityIdentifier("relationshipControl")
@@ -208,6 +215,7 @@ struct RelationshipControl: View {
             note = SignInModel.sentence(error)
         }
         busy = false
+        feedback?.wrappedValue = note.map { RelationshipFeedback(text: $0, refused: refused) }
         await reload()
     }
 
@@ -404,6 +412,47 @@ struct FollowChip: View {
             withAnimation(.spring(response: 0.3)) { landed = true }
             try? await Task.sleep(nanoseconds: 700_000_000)
             withAnimation { landed = false }
+        }
+    }
+}
+
+
+/// A Follow or Join button's clothes. Inline, the app's accent (filled for
+/// the one that leads, bordered for the one beside it). On the cover, Liquid
+/// Glass over the patch's own cloth — the glass is what lets a control sit
+/// on a busy design without a band behind it — with the accent only on the
+/// one that leads; where the system has no glass, a material stands in.
+private struct ActButton: ViewModifier {
+    let prominent: Bool
+    let onCover: Bool
+    func body(content: Content) -> some View {
+        if onCover {
+            if #available(iOS 26, *) {
+                if prominent { content.buttonStyle(.glassProminent).tint(Color.pwAccent) }
+                else { content.buttonStyle(.glass).foregroundStyle(.white) }
+            } else {
+                if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent) }
+                else { content.buttonStyle(.bordered).tint(.white).foregroundStyle(.white) }
+            }
+        } else {
+            if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent) }
+            else { content.buttonStyle(.bordered).tint(Color.pwAccent) }
+        }
+    }
+}
+
+/// The standing mark's capsule: a hairline of thread inline, glass on the cover.
+private struct MarkChrome: ViewModifier {
+    let onCover: Bool
+    func body(content: Content) -> some View {
+        if onCover {
+            if #available(iOS 26, *) {
+                content.glassEffect(.regular, in: Capsule())
+            } else {
+                content.background(.regularMaterial, in: Capsule())
+            }
+        } else {
+            content.overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
         }
     }
 }
