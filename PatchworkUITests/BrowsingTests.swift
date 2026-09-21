@@ -30,14 +30,14 @@ final class BrowsingTests: XCTestCase {
         capture(app, "02 Quilt")
         XCTAssertTrue(app.buttons["quiltTile-common-thread"].waitForExistence(timeout: 10))
         app.buttons["quiltTile-common-thread"].pinch(withScale: 1.3, velocity: 1)
-        XCTAssertFalse(app.navigationBars["Patch"].exists, "Pinching must not open a patch")
+        XCTAssertFalse(app.buttons["closePatch"].exists, "Pinching must not open a patch")
         capture(app, "02a After pinch")
         let tile = app.buttons["quiltTile-common-thread"]
         let originalFrame = tile.frame
         tile.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 5))
         capture(app, "03 Docked profile at rest")
-        app.buttons["Done"].tap()
+        app.buttons["closePatch"].tap()
         XCTAssertTrue(tile.waitForExistence(timeout: 5))
         XCTAssertEqual(tile.frame.minX, originalFrame.minX, accuracy: 1)
         XCTAssertEqual(tile.frame.width, originalFrame.width, accuracy: 1)
@@ -73,7 +73,7 @@ final class BrowsingTests: XCTestCase {
         app.segmentedControls.buttons["List"].tap()
         capture(app, "02e List")
         app.buttons["patchRow"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
         app.swipeUp()
         capture(app, "03a Docked profile pulled up")
         // Each glimpse heading is the door into that room (web ADR 042).
@@ -92,7 +92,7 @@ final class BrowsingTests: XCTestCase {
         app.segmentedControls.buttons["Quilt"].tap()
         XCTAssertTrue(tile.waitForExistence(timeout: 10))
         tile.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
         app.swipeUp()
         XCTAssertTrue(app.staticTexts["Amended lining"].waitForExistence(timeout: 10), "A patch that amended the lining wears the fact")
         XCTAssertTrue(app.staticTexts["About"].exists, "About leads the glimpses")
@@ -101,7 +101,7 @@ final class BrowsingTests: XCTestCase {
         // A public patch's calendar offers the feeds; nothing here signs in.
         app.buttons["glimpseDoor-Events"].tap()
         XCTAssertTrue(app.buttons["subscribeToCalendar"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons["Patch"].firstMatch.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
 
         let members = app.buttons["glimpseDoor-Members"]
         XCTAssertTrue(members.waitForExistence(timeout: 10))
@@ -109,7 +109,7 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Rowan Hale"].waitForExistence(timeout: 10), "A member row names the person")
         XCTAssertTrue(app.staticTexts["Role: admin"].exists, "and the role they hold")
         capture(app, "03c Members")
-        app.navigationBars.buttons["Patch"].firstMatch.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
 
         let governance = app.buttons["glimpseDoor-Governance"]
         XCTAssertTrue(governance.waitForExistence(timeout: 10))
@@ -150,8 +150,8 @@ final class BrowsingTests: XCTestCase {
         XCTAssertEqual(rows.count, answered, "and folds away again")
 
         app.buttons["discoverRow"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 5))
-        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 5))
+        app.buttons["closePatch"].tap()
 
         app.buttons["Events"].firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Events"].waitForExistence(timeout: 10))
@@ -296,8 +296,8 @@ final class BrowsingTests: XCTestCase {
         let tile = app.buttons["quiltTile-common-thread"]
         XCTAssertTrue(tile.waitForExistence(timeout: 10))
         tile.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 5), "nothing under the card is inert")
-        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 5), "nothing under the card is inert")
+        app.buttons["closePatch"].tap()
 
         // What is Patchwork? is the card's destination — the About page in
         // the quilt's own information stack.
@@ -462,13 +462,13 @@ final class BrowsingTests: XCTestCase {
         capture(app, "21 Dashboard")
 
         row.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
         let standing = app.buttons["relationshipControl"]
         XCTAssertTrue(standing.waitForExistence(timeout: 10), "the head wears the standing")
         standing.tap()
         app.buttons["Unfollow"].tap()
         XCTAssertTrue(app.buttons["relationshipFollow"].waitForExistence(timeout: 10), "letting go offers the way back in")
-        app.buttons["Done"].tap()
+        app.buttons["closePatch"].tap()
 
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "dashboardRow", "Common Thread")).firstMatch.waitForExistence(timeout: 5),
                        "and the Dashboard stops listing it")
@@ -486,7 +486,7 @@ final class BrowsingTests: XCTestCase {
         let tile = app.buttons["quiltTile-common-thread"]
         XCTAssertTrue(tile.waitForExistence(timeout: 10))
         tile.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
         let join = app.buttons["relationshipJoin"]
         XCTAssertTrue(join.waitForExistence(timeout: 10), "a claimed patch that takes members offers Join")
         XCTAssertTrue(app.buttons["relationshipFollow"].exists, "and a public one offers Follow beside it")
@@ -635,7 +635,7 @@ final class BrowsingTests: XCTestCase {
         capture(app, "08 Large text quilt")
         app.segmentedControls.buttons["List"].tap()
         app.buttons["patchRow"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
         capture(app, "09 Large text patch")
     }
 

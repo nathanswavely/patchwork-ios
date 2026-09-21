@@ -69,10 +69,10 @@ struct PatchSheet: View {
                 }
             }
             .background(Color.pwGround)
-            .navigationTitle("Patch").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) }
-            }
+            // No bar: the cover runs to the top of the sheet and says what
+            // this is, and the two acts a bar would hold ride the cover
+            // instead. The rooms pushed from here keep their own bars.
+            .toolbar(.hidden, for: .navigationBar)
         }
         .background(GeometryReader { proxy in Color.clear.preference(key: SheetTopKey.self, value: proxy.frame(in: .global).minY) })
         .onPreferenceChange(HeadBottomKey.self) { headBottom = $0; measure() }
@@ -138,7 +138,9 @@ struct PatchSheet: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.top, 8)
         }
-        .padding(.horizontal, 20).padding(.top, 52).padding(.bottom, 16)
+        // Room above the name for the close and overflow discs and the
+        // sheet's own handle, since the band now starts at the sheet's top.
+        .padding(.horizontal, 20).padding(.top, 64).padding(.bottom, 16)
         .frame(maxWidth: .infinity, minHeight: 160, alignment: .bottomLeading)
         // The cloth and its scrim are the band's background, so the name and
         // the acts sit on the scrim rather than under it: glass over a scrim
@@ -155,9 +157,23 @@ struct PatchSheet: View {
             }
         }
         .background(Color(UIColor(hex: QuiltTheme.palette(for: patch).bg) ?? .black))
-        .overlay(alignment: .topTrailing) { coverActs.padding(8) }
+        .overlay(alignment: .topLeading) { closeDisc.padding(.leading, 12).padding(.top, 18) }
+        .overlay(alignment: .topTrailing) { coverActs.padding(.trailing, 12).padding(.top, 18) }
         .clipped()
         .accessibilityElement(children: .contain)
+    }
+    /// The way out, at the top-left where a sheet's close belongs, as a glass
+    /// disc on the cover rather than a word in a bar.
+    private var closeDisc: some View {
+        Button(action: close) {
+            Image(systemName: "xmark")
+                .font(Font.pw.subheadlineSemibold)
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .modifier(GlassDisc())
+        }
+        .accessibilityLabel("Close")
+        .accessibilityIdentifier("closePatch")
     }
     /// The acts that ride the cover's top corner, as the web's do: one glass
     /// button holding the exits — the website, and sharing this page.
