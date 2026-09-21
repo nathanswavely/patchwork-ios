@@ -11,7 +11,7 @@ struct QuiltHome: View {
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
     /// The one-time orientation card, over the foot of the quilt (see Orientation.swift).
     @State private var intro = false
-    enum Pane: Hashable { case quilt, events, discover, search }
+    enum Pane: Hashable { case quilt, events, discover, dashboard, search }
     init(quilt: Quilt) { _session = StateObject(wrappedValue: QuiltSession(quilt: quilt)) }
     var body: some View {
         Group {
@@ -20,6 +20,11 @@ struct QuiltHome: View {
                     Tab(value: Pane.quilt) { quiltPane } label: { Label { Text("Quilt") } icon: { quiltIcon } }
                     Tab("Events", systemImage: "calendar", value: Pane.events) { eventsPane }
                     Tab("Discover", systemImage: "safari", value: Pane.discover) { discoverPane }
+                    // There is no Dashboard until there is an account to dash:
+                    // the tab arrives with the session and leaves with it.
+                    if session.me != nil {
+                        Tab("Dashboard", systemImage: "rectangle.stack", value: Pane.dashboard) { dashboardPane }
+                    }
                     // A button, not a place: choosing it focuses the top bar's field (see onChange).
                     Tab("Search", systemImage: "magnifyingglass", value: Pane.search, role: .search) { Color.clear }
                 }
@@ -28,6 +33,9 @@ struct QuiltHome: View {
                     quiltPane.tabItem { Label { Text("Quilt") } icon: { quiltIcon } }.tag(Pane.quilt)
                     eventsPane.tabItem { Label("Events", systemImage: "calendar") }.tag(Pane.events)
                     discoverPane.tabItem { Label("Discover", systemImage: "safari") }.tag(Pane.discover)
+                    if session.me != nil {
+                        dashboardPane.tabItem { Label("Dashboard", systemImage: "rectangle.stack") }.tag(Pane.dashboard)
+                    }
                     Color.clear.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Pane.search)
                 }
             }
@@ -37,6 +45,9 @@ struct QuiltHome: View {
             if now == .search { pane = was; session.searching = true }
             else if was != .search { session.endSearch() }
         }
+        // Letting go of the account takes its tab with it, so the selection
+        // has to come home rather than point at a place that is gone.
+        .onChange(of: session.me) { _, now in if now == nil, pane == .dashboard { pane = .quilt } }
         // Hold the quilt's tab to switch quilts, the way a profile tab switches accounts.
         .background(TabBarLongPress(item: 0) { session.switching = true })
         .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
@@ -69,6 +80,9 @@ struct QuiltHome: View {
     }
     private var eventsPane: some View { NavigationStack { EventList(quilt: session.quilt).modifier(DiscoveryToolbar()) } }
     private var discoverPane: some View { NavigationStack { Discover() } }
+    private var dashboardPane: some View {
+        NavigationStack { Dashboard(openDiscover: { pane = .discover }) }
+    }
     @ViewBuilder private var quiltIcon: some View {
         if let icon = session.tabIcon, let dim = session.tabIconDim { Image(uiImage: pane == .quilt ? icon : dim).renderingMode(.original) }
         else { Image(systemName: pane == .quilt ? "square.grid.2x2.fill" : "square.grid.2x2") }

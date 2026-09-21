@@ -62,7 +62,11 @@ struct PatchMemberList: View {
                 }
             }
             Section {
-                WebsiteOnlyNote(text: "Joining and following this patch happen on this quilt’s website.")
+                // Joining and following are native now, and they live in the
+                // patch's own head, where the counts they change are. What
+                // still belongs to the website is everything that happens to
+                // somebody else's membership.
+                WebsiteOnlyNote(text: "Following and joining are on this patch’s own page. Inviting people and answering requests happen on this quilt’s website.")
             }
             }.listRows()
         }

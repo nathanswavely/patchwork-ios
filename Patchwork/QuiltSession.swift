@@ -45,6 +45,11 @@ import WebKit
     /// whole state: there is one session per quilt, held in the cookie jar,
     /// and this is the quilt's own answer to `auth/me` about it.
     @Published private(set) var me: User?
+    /// Every patch this reader holds something on — active or pending — as
+    /// the quilt last stated it. One index, read by the profile, the cards and
+    /// the Dashboard alike, so no two surfaces can disagree about who the
+    /// reader is to a patch. Empty is the honest answer for a signed-out one.
+    @Published private(set) var memberships: [Membership] = []
     init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
     func apply(colorMode next: ColorMode) {
         QuiltTheme.colorMode = next
@@ -124,18 +129,101 @@ import WebKit
     /// trip, so a signed-out launch reads exactly the public endpoints it
     /// always did.
     func refreshAccount() async {
-        guard api.hasSession() else { me = nil; return }
-        do { me = try await api.account() }
+        guard api.hasSession() else { me = nil; memberships = []; return }
+        do {
+            me = try await api.account()
+            await refreshMemberships()
+        }
         catch APIError.unauthenticated { signedOut() }
         catch { /* A quilt that cannot be reached is not a quilt that signed us out. */ }
     }
 
     /// The sheet's ending: the account menu is what confirms it.
-    func signedIn(_ user: User) { me = user }
+    func signedIn(_ user: User) {
+        me = user
+        Task { await refreshMemberships() }
+    }
 
     /// Any authenticated call anywhere can land here: a 401 means the session
     /// is gone, whatever was being asked for.
-    func signedOut() { me = nil }
+    func signedOut() { me = nil; memberships = [] }
+
+    // MARK: The membership index
+
+    /// Read back every patch this reader holds something on. Asked only where
+    /// there is an account to ask about — a signed-out reader still makes
+    /// exactly the public reads they always did — and asked again after every
+    /// act, so the profile, the cards and the Dashboard all answer from one
+    /// index rather than from three guesses about what just happened.
+    func refreshMemberships() async {
+        guard me != nil else { memberships = []; return }
+        do {
+            let page: MembershipPage = try await api.get("me/nodes")
+            memberships = page.items
+        } catch APIError.unauthenticated {
+            signedOut()
+        } catch {
+            // A quilt that could not be reached has not changed who anyone is.
+        }
+    }
+
+    /// Where the reader stands with one patch, or nowhere.
+    func standing(for slug: String) -> Standing? { Self.standing(in: memberships, for: slug) }
+
+    /// The same lookup as a value, so the index can be read without a quilt.
+    nonisolated static func standing(in rows: [Membership], for slug: String) -> Standing? {
+        rows.first { $0.nodeSlug == slug }?.standing
+    }
+
+    // MARK: The acts
+
+    /// Follow a patch: a membership with the follower role, which the server
+    /// accepts on a public patch and refuses on anything else.
+    @discardableResult func follow(_ slug: String) async throws -> String {
+        try await act("nodes/\(slug)/join", body: JoinRequest(role: "follower"))
+    }
+
+    /// Join a patch, with the message its admins will read where the policy
+    /// makes them decide. The server answers `active` or `pending` and this
+    /// client repeats that answer rather than predicting it.
+    @discardableResult func join(_ slug: String, message: String = "") async throws -> String {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await act("nodes/\(slug)/join", body: JoinRequest(message: text.isEmpty ? nil : String(text.prefix(500))))
+    }
+
+    /// Unfollow and Leave are one call: `…/leave` ends whatever active row
+    /// there is. They stay two names because they are two acts to the person
+    /// doing them.
+    @discardableResult func unfollow(_ slug: String) async throws -> String { try await act("nodes/\(slug)/leave") }
+    @discardableResult func leave(_ slug: String) async throws -> String { try await act("nodes/\(slug)/leave") }
+
+    /// Take back a request nobody has answered. Withdrawing is not leaving
+    /// (web ADR 088), and the server keeps them apart, so this client does too.
+    @discardableResult func withdraw(_ slug: String) async throws -> String { try await act("nodes/\(slug)/withdraw") }
+
+    private func act(_ path: String) async throws -> String { try await act(path, body: NoBody()) }
+
+    /// Every act ends in the same place: the index, asked again. Whatever the
+    /// server actually did is then what every surface is drawing.
+    private func act(_ path: String, body: some Encodable) async throws -> String {
+        do {
+            let answer: MembershipAct = try await api.post(path, body: body)
+            await refreshMemberships()
+            return answer.status ?? "ok"
+        } catch APIError.unauthenticated {
+            signedOut()
+            throw APIError.unauthenticated
+        }
+    }
+
+    /// Open a patch's profile from a surface that holds a slug rather than a
+    /// patch — the Dashboard's rows, which are memberships. A patch on this
+    /// quilt's tree is docked straight away; one the tree does not carry is
+    /// fetched first, so a private patch the reader is in still opens.
+    func open(slug: String) async {
+        if let patch = patches.first(where: { $0.slug == slug }) { docked = patch; return }
+        if let response: PatchResponse = try? await api.get("nodes/\(slug)") { docked = response.node }
+    }
 
     /// Let go of this quilt, and only this quilt.
     ///

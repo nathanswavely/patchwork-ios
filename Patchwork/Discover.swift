@@ -179,6 +179,9 @@ struct Discover: View {
                          tagMotifs: session.tagMotifs,
                          colorMode: session.colorMode,
                          identifier: "discoverRow",
+                         // Discovery is where the web offers the heart, and
+                         // it is the one shortlist a reader is choosing from.
+                         showsFollow: true,
                          open: { session.open(patch) }) {
             if let tags = patch.tags, !tags.isEmpty {
                 Text(tags.joined(separator: " · "))
@@ -197,18 +200,13 @@ struct Discover: View {
         }
         .plainRow()
     }
-    /// The foot of the answer. Following is the thing the web sends people
-    /// away with, and this client has no account to do it with — so the
-    /// sentence that says so is itself the door to where it can be done,
-    /// rather than a button that would only be refused.
+    /// The foot of the answer. The sentence was a link out to the website's
+    /// sign-in, because following was the website's; it is now the door into
+    /// the native sheet. Signed in it has nothing left to say — the hearts on
+    /// the rows above it are the offer.
     private var closing: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Link(destination: session.api.loginURL()) {
-                Text("Following needs an account — reading never does.")
-                    .font(Font.pw.footnote)
-            }
-            .accessibilityIdentifier("followOnWebsite")
-            .exitLink(fills: false)
+            if session.me == nil { SignInAction(text: "Following needs an account — reading never does.") }
             QuiltInfoFooter()
         }
         .textCase(nil)

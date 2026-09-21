@@ -105,6 +105,10 @@ struct PatchSheet: View {
                 // face the web keeps for them.
                 Text(patch.name).font(Font.pw.displayTitle).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
                 Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                // Follow, Join, or the standing already held. It sits under
+                // the counts it changes: what the reader is to this patch is
+                // part of the patch's own head, not an afterword at the foot.
+                RelationshipControl(patch: patch, banned: envelope?.banned ?? false) { await load() }
                 if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
                 notices
                 if let description = patch.description, !description.isEmpty { Text(description).foregroundStyle(Color.pwText).textSelection(.enabled) }
@@ -160,14 +164,12 @@ struct PatchSheet: View {
             VStack(alignment: .leading, spacing: 10) {
                 Divider()
                 Link(destination: api.webURL("patches/\(patch.slug)")) { Label("Visit patch website", systemImage: "safari") }.exitLink()
-                // The sentence is the door. A Follow button here would be a
-                // control this client cannot honour; the words that say where
-                // following happens can carry the reader there instead, and
-                // back to this patch once they are signed in.
-                Link(destination: api.loginURL(returningTo: "/patches/\(patch.slug)")) {
-                    Text("Joining, following, and posting are available on this quilt’s website while the native app is being developed.")
-                        .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted).multilineTextAlignment(.leading)
-                }.exitLink().accessibilityIdentifier("followOnWebsite")
+                // The sentence used to be a door out to the website, because
+                // following was the website's. It is now a door into the
+                // sheet: the act is native, so the invitation is too. Signed
+                // in, there is nothing to say here — the control is in the
+                // head, where the counts it changes are.
+                if session.me == nil { SignInAction(text: "Sign in to follow or join.") }
             }
             if let error {
                 Text(error).foregroundStyle(Color.pwTextMuted)

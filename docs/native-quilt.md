@@ -430,3 +430,107 @@ a `TextField` whose binding rewrites the text as it is typed shows one thing
 while holding another, so the code is normalised when it is sent rather than
 under the cursor. Not verified: a live quilt, a physical device, VoiceOver, the
 five-wrong-codes lockout, and cookie persistence across a real relaunch.
+
+## Following — 2026-09-20
+
+Sign-in landed and the account did nothing. This slice makes the web's first
+authenticated acts native: follow, join, leave, unfollow, withdraw — and the
+Dashboard the tab bar has been leaving a space for since the shell was drawn.
+
+**One decision, as a value.** `Relationship.swift` holds the whole of what the
+web keeps in `PatchRelationship.svelte`, with no view in it:
+`Relationship.resolve(node:standing:)` answers `.none` (banned, or moved —
+the moved notice already explains it), `.holding(role)`, `.requested`, or
+`.offering(Offer)` with Follow and Join as independent offers. The rules are
+the server's, in the server's order:
+
+| Patch | Follow | Join |
+| --- | --- | --- |
+| public, claimed, `open` | yes | "Join" |
+| public, claimed, `approval_required` | yes | "Request to join" |
+| public, claimed, `invite_only` | yes | no — the patch does the asking |
+| public, unclaimed | yes | no — there is nobody to be a member of |
+| private, claimed, `open` | no | "Join" |
+| private, unclaimed | no | no (no control at all) |
+| moved, or the reader banned | no | no |
+
+Active rows wear a mark instead — Following with a heart, Member with people,
+Admin with a wrench — over a menu holding one exit: Unfollow for a follower,
+Leave for the other two, with the server's "cannot leave as the only admin"
+printed as the server words it. A pending row is "Membership requested" with
+"Withdraw request", because withdrawing is not leaving (web ADR 088).
+
+**One index.** `QuiltSession` gained `memberships`, filled by `me/nodes` after
+`refreshAccount` succeeds and again after every act, cleared by `signedOut()`,
+and read by `standing(for:)`. The acts — `follow`, `unfollow`, `join(_:message:)`,
+`leave`, `withdraw` — all return the server's own `status` and all end by asking
+the index again, which is what stops the profile, a card and the Dashboard from
+holding three different opinions about the same patch. A 401 anywhere is a
+state, not a failure: `signedOut()`, and the signed-out rendering is already
+correct.
+
+**The contract.** `GET me/nodes` (`{"items":[Membership]}`, and a bare array is
+read the same way), `GET nodes/{slug}` now also carrying `is_member`,
+`is_admin`, `membership_role`, `is_banned` and `membership_policy` where there
+is a session, `POST nodes/{slug}/join` with `{"role":"follower"}` or with
+`{}`/`{"message":…}` answering `active` or `pending`, `POST nodes/{slug}/leave`,
+`POST nodes/{slug}/withdraw`, and `GET events?scope=my&from=…&limit=20` — the
+first read this client makes that is about the reader rather than about the
+quilt. Every POST carries the CSRF header the existing `post` already sent.
+
+**Where the controls are.** In the profile's head, under the counts they
+change, with the accent filling them because they are controls and a standing
+in ink because it is a fact. On a card, the heart stopped being a link to the
+website and became the control it looks like: signed out it opens the sign-in
+sheet, a stranger gets the outline heart, a follower the filled one with a
+confirm behind it, a member or admin their role's mark and no act at all, and a
+pending request nothing. While the call is out the chip holds a spinner — a
+card must not fill a heart before the quilt has answered it. The chip is laid
+over the card after the card has been combined into one accessibility element,
+so the patch still reads as one thing and the heart is still its own control at
+its own 44pt target.
+
+**The three website doors closed.** The profile's "Joining, following, and
+posting are available on this quilt's website…", Discover's
+"Following needs an account — reading never does." and the card's heart were
+all `{quilt}/login` links. The first two are now the native sheet ("Sign in to
+follow or join." on the profile) and the third is the control. "Visit patch
+website" stays: that one is still the website's.
+
+**The Dashboard** arrives with the account and leaves with it, between Discover
+and Search, in both the iOS 18 `Tab` form and the fallback; a signed-out
+selection falls back to Quilt. It reads: the welcome, **Attention needed** (the
+next things happening on the reader's own patches, from `scope=my`, first three
+with "See all N"), then Managing · Member of · Following · Requested, each a
+stack of `CompactPatchCard`s built from the membership rows — the patch from
+the quilt's own tree where it is there, so the row wears the cloth the canvas
+draws, and a name-only card where it is not, rather than an invented tile.
+Pending requests per patch the reader admins and open proposals per patch they
+are in ride the rows as ink badges, both best effort and both simply absent
+where the read failed; a full page of twenty with a cursor behind it says
+"20+" rather than printing a number it would have to be wrong about.
+
+**Still the web's, and not stubbed here:** invitations, the noticeboard and
+notices, RSVP (the web has none either), creating patches and events, editing
+an event, approving or declining the requests the Dashboard counts, voting,
+claiming, moderation and notifications. No disabled control stands in for any
+of them.
+
+**One thing the keyboard taught.** The join sheet's primary button sat at the
+end of its scroll, which on one OS version put it behind the keyboard the
+sheet's own field had just raised — the act was unreachable exactly when it was
+wanted. It now rides the foot of the sheet in a bar, above whatever comes up,
+and the scroll dismisses the keyboard interactively.
+
+**Verification.** 151 unit tests (22 new: every branch of `resolve`, the
+membership index including a pending row's absent role, `me/nodes` as both an
+object and a bare array, the envelope-or-node reading of the reader's own
+standing, the Dashboard's grouping and its "20+", and the `scope=my` query) and
+11 UI tests (3 new: the signed-out heart opening the sheet, follow from a card
+through the Dashboard and out again from the profile's standing, and
+request-to-join then withdraw). Not verified: a live quilt, a physical device,
+VoiceOver, the Managing and Member-of sections (the offline fixtures grant a
+reader no admin row by design), the badge reads, and every server refusal —
+the 409s and the only-admin sentence are rendered but were not provoked. The
+three new UI tests also pass on an iPhone 18 Pro (iOS 27) simulator, which is
+where the keyboard above found the sheet's button.

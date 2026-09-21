@@ -180,6 +180,24 @@ struct PatchworkAPI {
         if let after, !after.isEmpty { query.append(URLQueryItem(name: "after", value: after)) }
         return query
     }
+    /// The same feed, narrowed to the patches the reader actually holds an
+    /// active row on. It is the first read this client makes that is *about*
+    /// the reader rather than about the quilt, which is why it carries
+    /// `scope=my` and why nothing asks for it while signed out.
+    func myEvents(from: Date, limit: Int = 20) async throws -> EventPage {
+        try await get("events", query: Self.myEventsQuery(from: from, limit: limit))
+    }
+    /// Built apart from the request, like every other query here, so the one
+    /// this client sends about a person can be checked without a network.
+    /// `from` travels as an instant for the same reason every other bound
+    /// does: the server compares `starts_at` as text.
+    static func myEventsQuery(from: Date, limit: Int = 20) -> [URLQueryItem] {
+        [
+            URLQueryItem(name: "scope", value: "my"),
+            URLQueryItem(name: "from", value: ISO8601DateFormatter().string(from: from)),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+    }
     /// One event as a calendar file, exactly as the quilt serves it to the
     /// web. Nothing here parses it — it is handed straight to a share sheet.
     func eventCalendar(_ id: String) async throws -> Data {

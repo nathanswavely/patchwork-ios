@@ -25,12 +25,14 @@ enum PreviewData {
     /// Tonight, and still ahead of whoever is reading. The fixture's point is
     /// one event later today, and a fixed 6pm stops being that at 6pm: a suite
     /// run in the evening found the day's event already over and the patch's
-    /// "Upcoming" section starting two days out. Clamped to 23:00 so tonight
-    /// never slides into tomorrow.
+    /// "Upcoming" section starting two days out. Not clamped: in the last hour
+    /// of the day the hour runs to 24, which `instant` reads as midnight, so
+    /// the event stays the soonest thing ahead rather than the last thing
+    /// behind — a clamp to 23:00 had made it already-over for that hour.
     private static var tonightHour: Int {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York")!
-        return min(max(18, calendar.component(.hour, from: Date()) + 1), 23)
+        return max(18, calendar.component(.hour, from: Date()) + 1)
     }
 
     private static var events: [(id: String, json: String)] {
@@ -89,8 +91,12 @@ enum PreviewData {
     private static func eventsPage(_ query: [URLQueryItem]) -> String {
         let value = { (name: String) in query.first { $0.name == name }?.value ?? "" }
         let slug = value("node_slug"), from = value("from"), to = value("to")
+        // `scope=my` is the one narrowing that is about the reader rather than
+        // the quilt: the patches they hold an active row on, and no others.
+        let mine = value("scope") == "my" ? heldNodeIds : nil
         let items = events.map(\.json).filter { json in
             if !slug.isEmpty && !json.contains("\"node_slug\":\"\(slug)\"") { return false }
+            if let mine, !mine.contains(where: { json.contains("\"node_id\":\"\($0)\"") }) { return false }
             guard let range = json.range(of: "\"starts_at\":\"") else { return true }
             let rest = json[range.upperBound...]
             guard let end = rest.firstIndex(of: "\"") else { return true }
@@ -113,7 +119,111 @@ enum PreviewData {
     /// username the person chose, so the menu shows their word and not ours.
     static var account = #"{"id":"demo-user","username":"samplereader","display_name":"Sample Reader","role":"member"}"#
     private static let sampleAccount = account
-    static func signOut() { signedIn = false; account = sampleAccount }
+
+    /// The two patches a membership can be held on offline, with the facts the
+    /// relationship rules read: whether it is public, and how it takes
+    /// members. Common Thread approves; the Listening Room admits anyone.
+    private static let holdable: [(slug: String, id: String, name: String, blurb: String, visibility: String, policy: String)] = [
+        ("common-thread", "demo-patch", "Common Thread Studio",
+         "A place to make things and meet your neighbors.", "public", "approval_required"),
+        ("listening-room", "demo-patch-2", "The Listening Room",
+         "Independent music in good company.", "public", "open"),
+    ]
+
+    /// The membership set the writes mutate and `me/nodes`, `nodes/{slug}` and
+    /// `events?scope=my` all read back. A signed-in reader starts out
+    /// following the Listening Room and nothing else: enough for the Dashboard
+    /// to have something in it on arrival, and every other act still to make.
+    private static var held: [String: (role: String, status: String)] = [:]
+
+    static func signOut() {
+        signedIn = false
+        account = sampleAccount
+        held = [:]
+    }
+    private static func startSession() {
+        signedIn = true
+        held = ["listening-room": (role: "follower", status: "active")]
+    }
+
+    /// `GET me/nodes`. Active and pending rows only, and a pending row carries
+    /// no role — the server's own rule, kept here so the client is checked
+    /// against it rather than against a convenience.
+    private static var myNodes: String {
+        let rows = holdable.compactMap { patch -> String? in
+            guard let row = held[patch.slug] else { return nil }
+            let role = row.status == "active" ? ",\"role\":\"\(row.role)\"" : ""
+            return "{\"id\":\"membership-\(patch.slug)\",\"user_id\":\"demo-user\",\"node_id\":\"\(patch.id)\"\(role)," +
+                "\"status\":\"\(row.status)\",\"visible\":true,\"joined_at\":\"2026-09-01T10:00:00Z\"," +
+                "\"node_name\":\"\(patch.name)\",\"node_slug\":\"\(patch.slug)\",\"node_description\":\"\(patch.blurb)\"," +
+                "\"node_visibility\":\"\(patch.visibility)\",\"membership_policy\":\"\(patch.policy)\",\"node_status\":\"active\"}"
+        }
+        return "{\"items\":[\(rows.joined(separator: ","))]}"
+    }
+
+    /// Which node ids the reader holds an active row on — what `scope=my`
+    /// narrows the feed to.
+    private static var heldNodeIds: Set<String> {
+        Set(holdable.filter { held[$0.slug]?.status == "active" }.map(\.id))
+    }
+
+    /// One node's JSON with its relationship fields spliced in. The tree is
+    /// left exactly as it was: the quilt's public shape is the same whoever
+    /// is reading it.
+    private static func node(_ json: String, slug: String) -> String {
+        String(json.dropLast()) + relation(slug) + "}"
+    }
+
+    /// What `nodes/{slug}` adds. The policy is the patch's own and is always
+    /// stated; the four relationship fields exist only where there is a
+    /// session, which is exactly the server's shape — and is what keeps every
+    /// signed-out fixture what it was.
+    private static func relation(_ slug: String) -> String {
+        guard let patch = holdable.first(where: { $0.slug == slug }) else { return "" }
+        var fields = ",\"membership_policy\":\"\(patch.policy)\""
+        guard signedIn else { return fields }
+        let row = held[slug]
+        let active = row?.status == "active"
+        fields += ",\"is_banned\":false,\"is_member\":\(active),\"is_admin\":\(active && row?.role == "admin")"
+        if active, let role = row?.role { fields += ",\"membership_role\":\"\(role)\"" }
+        return fields
+    }
+
+    /// The three membership writes, against the set above. Every refusal is
+    /// one the server actually makes, in the server's own words.
+    private static func membershipPost(_ path: String, fields: [String: Any]) throws -> String {
+        let parts = path.split(separator: "/")
+        guard parts.count == 3, parts[0] == "nodes",
+              let patch = holdable.first(where: { $0.slug == String(parts[1]) }) else { throw APIError.status(404) }
+        guard signedIn else { throw APIError.unauthenticated }
+        let slug = patch.slug
+        switch parts[2] {
+        case "join":
+            if (fields["role"] as? String) == "follower" {
+                guard patch.visibility == "public" else { throw APIError.message("can only follow public patches", status: 403) }
+                guard held[slug] == nil else { throw APIError.message("already following", status: 409) }
+                held[slug] = (role: "follower", status: "active")
+                return "{\"status\":\"active\",\"membership_id\":\"membership-\(slug)\"}"
+            }
+            guard held[slug]?.status != "pending" else { throw APIError.message("a request is already pending", status: 409) }
+            guard held[slug]?.role == nil || held[slug]?.role == "follower" else { throw APIError.message("already a member", status: 409) }
+            // `approval_required` asks; `open` admits. A follower who joins is
+            // upgraded in place rather than doubled.
+            let status = patch.policy == "approval_required" ? "pending" : "active"
+            held[slug] = (role: "member", status: status)
+            return "{\"status\":\"\(status)\",\"membership_id\":\"membership-\(slug)\"}"
+        case "leave":
+            guard held[slug]?.status == "active" else { throw APIError.message("not a member", status: 400) }
+            held[slug] = nil
+            return #"{"status":"ok"}"#
+        case "withdraw":
+            guard held[slug]?.status == "pending" else { throw APIError.message("no pending request", status: 400) }
+            held[slug] = nil
+            return #"{"status":"ok"}"#
+        default:
+            throw APIError.status(404)
+        }
+    }
 
     /// The offline stand-in for the three writes. The JSON is returned as text
     /// so a post with nothing to read (`auth/logout`) runs the same path as
@@ -126,7 +236,7 @@ enum PreviewData {
         case "auth/magic-link/verify":
             switch (fields["code"] as? String) ?? "" {
             case "123456":
-                signedIn = true
+                startSession()
                 account = sampleAccount
                 return account
             // The address with no account yet: the other half of the flow.
@@ -139,14 +249,14 @@ enum PreviewData {
             let username = ((fields["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let display = ((fields["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !username.isEmpty else { throw APIError.message("Choose a username.", status: 400) }
-            signedIn = true
+            startSession()
             account = "{\"id\":\"demo-user\",\"username\":\"\(username)\",\"display_name\":\"\(display)\",\"role\":\"member\"}"
             return account
         case "auth/logout":
             signOut()
             return "{}"
         default:
-            throw APIError.status(404)
+            return try membershipPost(path, fields: fields)
         }
     }
 
@@ -177,8 +287,13 @@ enum PreviewData {
         case "legal/privacy": json = ###"{"doc":"privacy","title":"Privacy Policy","markdown":"## The short version\n\nNothing here is real, so nothing here is collected. This document exists so the app has a document to render.\n\n- No ads.\n- No trackers.","customized":true,"updated_at":"2026-01-01T00:00:00.000Z"}"###
         case "legal/terms": json = ###"{"doc":"terms","title":"User Agreement","markdown":"## The short version\n\nBe someone your community would vouch for. This fictional agreement has no force anywhere.","customized":false,"updated_at":"2026-01-01T00:00:00.000Z"}"###
         case "nodes/tree": json = "{\"tree\":{\"children\":[\(([patch, second] + extras).joined(separator: ","))]}}"
-        case "nodes/common-thread": json = "{\"node\":\(patch),\"is_unclaimed\":false,\"lining_status\":\"diverged\"}"
-        case "nodes/listening-room": json = "{\"node\":\(second),\"is_unclaimed\":false,\"lining_status\":\"pristine\"}"
+        // The node carries its own membership policy always, and who the
+        // reader is to it only where there is a session (see `relation`).
+        case "nodes/common-thread": json = "{\"node\":\(node(patch, slug: "common-thread")),\"is_unclaimed\":false,\"lining_status\":\"diverged\"}"
+        case "nodes/listening-room": json = "{\"node\":\(node(second, slug: "listening-room")),\"is_unclaimed\":false,\"lining_status\":\"pristine\"}"
+        case "me/nodes":
+            guard signedIn else { throw APIError.unauthenticated }
+            json = myNodes
         // The vocabulary answers with its own counts, which are the quilt's
         // whole-quilt public numbers rather than a tally of the tree in hand:
         // `craft` is worn by more patches than this fixture's tree holds, and

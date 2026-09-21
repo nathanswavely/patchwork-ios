@@ -133,6 +133,18 @@ struct Patch: Decodable, Identifiable, Hashable {
     let visibility: String?
     let publicMemberList: String?
     let publicGovernanceRecord: String?
+    /// How this patch takes members — `open`, `approval_required` or
+    /// `invite_only` — which is what decides whether Join is offered at all
+    /// and which word its button wears.
+    let membershipPolicy: String?
+    /// Who the reader is to this patch. `nodes/{slug}` carries these only
+    /// where there is a session, which is exactly the shape the rules want:
+    /// no session, no control.
+    let isMember: Bool?
+    let isAdmin: Bool?
+    /// Present only while the row is active.
+    let membershipRole: String?
+    let isBanned: Bool?
     var communityListing: Bool { isUnclaimed == true || status == "unclaimed" }
 }
 
@@ -203,6 +215,25 @@ struct PatchResponse: Decodable {
     let node: Patch
     let isUnclaimed: Bool?
     let liningStatus: String?
+    /// The reader's own relation to this patch. A quilt is free to put these
+    /// on the envelope rather than the node, so both are read and the node is
+    /// handed whichever one answered.
+    let isMember: Bool?
+    let isAdmin: Bool?
+    let membershipRole: String?
+    let isBanned: Bool?
+    /// Banned, wherever this quilt said so. A banned reader is offered
+    /// nothing at all, which is a fact about them rather than about the patch.
+    var banned: Bool { isBanned ?? node.isBanned ?? false }
+    /// The patch's own answer about the reader, read off whichever of the two
+    /// levels carried it.
+    var standing: Standing? {
+        if let role = (membershipRole ?? node.membershipRole).flatMap(MembershipRole.init(rawValue:)) { return .active(role) }
+        if isMember == true || node.isMember == true {
+            return .active((isAdmin ?? node.isAdmin) == true ? .admin : .member)
+        }
+        return nil
+    }
 }
 
 struct TreeResponse: Decodable {

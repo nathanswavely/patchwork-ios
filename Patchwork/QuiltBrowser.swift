@@ -82,8 +82,7 @@ struct QuiltBrowser: View {
                 ForEach(ordered) { patch in
                     PatchCard(patch: patch,
                               tagMotifs: session.tagMotifs,
-                              colorMode: session.colorMode,
-                              followURL: followURL(patch)) { open(patch) }
+                              colorMode: session.colorMode) { open(patch) }
                 }
                 // The web carries a footer strip on every page; here it is one
                 // quiet row at the end of the reading surfaces.
@@ -129,14 +128,6 @@ struct QuiltBrowser: View {
     /// narrowed — how many of how many, so the filter's work is visible.
     private var countLabel: String {
         narrowed ? "\(filtered.count) of \(session.patches.count)" : "\(filtered.count) results"
-    }
-
-    /// Following is the website's, so the heart on a card is an exit that
-    /// lands on the sign-in that redirects back to the patch. It is offered
-    /// only where a patch is still here to follow.
-    private func followURL(_ patch: Patch) -> URL? {
-        guard patch.movedTo?.isEmpty != false else { return nil }
-        return URL(string: "login?redirect=/patches/\(patch.slug)", relativeTo: session.quilt.url)?.absoluteURL
     }
 
     /// Where the quilt says it takes suggestions, an empty list offers the one

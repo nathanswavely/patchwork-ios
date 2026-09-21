@@ -414,6 +414,124 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(named(app, "new-reader").waitForExistence(timeout: 5), "the menu wears the name they chose")
     }
 
+    /// Signed out, the heart on a card is neither a stub nor a link out of the
+    /// app any more: it is the door into the native sheet.
+    func testSignedOutHeartOpensSignIn() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+        app.segmentedControls.buttons["List"].tap()
+
+        let heart = app.buttons["followChip-common-thread"]
+        XCTAssertTrue(heart.waitForExistence(timeout: 10), "a card offers the heart whether or not anyone is signed in")
+        capture(app, "19 A card’s heart, signed out")
+        heart.tap()
+        XCTAssertTrue(app.textFields["signInEmail"].waitForExistence(timeout: 5),
+                      "following is native now, so the heart opens the sheet rather than the website")
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.tabBars.buttons["Dashboard"].exists, "no account, no Dashboard")
+    }
+
+    /// The first authenticated act, end to end: follow from a card, find the
+    /// patch on the Dashboard the account brought with it, and let go of it
+    /// again from the profile's own standing.
+    func testFollowFromACardAndUnfollowFromTheDashboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+        signIn(app)
+
+        app.segmentedControls.buttons["List"].tap()
+        let heart = app.buttons["followChip-common-thread"]
+        XCTAssertTrue(heart.waitForExistence(timeout: 10))
+        heart.tap()
+        // The chip does not fill before the quilt has answered; once it has,
+        // the card says what the reader now is to this patch.
+        let following = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "followChip-common-thread", "Following")).firstMatch
+        XCTAssertTrue(following.waitForExistence(timeout: 10), "the heart wears the state the server gave it")
+        capture(app, "20 A followed card")
+
+        let dashboard = app.tabBars.buttons["Dashboard"]
+        XCTAssertTrue(dashboard.waitForExistence(timeout: 10), "an account brings its own tab")
+        dashboard.tap()
+        let row = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "dashboardRow", "Common Thread")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "what was followed is listed under Following")
+        XCTAssertTrue(app.staticTexts["Following"].exists)
+        capture(app, "21 Dashboard")
+
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        let standing = app.buttons["relationshipControl"]
+        XCTAssertTrue(standing.waitForExistence(timeout: 10), "the head wears the standing")
+        standing.tap()
+        app.buttons["Unfollow"].tap()
+        XCTAssertTrue(app.buttons["relationshipFollow"].waitForExistence(timeout: 10), "letting go offers the way back in")
+        app.buttons["Done"].tap()
+
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "dashboardRow", "Common Thread")).firstMatch.waitForExistence(timeout: 5),
+                       "and the Dashboard stops listing it")
+    }
+
+    /// The other act: asking a patch that approves its members, and taking the
+    /// question back again. Withdrawing is not leaving (web ADR 088).
+    func testRequestToJoinAndWithdraw() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+        signIn(app)
+
+        let tile = app.buttons["quiltTile-common-thread"]
+        XCTAssertTrue(tile.waitForExistence(timeout: 10))
+        tile.tap()
+        XCTAssertTrue(app.navigationBars["Patch"].waitForExistence(timeout: 10))
+        let join = app.buttons["relationshipJoin"]
+        XCTAssertTrue(join.waitForExistence(timeout: 10), "a claimed patch that takes members offers Join")
+        XCTAssertTrue(app.buttons["relationshipFollow"].exists, "and a public one offers Follow beside it")
+        capture(app, "22 Profile head — Follow and Join")
+        join.tap()
+
+        let message = app.textViews["joinMessage"].exists ? app.textViews["joinMessage"] : app.textFields["joinMessage"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5), "the sheet asks for the message this patch’s admins read")
+        message.tap()
+        message.typeText("I come every Saturday anyway.")
+        capture(app, "23 The join sheet")
+        // The patch approves its members, so the button asks rather than acts.
+        let submit = app.buttons["joinSubmit"]
+        XCTAssertTrue(submit.label.contains("Request to join"), "the button says what the policy will actually do")
+        submit.tap()
+
+        let requested = app.buttons["relationshipControl"]
+        XCTAssertTrue(requested.waitForExistence(timeout: 10))
+        XCTAssertEqual(requested.label, "Membership requested")
+        capture(app, "24 Membership requested")
+        requested.tap()
+        app.buttons["Withdraw request"].tap()
+        XCTAssertTrue(app.buttons["relationshipJoin"].waitForExistence(timeout: 10),
+                      "a withdrawn request leaves the patch offering to be joined again")
+    }
+
+    /// The sample reader, signed in by the code the fixtures answer to.
+    private func signIn(_ app: XCUIApplication) {
+        app.buttons["Account"].tap()
+        let start = app.buttons["Sign in"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+        let email = app.textFields["signInEmail"]
+        XCTAssertTrue(email.waitForExistence(timeout: 5))
+        email.tap()
+        email.typeText("reader@example.org")
+        app.buttons["signInSendCode"].tap()
+        let code = app.textFields["signInCode"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        code.tap()
+        code.typeText("123456")
+        app.buttons["signInContinue"].tap()
+        XCTAssertFalse(app.textFields["signInCode"].waitForExistence(timeout: 5))
+    }
+
     /// Anything on screen whose label carries this word — a menu's own rows
     /// are drawn by UIKit, and which element holds the handle is its business.
     private func named(_ app: XCUIApplication, _ text: String) -> XCUIElement {

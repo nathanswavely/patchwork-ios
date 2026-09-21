@@ -168,10 +168,6 @@ struct PatchCard: View {
     let patch: Patch
     var tagMotifs: [String: String] = [:]
     var colorMode: ColorMode = QuiltTheme.colorMode
-    /// Where following actually happens. Signed out is the only state this
-    /// client has, so the heart is a `Link` and never a control with a state
-    /// to fake (DESIGN.md "Don't … invent authenticated actions").
-    var followURL: URL?
     let open: () -> Void
     @Environment(\.colorScheme) private var scheme
 
@@ -196,10 +192,13 @@ struct PatchCard: View {
         // The web's `0 2px 10px var(--color-shadow)`. On denim there is
         // nothing for a shadow to fall on, so it all but goes.
         .shadow(color: .black.opacity(scheme == .dark ? 0.05 : 0.08), radius: 5, y: 2)
-        .overlay(alignment: .topTrailing) { follow }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("patchRow")
         .accessibilityHint("Opens patch details.")
+        // The chip is laid over the card *after* the card has been combined
+        // into one element, so the patch reads as one thing and the heart
+        // stays a control of its own rather than a word inside it.
+        .overlay(alignment: .topTrailing) { FollowChip(patch: patch) }
     }
 
     private func body(for patch: Patch) -> some View {
@@ -230,24 +229,6 @@ struct PatchCard: View {
         .padding(.horizontal, 12).padding(.vertical, 10)
     }
 
-    /// The web's `.card-corner`: a glass chip on the strip's top-right. The
-    /// heart is one of the few places the tint belongs — it is a control, not
-    /// a phrase — and it carries no state, because this client has none.
-    @ViewBuilder private var follow: some View {
-        if let followURL {
-            Link(destination: followURL) {
-                Image(systemName: "heart")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color.pwAccent)
-                    .frame(width: 30, height: 30)
-                    .background(.regularMaterial, in: Circle())
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Follow \(patch.name)")
-            .accessibilityHint("Opens this quilt\u{2019}s website to sign in.")
-        }
-    }
 }
 
 /// A fact, not a chip that does anything: this patch left, and the profile is
@@ -290,6 +271,12 @@ struct CompactPatchCard<Detail: View>: View {
     /// The surface names its own rows: the UI tests tell a Discover row from
     /// a search result from a card in List mode.
     var identifier: String = "patchRow"
+    /// Whether this surface offers the relationship chip. A shortlist a
+    /// reader is choosing from does (Discover); a list of patches they are
+    /// already in does not (the Dashboard), and neither does a search result,
+    /// which is read with the keyboard up and one row away from narrowing the
+    /// quilt.
+    var showsFollow = false
     let open: () -> Void
     @ViewBuilder var detail: Detail
     @Environment(\.colorScheme) private var scheme
@@ -335,6 +322,7 @@ struct CompactPatchCard<Detail: View>: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier)
         .accessibilityHint("Opens patch details.")
+        .overlay(alignment: .topTrailing) { if showsFollow { FollowChip(patch: patch) } }
     }
 }
 
