@@ -4,6 +4,12 @@ import SwiftUI
 
 @main struct PatchworkApp: App {
     @StateObject private var quilts = QuiltStore()
+    /// The navigation and tab bars draw their own text, so the two faces are
+    /// put on them once, here, rather than per screen.
+    init() { PWType.install() }
+    /// The reader's standing theme choice (docs/adr/112). Per device, never on
+    /// an account: the reader it exists for does not have one.
+    @AppStorage(DisplayDefaults.themeKey) private var theme = ThemeChoice.system.rawValue
     var body: some Scene {
         WindowGroup {
             Group {
@@ -13,9 +19,14 @@ import SwiftUI
                     NavigationStack { QuiltPicker() }
                 }
             }
-            .preferredColorScheme(previewColorScheme)
+            .preferredColorScheme(previewColorScheme ?? (ThemeChoice(rawValue: theme) ?? .system).scheme)
             .environmentObject(quilts)
-            .tint(Color.accentColor)
+            // The body face is the default for every descendant that does not
+            // name its own, which is how it reaches the screens this slice
+            // does not otherwise touch.
+            .font(Font.pw.body)
+            .foregroundStyle(Color.pwText)
+            .tint(Color.pwAccent)
         }
     }
     private var previewColorScheme: ColorScheme? {
@@ -29,8 +40,10 @@ import SwiftUI
 struct QuiltMark: View {
     var body: some View {
         Image(systemName: "square.grid.2x2.fill")
-            .font(.title2)
-            .foregroundStyle(.tint)
+            .font(Font.pw.title2)
+            // Ink, not the tint: this mark stands in for the quilt's own icon
+            // where it has none, and identity is never what a tint means.
+            .foregroundStyle(Color.pwText)
             .frame(width: 42, height: 42)
         .accessibilityHidden(true)
     }
@@ -42,6 +55,10 @@ struct FailureView: View {
     var body: some View {
         ContentUnavailableView {
             Label("Couldn’t load this quilt", systemImage: "wifi.exclamationmark")
-        } description: { Text(message) } actions: { Button("Try again", action: retry) }
+        } description: {
+            Text(message).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+        } actions: {
+            Button("Try again", action: retry).font(Font.pw.headline).buttonStyle(.borderedProminent)
+        }
     }
 }

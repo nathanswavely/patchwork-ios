@@ -12,7 +12,7 @@ struct FilterSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("\(session.filtered.count) of \(session.patches.count) patches").font(.subheadline).foregroundStyle(.secondary)
+                    Text("\(session.filtered.count) of \(session.patches.count) patches").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     FlowLayout(spacing: 8) {
                         if !query.isEmpty {
                             Chip(title: "“\(query)”", active: true, trailing: "xmark") { session.query = "" }
@@ -24,9 +24,13 @@ struct FilterSheet: View {
                             }
                         }
                     }
-                    if session.rankedTags.isEmpty { Text("This quilt hasn’t tagged its patches yet.").foregroundStyle(.secondary) }
+                    if session.rankedTags.isEmpty {
+                        Text("This quilt hasn’t tagged its patches yet.")
+                            .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                    }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding()
             }
+            .background(Color.pwGround.ignoresSafeArea())
             .navigationTitle("Filter").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Clear") { session.clearFilters() }.disabled(session.activeFilterCount == 0) }
@@ -51,7 +55,9 @@ struct Chip: View {
                 Button(action: action) { label }.buttonStyle(.borderedProminent)
                     .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
             } else {
-                Button(action: action) { label }.buttonStyle(.bordered).tint(.gray).foregroundStyle(Color.primary)
+                // Inactive chips are grey and their words are ink; the one
+                // tint is what marks the ones doing the narrowing.
+                Button(action: action) { label }.buttonStyle(.bordered).tint(.gray).foregroundStyle(Color.pwText)
             }
         }
         .buttonBorderShape(.capsule)
@@ -61,11 +67,11 @@ struct Chip: View {
     }
     private var label: some View {
         HStack(spacing: 5) {
-            if active && trailing == nil { Image(systemName: "checkmark").font(.caption.bold()) }
+            if active && trailing == nil { Image(systemName: "checkmark").font(Font.pw.captionSemibold) }
             Text(title)
-            if let count { Text("\(count)").font(.caption).opacity(0.75) }
-            if let trailing { Image(systemName: trailing).font(.caption.bold()) }
-        }.font(.subheadline.weight(.medium)).lineLimit(1)
+            if let count { Text("\(count)").font(Font.pw.caption).opacity(0.75) }
+            if let trailing { Image(systemName: trailing).font(Font.pw.captionSemibold) }
+        }.font(Font.pw.subheadlineMedium).lineLimit(1)
     }
 }
 

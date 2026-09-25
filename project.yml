@@ -22,8 +22,14 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.patchwork.prototype
+        # The generated plist is merged onto this one, which carries the one
+        # key the INFOPLIST_KEY_* settings have no spelling for: UIAppFonts.
+        INFOPLIST_FILE: Patchwork/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: Patchwork
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        # Write-only: the app puts one night a reader chose into their
+        # calendar and never reads what else is in it.
+        INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription: Patchwork adds an event you choose to your calendar. It never reads your calendar.
   PatchworkTests:
     type: bundle.unit-test
     platform: iOS

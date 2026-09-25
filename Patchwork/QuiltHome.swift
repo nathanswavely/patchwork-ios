@@ -6,7 +6,17 @@ import UIKit
 struct QuiltHome: View {
     @StateObject private var session: QuiltSession
     @State private var pane = Pane.quilt
-    enum Pane: Hashable { case quilt, events, discover, search }
+    /// The reader's colour register, read here so a change to it reaches the
+    /// session — and through it the canvas — wherever the sheet was opened from.
+    @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
+    /// The one-time orientation card, over the foot of the quilt (see Orientation.swift).
+    @State private var intro = false
+    /// Read here, where there is exactly one of them. The unread poll belongs
+    /// to the session, and this is the one view that can tell it whether
+    /// anybody is looking: the discovery toolbar is on four surfaces at once
+    /// and would have started four polls.
+    @Environment(\.scenePhase) private var scenePhase
+    enum Pane: Hashable { case quilt, events, discover, dashboard, search }
     init(quilt: Quilt) { _session = StateObject(wrappedValue: QuiltSession(quilt: quilt)) }
     var body: some View {
         Group {
@@ -15,6 +25,11 @@ struct QuiltHome: View {
                     Tab(value: Pane.quilt) { quiltPane } label: { Label { Text("Quilt") } icon: { quiltIcon } }
                     Tab("Events", systemImage: "calendar", value: Pane.events) { eventsPane }
                     Tab("Discover", systemImage: "safari", value: Pane.discover) { discoverPane }
+                    // There is no Dashboard until there is an account to dash:
+                    // the tab arrives with the session and leaves with it.
+                    if session.me != nil {
+                        Tab("Dashboard", systemImage: "rectangle.stack", value: Pane.dashboard) { dashboardPane }
+                    }
                     // A button, not a place: choosing it focuses the top bar's field (see onChange).
                     Tab("Search", systemImage: "magnifyingglass", value: Pane.search, role: .search) { Color.clear }
                 }
@@ -23,6 +38,9 @@ struct QuiltHome: View {
                     quiltPane.tabItem { Label { Text("Quilt") } icon: { quiltIcon } }.tag(Pane.quilt)
                     eventsPane.tabItem { Label("Events", systemImage: "calendar") }.tag(Pane.events)
                     discoverPane.tabItem { Label("Discover", systemImage: "safari") }.tag(Pane.discover)
+                    if session.me != nil {
+                        dashboardPane.tabItem { Label("Dashboard", systemImage: "rectangle.stack") }.tag(Pane.dashboard)
+                    }
                     Color.clear.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Pane.search)
                 }
             }
@@ -32,16 +50,47 @@ struct QuiltHome: View {
             if now == .search { pane = was; session.searching = true }
             else if was != .search { session.endSearch() }
         }
+        // Letting go of the account takes its tab with it, so the selection
+        // has to come home rather than point at a place that is gone.
+        .onChange(of: session.me) { _, now in if now == nil, pane == .dashboard { pane = .quilt } }
         // Hold the quilt's tab to switch quilts, the way a profile tab switches accounts.
         .background(TabBarLongPress(item: 0) { session.switching = true })
         .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
         .sheet(isPresented: $session.switching) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
         .task { await session.load() }
+        .onAppear {
+            session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard)
+            if !IntroState.seen(session.quilt) { intro = true }
+        }
+        .onChange(of: colors) { _, now in session.apply(colorMode: ColorMode(rawValue: now) ?? .standard) }
+        // Coming back to the app reads the count again and restarts the
+        // reconciliation; leaving it stops.
+        .onChange(of: scenePhase) { _, now in session.scenePhaseChanged(to: now) }
         .environmentObject(session)
     }
-    private var quiltPane: some View { NavigationStack { QuiltBrowser() } }
+    /// The quilt, with the orientation card over the foot of it. The overlay
+    /// goes on the tab's own content rather than on the `TabView`, so the
+    /// card floats inside the canvas instead of underneath the tab bar; the
+    /// padding clears the canvas's own Quilt/Map/List pill, because the card
+    /// may cover the quilt but never a control.
+    private var quiltPane: some View {
+        NavigationStack { QuiltBrowser() }
+            .overlay(alignment: .bottom) {
+                if intro, !session.searching {
+                    IntroCard(quiltName: session.instance?.name ?? session.quilt.name) {
+                        IntroState.markSeen(session.quilt)
+                        withAnimation { intro = false }
+                    }
+                    .padding(.bottom, 64)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+    }
     private var eventsPane: some View { NavigationStack { EventList(quilt: session.quilt).modifier(DiscoveryToolbar()) } }
     private var discoverPane: some View { NavigationStack { Discover() } }
+    private var dashboardPane: some View {
+        NavigationStack { Dashboard(openDiscover: { pane = .discover }) }
+    }
     @ViewBuilder private var quiltIcon: some View {
         if let icon = session.tabIcon, let dim = session.tabIconDim { Image(uiImage: pane == .quilt ? icon : dim).renderingMode(.original) }
         else { Image(systemName: pane == .quilt ? "square.grid.2x2.fill" : "square.grid.2x2") }
@@ -55,6 +104,9 @@ struct DiscoveryToolbar: ViewModifier {
     @EnvironmentObject private var session: QuiltSession
     var filter: Binding<Bool>? = nil
     @State private var about = false
+    @State private var display = false
+    @State private var signIn = false
+    @State private var notifications = false
     @FocusState private var focused: Bool
     private var fieldWidth: CGFloat { min(420, max(200, UIScreen.main.bounds.width - (session.searching ? 108 : 150))) }
     func body(content: Content) -> some View {
@@ -67,9 +119,9 @@ struct DiscoveryToolbar: ViewModifier {
                             Image(systemName: "line.3.horizontal.decrease")
                                 .overlay(alignment: .topTrailing) {
                                     if session.activeFilterCount > 0 {
-                                        Text("\(session.activeFilterCount)").font(.caption2.bold()).foregroundStyle(Color(.systemBackground))
+                                        Text("\(session.activeFilterCount)").font(Font.pw.caption2Semibold).foregroundStyle(Color(.systemBackground))
                                             .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
-                                            .background(Color.accentColor, in: Capsule()).offset(x: 10, y: -8)
+                                            .background(Color.pwAccent, in: Capsule()).offset(x: 10, y: -8)
                                     }
                                 }
                         }
@@ -78,14 +130,38 @@ struct DiscoveryToolbar: ViewModifier {
                     }
                 }
                 ToolbarItem(placement: .principal) { field }
+                // The bell belongs beside the account, because it is the
+                // account's: a signed-out reader has nothing to be told.
+                if session.me != nil, !session.searching {
+                    ToolbarItem(placement: .topBarTrailing) { NotificationBell(presented: $notifications) }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if session.searching {
                         Button("Cancel") { session.endSearch() }
                     } else {
                         Menu {
-                            Link(destination: session.api.webURL("login")) { Label("Join or sign in on the web", systemImage: "person.badge.key") }
+                            // Signing in is native now. Joining a patch,
+                            // following and posting are still the website's.
+                            if let me = session.me {
+                                Button {} label: {
+                                    Text(me.title)
+                                    Text(me.handle)
+                                }
+                                .disabled(true)
+                                // A menu row's label is its title alone, so
+                                // the handle under it would be drawn and never
+                                // spoken. Both, in one sentence.
+                                .accessibilityLabel("Signed in as \(me.title), \(me.handle)")
+                                .accessibilityIdentifier("accountMe")
+                                Button { Task { await session.signOut() } } label: {
+                                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                                }
+                            } else {
+                                Button { signIn = true } label: { Label("Sign in", systemImage: "person.badge.key") }
+                            }
                             Divider()
                             Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
+                            Button { display = true } label: { Label("Display", systemImage: "slider.horizontal.3") }
                             Button { session.switching = true } label: { Label("Switch quilt", systemImage: "square.grid.2x2") }
                         } label: { Image(systemName: "person.crop.circle") }
                         .accessibilityLabel("Account")
@@ -93,7 +169,14 @@ struct DiscoveryToolbar: ViewModifier {
                 }
             }
             .onChange(of: session.searching) { _, now in focused = now }
-            .sheet(isPresented: $about) { AboutQuilt() }
+            .sheet(isPresented: $about) { QuiltInfoSheet() }
+            .sheet(isPresented: $display) { DisplaySheet() }
+            .sheet(isPresented: $signIn) {
+                SignInSheet(api: session.api, quiltName: session.instance?.name ?? session.quilt.name) { user in
+                    session.signedIn(user)
+                }
+            }
+            .sheet(isPresented: $notifications) { NotificationsSheet() }
     }
     /// At rest the field is a button wearing the field's clothes: a text field
     /// hosted in the bar's UIKit toolbar item reports neither focus nor editing
@@ -102,13 +185,13 @@ struct DiscoveryToolbar: ViewModifier {
     @ViewBuilder private var field: some View {
         if session.searching {
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Color.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(Color.pwTextMuted)
                 TextField("Search patches and events", text: $session.searchText)
                     .focused($focused).submitLabel(.search).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit { session.showMatches() }
                     .accessibilityIdentifier("searchField")
                 if !session.searchText.isEmpty {
-                    Button { session.searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.secondary) }.accessibilityLabel("Clear text")
+                    Button { session.searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.pwTextMuted) }.accessibilityLabel("Clear text")
                 }
             }
             .modifier(FieldChrome(width: fieldWidth))
@@ -120,7 +203,7 @@ struct DiscoveryToolbar: ViewModifier {
                     Text("Search patches and events").lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(Color.pwTextMuted)
                 .modifier(FieldChrome(width: fieldWidth))
             }
             .buttonStyle(.plain)
@@ -133,35 +216,29 @@ struct DiscoveryToolbar: ViewModifier {
 private struct FieldChrome: ViewModifier {
     let width: CGFloat
     func body(content: Content) -> some View {
-        content.font(.subheadline).padding(.horizontal, 14).frame(height: 44).frame(width: width).modifier(GlassCapsule())
+        content.font(Font.pw.subheadline).padding(.horizontal, 14).frame(height: 44).frame(width: width).modifier(GlassCapsule())
     }
 }
 
-/// Liquid glass where the system has it; material where it does not.
+/// Liquid glass where the system has it; material where it does not. The
+/// glass is tinted with the app's own surface: the quilt under it is dense
+/// and unpredictable, and a control that carries text needs a floor of its
+/// own without a band behind it. Tinted regular glass is the system's answer
+/// to exactly that — it stays glass, it just reads frosted.
 private struct GlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) { content.glassEffect() }
-        else { content.background(.regularMaterial, in: Capsule()) }
+        content.background(.thickMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
     }
 }
 
-struct AboutQuilt: View {
-    @EnvironmentObject private var session: QuiltSession
+/// Display is the reader's own setting, not the quilt's, so it opens as its
+/// own sheet beside the quilt's information rather than inside it.
+struct DisplaySheet: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let icon = session.icon { Image(uiImage: icon).resizable().aspectRatio(contentMode: .fill).frame(width: 42, height: 42).clipped() }
-                    else { QuiltMark() }
-                    Text(session.quilt.name).font(.largeTitle.bold())
-                    Text(session.quilt.url.host() ?? session.quilt.id).foregroundStyle(.secondary)
-                    if let description = session.instance?.description, !description.isEmpty { Text(description) }
-                    Link("Open quilt website", destination: session.quilt.url)
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
-            }
-            .navigationTitle("About this quilt").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            DisplaySettings()
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
     }
