@@ -13,6 +13,11 @@ struct QuiltHome: View {
     /// The reader's colour register, read here so a change to it reaches the
     /// session — and through it the canvas — wherever the sheet was opened from.
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
+    /// The full quilt picker, reached from the switcher card's "Find a quilt".
+    /// The card closes first and the picker opens once it has gone (see the
+    /// switcher's `onDismiss`); `wantsPicker` is the note passed between them.
+    @State private var finding = false
+    @State private var wantsPicker = false
     /// The one-time orientation card, over the foot of the quilt (see Orientation.swift).
     @State private var intro = false
     /// Read here, where there is exactly one of them. The unread poll belongs
@@ -26,7 +31,7 @@ struct QuiltHome: View {
         Group {
             if #available(iOS 18.0, *) {
                 TabView(selection: $pane) {
-                    Tab(value: Pane.quilt) { quiltPane } label: { Label { Text("Quilt") } icon: { quiltIcon } }
+                    Tab(value: Pane.quilt) { quiltPane } label: { quiltLabel }
                     Tab("Events", systemImage: "calendar", value: Pane.events) { eventsPane }
                     Tab("Discover", systemImage: "safari", value: Pane.discover) { discoverPane }
                     // There is no Dashboard until there is an account to dash:
@@ -44,7 +49,7 @@ struct QuiltHome: View {
                 }
             } else {
                 TabView(selection: $pane) {
-                    quiltPane.tabItem { Label { Text("Quilt") } icon: { quiltIcon } }.tag(Pane.quilt)
+                    quiltPane.tabItem { quiltLabel }.tag(Pane.quilt)
                     eventsPane.tabItem { Label("Events", systemImage: "calendar") }.tag(Pane.events)
                     discoverPane.tabItem { Label("Discover", systemImage: "safari") }.tag(Pane.discover)
                     if session.me != nil {
@@ -68,10 +73,15 @@ struct QuiltHome: View {
         // Letting go of the account takes its tab with it, so the selection
         // has to come home rather than point at a place that is gone.
         .onChange(of: session.me) { _, now in if now == nil, pane == .dashboard { pane = .quilt } }
-        // Hold the quilt's tab to switch quilts, the way a profile tab switches accounts.
+        // Hold the quilt's tab to switch lens or quilt, the way a profile tab switches accounts.
         .background(TabBarLongPress(item: 0) { session.switching = true })
         .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
-        .sheet(isPresented: $session.switching) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
+        .sheet(isPresented: $session.switching, onDismiss: {
+            if wantsPicker { wantsPicker = false; finding = true }
+        }) {
+            QuiltSwitcher { wantsPicker = true; session.switching = false }
+        }
+        .sheet(isPresented: $finding) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
         .task { await session.load() }
         .onAppear {
             session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard)
@@ -95,7 +105,7 @@ struct QuiltHome: View {
     /// padding clears the canvas's own Quilt/Map/List pill, because the card
     /// may cover the quilt but never a control.
     private var quiltPane: some View {
-        NavigationStack { QuiltBrowser() }
+        NavigationStack { QuiltBrowser(openDiscover: { pane = .discover }) }
             .overlay(alignment: .bottom) {
                 if intro, !session.searching {
                     IntroCard(quiltName: session.instance?.name ?? session.quilt.name) {
@@ -119,6 +129,13 @@ struct QuiltHome: View {
     private var discoverPane: some View { NavigationStack { Discover() } }
     private var dashboardPane: some View {
         NavigationStack { Dashboard(openDiscover: { pane = .discover }) }
+    }
+    /// The tab says which lens is on, so a reader in My Quilt can see it from
+    /// every other tab too. The identifier is the stable handle; the words
+    /// are what change.
+    private var quiltLabel: some View {
+        Label { Text(session.scope == .my ? "My Quilt" : "Quilt") } icon: { quiltIcon }
+            .accessibilityIdentifier("quiltTab")
     }
     @ViewBuilder private var quiltIcon: some View {
         if let icon = session.tabIcon, let dim = session.tabIconDim { Image(uiImage: pane == .quilt ? icon : dim).renderingMode(.original) }

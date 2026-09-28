@@ -661,3 +661,63 @@ iOS blue. Not verified: a live quilt, a physical device, VoiceOver, the poll's
 sixty seconds actually elapsing, the foreground transition, paging past twenty
 (the fixtures hold six), `99+`, and every server refusal — the 404s and 401s
 are handled but were not provoked.
+
+## My Quilt and the switcher — 2026-09-28
+
+The quilt gained its third lens, and holding the Quilt tab opens a card
+instead of the full picker.
+
+- **Scope is the server's.** `QuiltSession.scope` is `.whole` or `.my`.
+  Changing it reloads the tree with `scope=my` (`QuiltScope.query`), and the
+  Events tab's quilt-wide list sends the same value through
+  `PatchworkAPI.eventsQuery(…, scope:)`. A patch's own calendar never does.
+  The filter and the search chip are left alone when the scope moves (web ADR
+  022); an answer that arrives after the reader has switched again is dropped
+  rather than drawn under the wrong lens.
+- **The whole quilt is where everything starts.** Nothing persists the scope
+  and there is no "start on My Quilt" setting yet (web ADR 035 makes that an
+  account preference, which this client does not have). Signing out, or a
+  launch with no session, puts the scope back to the whole quilt.
+- **What is not scoped.** Discover asks about the whole quilt and the search
+  field finds across it, so both read `wholeQuilt` — the unscoped tree, kept
+  beside the scoped one — and Discover breaks its ties by the whole quilt's
+  placement. The tag ranking is read off the whole tree too. The Dashboard is
+  unchanged.
+- **The events filter reads the whole tree.** `scope=my` admits a night hosted
+  by a patch the reader does not hold when a followed patch is a confirmed
+  link on it (web ADR 032, and the server's `events.go`). The filter resolves
+  that host's tags against the whole quilt, or it would drop the night the
+  moment any chip was on.
+- **The card.** A sheet at the medium detent: this quilt's two lenses with a
+  checkmark on the live one (My Quilt only for a signed-in reader; a muted
+  line otherwise), the other saved quilts, which connect directly, and Find a
+  quilt, which closes the card and opens the picker as its own sheet once the
+  card has gone. Pushing the picker inside the card was tried on paper and
+  rejected: its Done would have popped back to the card instead of closing,
+  and Explore on the quilt already open would have left the card up.
+- **The tab says which lens is on**: "Quilt" or "My Quilt", both branches of
+  the tab builder, with `quiltTab` as a stable identifier.
+- **Empty states name the lens.** "Nothing in My Quilt yet" (Show the whole
+  quilt; Find patches in Discover), "No patches match your filter in My
+  Quilt" (Clear filter; Show the whole quilt), and on Events "No events in My
+  Quilt" and "No events match your filter in My Quilt". The whole-quilt
+  wording is unchanged.
+
+**Offline.** `nodes/tree?scope=my` answers only the patches in `heldNodeIds`
+— after sign-in, the Listening Room — and an empty tree while signed out. The
+feed's existing `scope=my` also admits the studio's open night, because the
+Listening Room is a link on it, which is the server's rule too.
+
+**Verification.** 176 unit tests and 14 UI tests pass on the iPhone 17 Pro
+simulator. Two unit tests are new (`scope=my` on the events query only
+when asked for; `QuiltScope`'s query and value) and one new UI test: signed
+out, the card offers no My Quilt; signed in, My Quilt shows the Listening
+Room's tile and not the studio's, the tab reads "My Quilt", Events lists the
+Listening Room's night and the linked open studio but not the studio's own
+circle, the whole quilt comes back from the card, and Find a quilt reaches the
+picker and explores the quilt again. The card is opened by holding the tab
+(`press(forDuration: 0.8)`), which XCUITest drives on the iOS 26 simulator.
+`testBrowsePatchEventAndSwitchQuilt` now reaches the picker through the card.
+Not verified: a live quilt, a saved second quilt in the card (the fixtures do
+not save quilts), VoiceOver, and the My Quilt empty states on screen (the
+fixture reader always holds one patch).

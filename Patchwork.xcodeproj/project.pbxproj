@@ -50,6 +50,7 @@
 		B48B197D80C62EB28FE1EC9B /* DiscoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 113D37454395617A11072AE8 /* DiscoverTests.swift */; };
 		BA4385AB910F5ED96FC0A620 /* PatchGovernance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A665F8F6905212C2452DE92A /* PatchGovernance.swift */; };
 		BC2219C27E0B4BFF3A767D28 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA5BA70D1C312F3863229DC /* Palette.swift */; };
+		BC83FCD961C536C590C9A3C2 /* QuiltSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41A7515238A35D73C8309066 /* QuiltSwitcher.swift */; };
 		BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
 		D5E1382ABD304BDF35699A42 /* QuiltSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFC7ACE15046E1958924BFE /* QuiltSession.swift */; };
@@ -101,6 +102,7 @@
 		2DE5474B5736A302A83E7519 /* QuiltPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltPicker.swift; sourceTree = "<group>"; };
 		2F7233C3A988DA4C67073F63 /* TypographyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyTests.swift; sourceTree = "<group>"; };
 		3EFC7ACE15046E1958924BFE /* QuiltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSession.swift; sourceTree = "<group>"; };
+		41A7515238A35D73C8309066 /* QuiltSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSwitcher.swift; sourceTree = "<group>"; };
 		4510113B947EAF0DB94F046F /* QuiltCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltCanvas.swift; sourceTree = "<group>"; };
 		4858D666E2FE8B480005EB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4F1CE19D520C26DFAB2758DE /* PatchCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchCalendar.swift; sourceTree = "<group>"; };
@@ -193,6 +195,7 @@
 				529B45CF7173A2EF95492E0C /* QuiltLayout.swift */,
 				2DE5474B5736A302A83E7519 /* QuiltPicker.swift */,
 				3EFC7ACE15046E1958924BFE /* QuiltSession.swift */,
+				41A7515238A35D73C8309066 /* QuiltSwitcher.swift */,
 				D8958EDC97FC429B38CD2DAE /* QuiltTheme.swift */,
 				73236C64CF82F56019DF7AC1 /* Relationship.swift */,
 				D550615CD3341F44DA6D4623 /* RelationshipControls.swift */,
@@ -413,6 +416,7 @@
 				78D5163BC45D8AC695285A44 /* QuiltLayout.swift in Sources */,
 				043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */,
 				D5E1382ABD304BDF35699A42 /* QuiltSession.swift in Sources */,
+				BC83FCD961C536C590C9A3C2 /* QuiltSwitcher.swift in Sources */,
 				734A0612AF1C3409A9EF80C2 /* QuiltTheme.swift in Sources */,
 				7F124D86B61A2F13BEEC25D1 /* Relationship.swift in Sources */,
 				7E8CCFE04B282D8401879320 /* RelationshipControls.swift in Sources */,

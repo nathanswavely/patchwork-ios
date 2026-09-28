@@ -472,7 +472,16 @@ enum PreviewData {
         case "instance/lining": json = ###"{"title":"Community Standards","body":"This fictional patch, like every patch on this fictional quilt, starts by agreeing to the lining.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are. We regulate actions, not identity.\n\n## Say what you are\n\nA patch describes itself honestly: who it is, what it does, and who it answers to.","version":1}"###
         case "legal/privacy": json = ###"{"doc":"privacy","title":"Privacy Policy","markdown":"## The short version\n\nNothing here is real, so nothing here is collected. This document exists so the app has a document to render.\n\n- No ads.\n- No trackers.","customized":true,"updated_at":"2026-01-01T00:00:00.000Z"}"###
         case "legal/terms": json = ###"{"doc":"terms","title":"User Agreement","markdown":"## The short version\n\nBe someone your community would vouch for. This fictional agreement has no force anywhere.","customized":false,"updated_at":"2026-01-01T00:00:00.000Z"}"###
-        case "nodes/tree": json = "{\"tree\":{\"children\":[\(([patch, second] + extras).joined(separator: ","))]}}"
+        case "nodes/tree":
+            // `scope=my` narrows the tree the way it narrows the feed: to the
+            // patches the reader holds an active row on. Signed out there is
+            // nobody for it to be about, so it answers an empty quilt.
+            var children = [patch, second] + extras
+            if query.contains(where: { $0.name == "scope" && $0.value == "my" }) {
+                let held = signedIn ? heldNodeIds : []
+                children = children.filter { json in held.contains { json.hasPrefix("{\"id\":\"\($0)\"") } }
+            }
+            json = "{\"tree\":{\"children\":[\(children.joined(separator: ","))]}}"
         // The node carries its own membership policy always, and who the
         // reader is to it only where there is a session (see `relation`).
         case "nodes/common-thread": json = "{\"node\":\(node(patch, slug: "common-thread")),\"is_unclaimed\":false,\"lining_status\":\"diverged\"}"

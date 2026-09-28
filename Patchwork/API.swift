@@ -166,14 +166,14 @@ struct PatchworkAPI {
     /// presets produce. `from`/`to` travel as instants, never bare dates: the
     /// server compares `starts_at` as text, so a bare date as `to` would drop
     /// the day it names.
-    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, fromInstant: String?, toInstant: String? = nil) async throws -> EventPage {
-        var query = Self.eventsQuery(slug: slug, after: after, limit: limit)
+    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, fromInstant: String?, toInstant: String? = nil, scope: String? = nil) async throws -> EventPage {
+        var query = Self.eventsQuery(slug: slug, after: after, limit: limit, scope: scope)
         if let fromInstant, !fromInstant.isEmpty { query.append(URLQueryItem(name: "from", value: fromInstant)) }
         if let toInstant, !toInstant.isEmpty { query.append(URLQueryItem(name: "to", value: toInstant)) }
         return try await get("events", query: query)
     }
-    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false) async throws -> EventPage {
-        try await get("events", query: Self.eventsQuery(slug: slug, after: after, limit: limit, from: from, to: to, includePast: includePast))
+    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false, scope: String? = nil) async throws -> EventPage {
+        try await get("events", query: Self.eventsQuery(slug: slug, after: after, limit: limit, from: from, to: to, includePast: includePast, scope: scope))
     }
     /// The events query, built apart from the request so the gates a patch's
     /// calendar turns on can be checked without a network. `from` keeps a
@@ -182,14 +182,17 @@ struct PatchworkAPI {
     /// deliberate request for what already happened. The server orders
     /// events oldest first and pages forward, so asking for the whole
     /// calendar at once hands a busy venue its own history before tonight —
-    /// which is why the two halves are asked for separately.
-    static func eventsQuery(slug: String?, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false) -> [URLQueryItem] {
+    /// which is why the two halves are asked for separately. `scope` is the
+    /// quilt's lens (`my` while the reader is in My Quilt) and travels only
+    /// when asked for, so every public read stays exactly what it was.
+    static func eventsQuery(slug: String?, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false, scope: String? = nil) -> [URLQueryItem] {
         var query = [URLQueryItem(name: "limit", value: String(limit))]
         if let slug { query.append(URLQueryItem(name: "node_slug", value: slug)) }
         if let from { query.append(URLQueryItem(name: "from", value: ISO8601DateFormatter().string(from: from))) }
         if let to { query.append(URLQueryItem(name: "to", value: ISO8601DateFormatter().string(from: to))) }
         if includePast { query.append(URLQueryItem(name: "include_past", value: "true")) }
         if let after, !after.isEmpty { query.append(URLQueryItem(name: "after", value: after)) }
+        if let scope, !scope.isEmpty { query.append(URLQueryItem(name: "scope", value: scope)) }
         return query
     }
     /// The same feed, narrowed to the patches the reader actually holds an

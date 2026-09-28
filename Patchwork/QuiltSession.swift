@@ -2,8 +2,24 @@
 import SwiftUI
 import WebKit
 
+/// Which lens the quilt is read through (web ADR 022, 035): the whole quilt,
+/// or My Quilt — the patches the reader holds an active membership on. It is
+/// the server's narrowing, not this client's: `scope=my` on the tree and the
+/// feed, answered from the cookie's own account.
+enum QuiltScope: Hashable {
+    case whole, my
+    /// The query a scoped read carries. The whole quilt is the unmarked
+    /// default and carries nothing, so its reads are exactly the public ones
+    /// they always were.
+    var query: [URLQueryItem] { self == .my ? [URLQueryItem(name: "scope", value: "my")] : [] }
+    /// The same thing as the one value `eventsQuery` takes.
+    var value: String? { self == .my ? "my" : nil }
+}
+
 /// One quilt's discovery state. The quilt, its search, and Discover read the
-/// same patches and the same filter, so narrowing on one narrows all of them.
+/// same filter, so narrowing on one narrows all of them; the quilt, the map,
+/// the list and Events also read through the scope, which Discover and search
+/// do not.
 @MainActor final class QuiltSession: ObservableObject {
     let quilt: Quilt
     let api: PatchworkAPI
@@ -11,7 +27,18 @@ import WebKit
     @Published var icon: UIImage?
     @Published var tabIcon: UIImage?
     @Published var tabIconDim: UIImage?
+    /// The patches under the current scope: the whole tree, or only the
+    /// reader's own. Every narrowing surface — the canvas, the map, the list,
+    /// the Events tab's filter — reads this one.
     @Published private(set) var patches: [Patch] = []
+    /// The whole tree, whatever the scope. Discover and the search field are
+    /// not scoped (web ADR 022 names scope a lens on the discovery surfaces,
+    /// and Discover's question is about the whole quilt), so they read this
+    /// rather than a list that shrinks when the reader looks at their own.
+    @Published private(set) var wholeQuilt: [Patch] = []
+    /// The whole tree's placement, which is the order Discover breaks its
+    /// ties by: the same order the canvas draws when nothing narrows it.
+    @Published private(set) var wholeBaseline: [QuiltLayout.Tile] = []
     @Published private(set) var affinity: [Affinity] = []
     @Published private(set) var baseline: [QuiltLayout.Tile] = []
     @Published private(set) var tiles: [QuiltLayout.Tile] = []
@@ -26,6 +53,14 @@ import WebKit
     /// The search chip. Set only by "Show matches on the quilt", never by typing.
     @Published var query = "" { didSet { repack() } }
     @Published var tags = Set<String>() { didSet { repack() } }
+    /// The third lens. Changing it asks the server again and leaves the other
+    /// two alone: a filter built up in the whole quilt is still standing in My
+    /// Quilt, and the empty state says so rather than clearing it. Never
+    /// persisted, never defaulted by account: the whole quilt is where every
+    /// launch starts (web ADR 035).
+    @Published var scope = QuiltScope.whole {
+        didSet { if scope != oldValue { Task { await loadTree() } } }
+    }
     /// The patch whose profile is docked over whichever surface opened it.
     @Published var docked: Patch?
     @Published var switching = false
@@ -74,7 +109,7 @@ import WebKit
     var activeFilterCount: Int { tags.count + (query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1) }
     var mapEnabled: Bool { instance?.modules?["map"] != false }
     /// Tags by how many patches wear them, most-worn first; ties read A to Z.
-    var rankedTags: [(tag: String, count: Int)] { Self.rank(patches: patches, terms: tagTerms) }
+    var rankedTags: [(tag: String, count: Int)] { Self.rank(patches: wholeQuilt, terms: tagTerms) }
     /// The ranking, as a value so it can be checked without a quilt.
     ///
     /// The count is the server's `node_count` wherever the vocabulary
@@ -113,14 +148,7 @@ import WebKit
         tiles = activeFilterCount == 0 ? baseline : QuiltLayout.pack(filtered, affinity: affinity, sizes: sizes)
     }
     func load() async {
-        loading = patches.isEmpty; error = nil
-        defer { loading = false }
-        do {
-            let result: TreeResponse = try await api.get("nodes/tree")
-            patches = result.tree.children ?? []; affinity = result.affinity ?? []
-            baseline = QuiltLayout.pack(patches, affinity: affinity)
-            repack()
-        } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        await loadTree()
         if instance == nil { instance = try? await api.get("instance") }
         if tagTerms.isEmpty, let terms: [TagTerm] = try? await api.get("tags") {
             tagTerms = terms
@@ -134,6 +162,28 @@ import WebKit
         await refreshAccount()
     }
 
+    /// The tree under the current scope. A scoped read also fetches the
+    /// whole tree the first time, because Discover and search still read it.
+    /// An answer that arrives after the reader has already switched lenses
+    /// again is dropped rather than drawn under the wrong one.
+    func loadTree() async {
+        let asked = scope
+        loading = patches.isEmpty; error = nil
+        defer { loading = false }
+        do {
+            if asked == .my, wholeQuilt.isEmpty, let whole: TreeResponse = try? await api.get("nodes/tree") {
+                wholeQuilt = whole.tree.children ?? []
+                wholeBaseline = QuiltLayout.pack(wholeQuilt, affinity: whole.affinity ?? [])
+            }
+            let result: TreeResponse = try await api.get("nodes/tree", query: asked.query)
+            guard asked == scope else { return }
+            patches = result.tree.children ?? []; affinity = result.affinity ?? []
+            baseline = QuiltLayout.pack(patches, affinity: affinity)
+            if asked == .whole { wholeQuilt = patches; wholeBaseline = baseline }
+            repack()
+        } catch { if !Task.isCancelled, asked == scope { self.error = error.localizedDescription } }
+    }
+
     // MARK: The account
 
     /// Read back who the cookie says this is — but only if there is a cookie.
@@ -143,7 +193,7 @@ import WebKit
     /// trip, so a signed-out launch reads exactly the public endpoints it
     /// always did.
     func refreshAccount() async {
-        guard api.hasSession() else { me = nil; memberships = []; return }
+        guard api.hasSession() else { me = nil; memberships = []; scope = .whole; return }
         do {
             me = try await api.account()
             await refreshMemberships()
@@ -168,6 +218,9 @@ import WebKit
     /// is gone, whatever was being asked for.
     func signedOut() {
         me = nil
+        // My Quilt is only a lens for somebody the quilt knows; without an
+        // account there is nothing for `scope=my` to be about.
+        scope = .whole
         memberships = []
         unread = UnreadTally.cleared
         stopUnreadPoll()
@@ -290,7 +343,7 @@ import WebKit
     /// quilt's tree is docked straight away; one the tree does not carry is
     /// fetched first, so a private patch the reader is in still opens.
     func open(slug: String) async {
-        if let patch = patches.first(where: { $0.slug == slug }) { docked = patch; return }
+        if let patch = patches.first(where: { $0.slug == slug }) ?? wholeQuilt.first(where: { $0.slug == slug }) { docked = patch; return }
         if let response: PatchResponse = try? await api.get("nodes/\(slug)") { docked = response.node }
     }
 
