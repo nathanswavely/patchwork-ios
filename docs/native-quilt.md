@@ -37,7 +37,7 @@ The shell was aligned with the mobile web's decisions (web CONTEXT.md "Shell & n
 
 - One top bar on every discovery surface: Filter (badged) · search pill · account menu. Notifications and the user's own entries belong in the account menu once sign-in exists; the web's bottom-shelf search moved up here.
 - The tab bar is Quilt · Events · Discover. The Quilt item wears the quilt's icon, and a hold on it opens the switcher. Dashboard is deliberately absent until there is an account to dash.
-- Search never narrows by typing (ADR 033). The field activates in place and lists patches and upcoming events under it; one row sets the search chip. The tab bar's Search button focuses the same field.
+- Search never narrows by typing (ADR 033). The field activates in place and lists patches and upcoming events under it; one row sets the search chip. The tab bar's Search tab is a place: choosing it keeps the pill selected with the same field live in its bar, and the X returns to the tab the reader came from.
 - Filter chips are ranked by how many patches wear them and live in a sheet the quilt repacks behind.
 - A tap hands back the patch's own profile, docked (ADR 094): head at rest, full screen on the pull, events fetched by the pull.
 - Discover is ADR 075 without the follow: the question, the eight most-worn tags with counts, the patches wearing them with the soonest event first.
@@ -602,10 +602,13 @@ event from `events/{id}` and a patch from the quilt's own tree (or `nodes/{slug}
 where the tree does not carry it) before the push. Docking a patch is the
 shell's job, not the stack's, so that one closes the sheet first.
 
-**What it looks like.** The bell sits in `DiscoveryToolbar` before the account
-menu, drawn only where `session.me != nil` — `bell.fill` with a count in the
-one tint while there is one, `bell` while there is not, and "Notifications, N
-unread" to VoiceOver. The sheet is a `NavigationStack` titled Notifications on
+**What it looks like.** The bell is a row of the account menu in
+`DiscoveryToolbar` — "Notifications", with "N unread" under it while there is
+a count — drawn only where `session.me != nil`, and the count rides the
+account glyph as a badge so a reader sees it without opening the menu. It
+was first a second bar button beside the account, which squeezed the search
+field on a phone; the field is the bar's one wide thing and keeps its width.
+The account button says "Account, N unread" to VoiceOver. The sheet is a `NavigationStack` titled Notifications on
 the app's ground: the web's own chips in the web's own order plus an
 "Unread only" toggle, then a stack of cards — the type's mark from the web's
 `NotifIcon` table in SF Symbols, the title, two lines of body, the relative

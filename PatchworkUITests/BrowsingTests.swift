@@ -523,11 +523,14 @@ final class BrowsingTests: XCTestCase {
         openSampleQuilt(app)
         signIn(app)
 
-        let bell = app.buttons["notificationBell"]
-        XCTAssertTrue(bell.waitForExistence(timeout: 10), "an account brings the bell with it")
-        XCTAssertTrue(wait(bell, labelContains: "2 unread"), "the badge is the quilt's own count")
-        capture(app, "25 The bell with a badge")
+        let account = app.buttons["Account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait(account, labelContains: "2 unread"), "the badge on the account is the quilt's own count")
+        capture(app, "25 The account with a badge")
 
+        account.tap()
+        let bell = app.buttons["notificationBell"]
+        XCTAssertTrue(bell.waitForExistence(timeout: 5), "an account brings the bell with it, under its own menu")
         bell.tap()
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
         capture(app, "26 Notifications")
@@ -543,7 +546,7 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
         app.buttons["Done"].tap()
 
-        XCTAssertTrue(wait(bell, labelContains: "1 unread"),
+        XCTAssertTrue(wait(account, labelContains: "1 unread"),
                       "reading one takes the badge down straight away, not on the next poll")
     }
 
@@ -556,9 +559,12 @@ final class BrowsingTests: XCTestCase {
         openSampleQuilt(app)
         signIn(app)
 
+        let account = app.buttons["Account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait(account, labelContains: "2 unread"))
+        account.tap()
         let bell = app.buttons["notificationBell"]
-        XCTAssertTrue(bell.waitForExistence(timeout: 10))
-        XCTAssertTrue(wait(bell, labelContains: "2 unread"))
+        XCTAssertTrue(bell.waitForExistence(timeout: 5))
         bell.tap()
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
 
@@ -574,7 +580,7 @@ final class BrowsingTests: XCTestCase {
         capture(app, "28 A filtered empty state")
 
         app.buttons["Done"].tap()
-        XCTAssertTrue(wait(bell, labelContains: "0 unread"),
+        XCTAssertTrue(wait(account, labelContains: "0 unread"),
                       "mark all read empties the whole table, so the badge goes to zero")
     }
 

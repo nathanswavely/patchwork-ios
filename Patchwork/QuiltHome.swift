@@ -6,6 +6,8 @@ import UIKit
 struct QuiltHome: View {
     @StateObject private var session: QuiltSession
     @State private var pane = Pane.quilt
+    /// Where the reader was before Search, which is where the X takes them.
+    @State private var lastPane = Pane.quilt
     /// The reader's colour register, read here so a change to it reaches the
     /// session — and through it the canvas — wherever the sheet was opened from.
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
@@ -30,8 +32,9 @@ struct QuiltHome: View {
                     if session.me != nil {
                         Tab("Dashboard", systemImage: "rectangle.stack", value: Pane.dashboard) { dashboardPane }
                     }
-                    // A button, not a place: choosing it focuses the top bar's field (see onChange).
-                    Tab("Search", systemImage: "magnifyingglass", value: Pane.search, role: .search) { Color.clear }
+                    // A place, as the system's search tab is: the pill stays
+                    // selected while the field is live (see onChange).
+                    Tab("Search", systemImage: "magnifyingglass", value: Pane.search, role: .search) { searchPane }
                 }
             } else {
                 TabView(selection: $pane) {
@@ -41,14 +44,20 @@ struct QuiltHome: View {
                     if session.me != nil {
                         dashboardPane.tabItem { Label("Dashboard", systemImage: "rectangle.stack") }.tag(Pane.dashboard)
                     }
-                    Color.clear.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Pane.search)
+                    searchPane.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Pane.search)
                 }
             }
         }
         .onChange(of: pane) { was, now in
-            // Bouncing back from Search fires this again; that second pass must not end the search it just began.
-            if now == .search { pane = was; session.searching = true }
-            else if was != .search { session.endSearch() }
+            // Search is a place: choosing it keeps the pill selected while the
+            // field is live rather than bouncing the selection back, which
+            // slid the indicator across the bar. Where the reader came from is
+            // kept for the way back; choosing another tab ends the search.
+            if now == .search { session.searching = true }
+            else { lastPane = now; if was == .search { session.endSearch() } }
+        }
+        .onChange(of: session.searching) { _, now in
+            if !now, pane == .search { pane = lastPane }
         }
         // Letting go of the account takes its tab with it, so the selection
         // has to come home rather than point at a place that is gone.
@@ -67,6 +76,12 @@ struct QuiltHome: View {
         // reconciliation; leaving it stops.
         .onChange(of: scenePhase) { _, now in session.scenePhaseChanged(to: now) }
         .environmentObject(session)
+    }
+    /// The search tab's own page: the ground the results overlay draws on,
+    /// wearing the same top bar as every other surface so the field lands in
+    /// it, focused.
+    private var searchPane: some View {
+        NavigationStack { Color.pwGround.ignoresSafeArea().modifier(DiscoveryToolbar()) }
     }
     /// The quilt, with the orientation card over the foot of it. The overlay
     /// goes on the tab's own content rather than on the `TabView`, so the
@@ -130,14 +145,11 @@ struct DiscoveryToolbar: ViewModifier {
                     }
                 }
                 ToolbarItem(placement: .principal) { field }
-                // The bell belongs beside the account, because it is the
-                // account's: a signed-out reader has nothing to be told.
-                if session.me != nil, !session.searching {
-                    ToolbarItem(placement: .topBarTrailing) { NotificationBell(presented: $notifications) }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if session.searching {
-                        Button("Cancel") { session.endSearch() }
+                        Button { session.endSearch() } label: { Image(systemName: "xmark") }
+                            .accessibilityLabel("Cancel search")
+                            .accessibilityIdentifier("cancelSearch")
                     } else {
                         Menu {
                             // Signing in is native now. Joining a patch,
@@ -153,6 +165,16 @@ struct DiscoveryToolbar: ViewModifier {
                                 // spoken. Both, in one sentence.
                                 .accessibilityLabel("Signed in as \(me.title), \(me.handle)")
                                 .accessibilityIdentifier("accountMe")
+                                // The bell lives under the account rather than
+                                // beside it: a second bar button squeezed the
+                                // field, and what it opens is the account's.
+                                Button { notifications = true } label: {
+                                    Text("Notifications")
+                                    if session.unread > 0 { Text("\(UnreadTally.badge(session.unread)) unread") }
+                                    Image(systemName: session.unread > 0 ? "bell.badge" : "bell")
+                                }
+                                .accessibilityLabel("Notifications, \(session.unread) unread")
+                                .accessibilityIdentifier("notificationBell")
                                 Button { Task { await session.signOut() } } label: {
                                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                                 }
@@ -163,8 +185,25 @@ struct DiscoveryToolbar: ViewModifier {
                             Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
                             Button { display = true } label: { Label("Display", systemImage: "slider.horizontal.3") }
                             Button { session.switching = true } label: { Label("Switch quilt", systemImage: "square.grid.2x2") }
-                        } label: { Image(systemName: "person.crop.circle") }
-                        .accessibilityLabel("Account")
+                        } label: {
+                            // The unread count rides the account glyph, hung
+                            // inside a padded frame so the capsule cannot clip
+                            // it; the padding is unconditional so the glyph
+                            // does not shift when the count arrives.
+                            Image(systemName: "person.crop.circle")
+                                .padding(.top, 6).padding(.trailing, 7)
+                                .overlay(alignment: .topTrailing) {
+                                    if session.unread > 0 {
+                                        Text(UnreadTally.badge(session.unread))
+                                            .font(Font.pw.caption2Semibold).foregroundStyle(Color(.systemBackground))
+                                            .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
+                                            .background(Color.pwAccent, in: Capsule())
+                                    }
+                                }
+                                .padding(.bottom, 6).padding(.leading, 7)
+                        }
+                        .accessibilityLabel(session.me == nil ? "Account" : "Account, \(session.unread) unread")
+                        .accessibilityIdentifier("Account")
                     }
                 }
             }
@@ -220,14 +259,20 @@ private struct FieldChrome: ViewModifier {
     }
 }
 
-/// Liquid glass where the system has it; material where it does not. The
-/// glass is tinted with the app's own surface: the quilt under it is dense
-/// and unpredictable, and a control that carries text needs a floor of its
-/// own without a band behind it. Tinted regular glass is the system's answer
-/// to exactly that — it stays glass, it just reads frosted.
+/// Liquid glass where the system has it, the same glass the bar's own
+/// buttons wear so the field and its neighbours are one family; material
+/// with a hairline where it does not. The glass carries a tint of the app's
+/// surface, because the quilt under it is dense and unpredictable and a
+/// control that carries text needs some floor of its own.
 private struct GlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
-        content.background(.thickMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
+        if #available(iOS 26, *) {
+            // The same glass the bar's buttons wear, tinted with the app's
+            // surface so a placeholder still reads over dense cloth.
+            content.glassEffect(.regular.tint(Color.pwSurface.opacity(0.72)).interactive(), in: Capsule())
+        } else {
+            content.background(.thickMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
+        }
     }
 }
 

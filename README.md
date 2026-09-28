@@ -37,7 +37,7 @@ Lancaster is one directory entry, not the default. Direct connection does not de
 | Quilt switcher (scope switcher) | First-run List, identity confirmation; the Quilt tab wears the quilt's icon and a hold opens the switcher; Connected quilts are doorways |
 | Global bar | One top bar over the canvas: Filter (badged), a live glass search field, account menu (Sign in, About, Display, Switch) |
 | Quilt browsing | Native pan/pinch canvas running under the bars; activity sizing, affinity packing, tag reflow |
-| Search (ADR 033) | The field activates in place with patches and events listed under it; one "Show matches" row sets the search chip; the tab bar's Search button focuses it |
+| Search (ADR 033) | The field activates in place with patches and events listed under it; one "Show matches" row sets the search chip; the tab bar's Search tab keeps the same field live and an X returns to the previous tab |
 | Filter chips | Sheet of usage-ranked chips over a live canvas; search chip among them; Clear |
 | Map and list | MapKit coordinates; quilt-order, name, and newest list sorts; the view pill floats at the foot |
 | Docked profile (ADR 094) | Sheet at the head's height, full screen on the pull, the rooms fetched by the pull, ShareLink, Maps directions |
