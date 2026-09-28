@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import Foundation
+import UIKit
 
 enum APIError: LocalizedError, Equatable {
     case address, response, status(Int)
@@ -110,8 +111,22 @@ struct PatchworkAPI {
         config.httpCookieStorage = HTTPCookieStorage.shared
         config.timeoutIntervalForRequest = 20
         config.timeoutIntervalForResource = 30
+        // The quilt names each signed-in session after its user agent
+        // (Security → Signed-in devices), and the system's default says
+        // nothing a person would recognise. This one says the device.
+        config.httpAdditionalHeaders = ["User-Agent": userAgent(
+            model: UIDevice.current.model,
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        )]
         return URLSession(configuration: config)
     }()
+    /// `Patchwork/1.0 (iPhone)`: the app, its version, and the device the
+    /// way the server's `osFamily` reads it — it looks for "iPhone" or "iPad"
+    /// in the string, so the model goes in as the system spells it.
+    static func userAgent(model: String, version: String?) -> String {
+        let version = version?.trimmingCharacters(in: .whitespaces)
+        return "Patchwork/\(version?.isEmpty == false ? version! : "dev") (\(model))"
+    }
     private static var isPreview: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("--preview")

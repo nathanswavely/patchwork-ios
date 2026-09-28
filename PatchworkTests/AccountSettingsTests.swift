@@ -227,4 +227,12 @@ final class AccountSettingsTests: XCTestCase {
         let line = AccountDate.sessionLine(row, now: iso.addingTimeInterval(3 * 3600))
         XCTAssertTrue(line.hasPrefix("Active 3h ago · Signed in"), line)
     }
+
+    /// The device names itself to the quilt, so the Security page's session
+    /// list can say "iPhone" rather than "Unknown device" for this app.
+    func testTheUserAgentNamesTheDeviceTheWayTheServerReadsIt() {
+        XCTAssertEqual(PatchworkAPI.userAgent(model: "iPhone", version: "1.0"), "Patchwork/1.0 (iPhone)")
+        XCTAssertEqual(PatchworkAPI.userAgent(model: "iPad", version: nil), "Patchwork/dev (iPad)")
+        XCTAssertEqual(PatchworkAPI.userAgent(model: "iPhone", version: " "), "Patchwork/dev (iPhone)")
+    }
 }
