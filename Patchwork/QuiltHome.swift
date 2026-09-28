@@ -82,6 +82,10 @@ struct QuiltHome: View {
             QuiltSwitcher { wantsPicker = true; session.switching = false }
         }
         .sheet(isPresented: $finding) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
+        // Said once, on the quilt the reader is left on, after Settings has gone.
+        .alert("Your account has been deleted.", isPresented: $session.farewell) {
+            Button("OK", role: .cancel) {}
+        }
         .task { await session.load() }
         .onAppear {
             session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard)
@@ -153,6 +157,9 @@ struct DiscoveryToolbar: ViewModifier {
     @State private var display = false
     @State private var signIn = false
     @State private var notifications = false
+    @State private var settings = false
+    /// How the reader left Settings, acted on once the sheet has gone.
+    @State private var settingsExit: SettingsExit?
     @FocusState private var focused: Bool
     private var fieldWidth: CGFloat { min(420, max(200, UIScreen.main.bounds.width - (session.searching ? 108 : 150))) }
     func body(content: Content) -> some View {
@@ -206,6 +213,10 @@ struct DiscoveryToolbar: ViewModifier {
                                 }
                                 .accessibilityLabel("Notifications, \(session.unread) unread")
                                 .accessibilityIdentifier("notificationBell")
+                                // The account's own settings, between what
+                                // the account hears and letting go of it.
+                                Button { settings = true } label: { Label("Settings", systemImage: "gearshape") }
+                                    .accessibilityIdentifier("accountSettings")
                                 Button { Task { await session.signOut() } } label: {
                                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                                 }
@@ -247,6 +258,26 @@ struct DiscoveryToolbar: ViewModifier {
                 }
             }
             .sheet(isPresented: $notifications) { NotificationsSheet() }
+            .sheet(isPresented: $settings, onDismiss: leaveSettings) {
+                SettingsSheet { exit in settingsExit = exit; settings = false }
+            }
+    }
+    /// What Settings asked for on its way out, done once it has gone: the
+    /// quilt underneath is where a patch docks and where the goodbye is said,
+    /// and signing out takes the Dashboard tab with it, which must not happen
+    /// while a sheet presented from that tab is still up.
+    private func leaveSettings() {
+        guard let exit = settingsExit else { return }
+        settingsExit = nil
+        switch exit {
+        case .deleted:
+            session.signedOut()
+            session.farewell = true
+        case .signOut:
+            Task { await session.signOut() }
+        case .dock(let slug):
+            Task { await session.open(slug: slug) }
+        }
     }
     /// At rest the field is a button wearing the field's clothes: a text field
     /// hosted in the bar's UIKit toolbar item reports neither focus nor editing

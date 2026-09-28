@@ -6,7 +6,9 @@ import SwiftUI
 ///
 /// The flow is three steps and the server decides which of them a person
 /// walks: an address, the six digits it was emailed, and — only for an address
-/// with no account yet — a username. Every transition is a method on this
+/// with no account yet — a username. A fourth step stands beside the first
+/// for somebody who would rather not use their email (or cannot reach it): a
+/// username and one of their recovery codes (web ADR 020, ADR 099). Every transition is a method on this
 /// struct rather than a line inside a view, so the whole thing can be driven
 /// and checked with no window open. The views below only draw a step and hand
 /// back events.
@@ -18,6 +20,8 @@ struct SignInFlow: Equatable {
         case email
         case code(email: String)
         case username(token: String, email: String)
+        /// A username and a recovery code instead of an email.
+        case recovery
         case done(User)
     }
 
@@ -36,6 +40,12 @@ struct SignInFlow: Equatable {
         case rejected(String)
         /// "Use a different email" — the one way back.
         case useDifferentEmail
+        /// "Use a recovery code instead", from the address step.
+        case useRecoveryCode
+        /// "Use email instead" — the recovery step's way back.
+        case useEmailInstead
+        /// `auth/recovery` accepted the pair and named the user.
+        case recovered(User)
     }
 
     private(set) var step: Step = .email
@@ -50,6 +60,10 @@ struct SignInFlow: Equatable {
     var code = ""
     var username = ""
     var displayName = ""
+    /// The recovery step's two fields, kept apart from the signup username:
+    /// one is a name being chosen, the other a name being proved.
+    var recoveryUsername = ""
+    var recoveryCode = ""
     /// The inline sentence under the step's field, if any.
     private(set) var error: String?
     /// A request is out. The primary button waits rather than repeating.
@@ -88,6 +102,21 @@ struct SignInFlow: Equatable {
             code = ""
             error = nil
             step = .email
+        case .useRecoveryCode:
+            guard step == .email else { return }
+            error = nil
+            step = .recovery
+        case .useEmailInstead:
+            guard step == .recovery else { return }
+            // A code is a secret; it does not wait in a field nobody is looking at.
+            recoveryCode = ""
+            error = nil
+            step = .email
+        case .recovered(let user):
+            guard step == .recovery else { return }
+            error = nil
+            recoveryCode = ""
+            step = .done(user)
         }
         busy = false
     }
@@ -108,6 +137,10 @@ struct SignInFlow: Equatable {
     }
     var canVerify: Bool { Self.isCompleteCode(code) }
     var canCreateAccount: Bool { !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// A name, and twelve characters of code once the hyphens are out.
+    var canRecover: Bool {
+        !recoveryUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && RecoveryCode.isComplete(recoveryCode)
+    }
 
     /// The code as it is sent: people read six digits aloud in twos and threes
     /// and type the spaces back in. The server takes them out anyway; this
@@ -197,8 +230,35 @@ struct SignInFlow: Equatable {
         }
     }
 
+    /// Sign in with a recovery code. The window to confirm things is already
+    /// open when this lands (ADR 099), but that is the server's business:
+    /// here it ends exactly the way a code sign-in does.
+    func recover() async {
+        guard flow.step == .recovery, flow.canRecover, !flow.busy else { return }
+        flow.busy = true
+        flow.clearError()
+        do {
+            let user = try await api.signIn(username: flow.recoveryUsername, recoveryCode: flow.recoveryCode)
+            flow.apply(.recovered(user))
+        } catch {
+            flow.apply(.rejected(Self.recoverySentence(error)))
+        }
+    }
+
+    /// The server answers every wrong pair with one sentence on purpose — it
+    /// will not say whether the username exists — so this says one thing
+    /// too, and says it the way the rest of the sheet speaks. The rate limit
+    /// is the one refusal that asks for something different.
+    nonisolated static func recoverySentence(_ error: Error) -> String {
+        if let refusal = error as? APIError {
+            if refusal.httpStatus == 429 { return "Too many attempts. Wait a couple of minutes, then try again." }
+            if refusal.httpStatus == 400 { return "That username and recovery code don’t match, or the code has already been used." }
+        }
+        return sentence(error)
+    }
+
     /// The quilt's sentence where it wrote one, and a plain one where it did not.
-    static func sentence(_ error: Error) -> String {
+    nonisolated static func sentence(_ error: Error) -> String {
         if case APIError.message(let message, _) = error { return message }
         if error is APIError { return error.localizedDescription }
         return "The quilt could not be reached. Check your connection and try again."
@@ -237,6 +297,7 @@ struct SignInSheet: View {
                     case .email: emailStep
                     case .code(let email): codeStep(email: email)
                     case .username: usernameStep
+                    case .recovery: recoveryStep
                     case .done: ProgressView().frame(maxWidth: .infinity)
                     }
                 }
@@ -275,6 +336,51 @@ struct SignInSheet: View {
                 .accessibilityIdentifier("signInEmail")
             inlineError
             primary("Send code", identifier: "signInSendCode", enabled: model.flow.canSendCode, action: send)
+            // Quiet and secondary: most people have their email, and the
+            // code path is for the ones who do not, or who kept a code.
+            Button { model.flow.apply(.useRecoveryCode) } label: {
+                Text("Use a recovery code instead").font(Font.pw.subheadline).inkAction("key")
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+            .accessibilityIdentifier("signInUseRecovery")
+        }
+    }
+
+    private var recoveryStep: some View {
+        Group {
+            heading("Sign in with a recovery code")
+            Text("Enter your username and one of the recovery codes you saved. Each code works once.")
+                .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+            TextField("yourname", text: $model.flow.recoveryUsername)
+                .keyboardType(.asciiCapable)
+                .textContentType(.username)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .fieldStyle()
+                .accessibilityIdentifier("signInRecoveryUsername")
+                .onChange(of: model.flow.recoveryUsername) { _, _ in model.flow.clearError() }
+            TextField(text: $model.flow.recoveryCode, prompt: Text(verbatim: "xxxx-xxxx-xxxx")) { Text("Recovery code") }
+                .font(.system(.body, design: .monospaced))
+                .keyboardType(.asciiCapable)
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.go)
+                .onSubmit { Task { await model.recover() } }
+                .fieldStyle()
+                .accessibilityIdentifier("signInRecoveryCode")
+                .onChange(of: model.flow.recoveryCode) { _, _ in model.flow.clearError() }
+            inlineError
+            primary("Sign in", identifier: "signInRecover", enabled: model.flow.canRecover) {
+                Task { await model.recover() }
+            }
+            Button { model.flow.apply(.useEmailInstead) } label: {
+                Text("Use email instead").font(Font.pw.subheadline).inkAction("arrow.uturn.backward")
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+            .accessibilityIdentifier("signInUseEmail")
         }
     }
 
@@ -373,9 +479,12 @@ struct SignInSheet: View {
     private func primary(_ title: String, identifier: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Group {
-                if model.flow.busy { ProgressView() } else { Text(title).font(Font.pw.headline) }
+                if model.flow.busy { ProgressView().tint(.white) } else { Text(title).font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
+            // The app's root sets ink on everything; a filled control's label
+            // is the design's white (DESIGN.md, primary-action).
+            .foregroundStyle(Color.white)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)

@@ -81,6 +81,69 @@ final class SignInTests: XCTestCase {
         XCTAssertEqual(flow.step, .code(email: "reader@example.org"))
     }
 
+    // MARK: Signing in with a recovery code
+
+    func testARecoveryCodeIsASecondWayInFromTheAddressStep() {
+        var flow = SignInFlow()
+        flow.email = "reader@example.org"
+        flow.apply(.useRecoveryCode)
+        XCTAssertEqual(flow.step, .recovery)
+        XCTAssertFalse(flow.canRecover, "a name and a code, or nothing")
+        flow.recoveryUsername = "samplereader"
+        flow.recoveryCode = "ABCD-EFGH-JKM"
+        XCTAssertFalse(flow.canRecover, "eleven characters is not a code")
+        flow.recoveryCode = "ABCD-EFGH-JKM2"
+        XCTAssertTrue(flow.canRecover, "twelve, in capitals and with hyphens, is")
+        flow.busy = true
+        flow.apply(.recovered(sampleUser))
+        XCTAssertEqual(flow.step, .done(sampleUser), "a recovery sign-in ends where a code sign-in does")
+        XCTAssertFalse(flow.busy)
+        XCTAssertEqual(flow.recoveryCode, "", "a spent code does not linger in a field")
+    }
+
+    func testAWrongPairStaysOnTheRecoveryStep() {
+        var flow = SignInFlow()
+        flow.apply(.useRecoveryCode)
+        flow.recoveryUsername = "samplereader"
+        flow.recoveryCode = "abcd-efgh-jkm2"
+        flow.apply(.rejected("That username and recovery code don’t match, or the code has already been used."))
+        XCTAssertEqual(flow.step, .recovery)
+        XCTAssertNotNil(flow.error)
+        XCTAssertEqual(flow.recoveryCode, "abcd-efgh-jkm2", "left in front of them to correct")
+    }
+
+    func testUseEmailInsteadGoesBackAndForgetsTheCode() {
+        var flow = SignInFlow()
+        flow.email = "reader@example.org"
+        flow.apply(.useRecoveryCode)
+        flow.recoveryUsername = "samplereader"
+        flow.recoveryCode = "abcd-efgh-jkm2"
+        flow.apply(.rejected("nope"))
+        flow.apply(.useEmailInstead)
+        XCTAssertEqual(flow.step, .email)
+        XCTAssertEqual(flow.email, "reader@example.org", "the address typed before is still there")
+        XCTAssertEqual(flow.recoveryCode, "")
+        XCTAssertNil(flow.error)
+    }
+
+    func testRecoveryEventsOutOfTurnDoNothing() {
+        var flow = SignInFlow()
+        flow.apply(.recovered(sampleUser))
+        flow.apply(.useEmailInstead)
+        XCTAssertEqual(flow.step, .email, "no recovery step to finish or leave")
+        flow.apply(.codeSent(email: "reader@example.org"))
+        flow.apply(.useRecoveryCode)
+        XCTAssertEqual(flow.step, .code(email: "reader@example.org"), "the code path is offered from the address step only")
+    }
+
+    func testTheRecoveryRefusalsAreWordedHere() {
+        let wrong = APIError.from(status: 400, data: Data(#"{"error":"invalid username or recovery code"}"#.utf8))
+        XCTAssertEqual(SignInModel.recoverySentence(wrong), "That username and recovery code don’t match, or the code has already been used.")
+        let limited = APIError.from(status: 429, data: Data(#"{"error":"too many attempts. Wait a couple of minutes"}"#.utf8))
+        XCTAssertTrue(SignInModel.recoverySentence(limited).hasPrefix("Too many attempts"))
+        XCTAssertNotEqual(SignInModel.recoverySentence(wrong), SignInModel.recoverySentence(limited))
+    }
+
     // MARK: The two rules this client mirrors
 
     func testTheCodeIsNormalisedAndSixDigitsAreRequired() {

@@ -16,6 +16,30 @@ enum QuiltScope: Hashable {
     var value: String? { self == .my ? "my" : nil }
 }
 
+/// The one-time landing rule of web ADR 035, as a value: the "start on My
+/// Quilt" preference fires once, at a cold load, and never re-asserts.
+///
+/// A cold load, for this client, is the first time a session object hears
+/// back about the account after a launch — the quilt is opened, the cookie is
+/// read, `auth/me` answers. Whatever that answer is (a person with the
+/// preference on, a person with it off, nobody at all) the question is then
+/// settled for the life of the session object. Signing in from the sheet
+/// mid-session is not a cold load either: somebody who has been reading the
+/// whole quilt and signs in to follow a patch should not have the quilt
+/// swapped out from under them for having done so. A read that failed (no
+/// network) settles nothing, so the next answer still counts as the first.
+struct LaunchLens: Equatable {
+    private(set) var settled = false
+    /// The account was read. Returns the lens to switch to, at most once.
+    mutating func accountRead(_ user: User?) -> QuiltScope? {
+        defer { settled = true }
+        guard !settled, user?.startOnMyQuilt == true else { return nil }
+        return .my
+    }
+    /// A sign-in from the sheet: the launch is long over, so nothing fires.
+    mutating func signedInMidSession() { settled = true }
+}
+
 /// One quilt's discovery state. The quilt, its search, and Discover read the
 /// same filter, so narrowing on one narrows all of them; the quilt, the map,
 /// the list and Events also read through the scope, which Discover and search
@@ -56,8 +80,9 @@ enum QuiltScope: Hashable {
     /// The third lens. Changing it asks the server again and leaves the other
     /// two alone: a filter built up in the whole quilt is still standing in My
     /// Quilt, and the empty state says so rather than clearing it. Never
-    /// persisted, never defaulted by account: the whole quilt is where every
-    /// launch starts (web ADR 035).
+    /// persisted on the device: the whole quilt is where a launch starts,
+    /// unless the account's own "start on My Quilt" says otherwise, and that
+    /// is honoured once per launch and never again (web ADR 035, `LaunchLens`).
     @Published var scope = QuiltScope.whole {
         didSet { if scope != oldValue { Task { await loadTree() } } }
     }
@@ -99,6 +124,12 @@ enum QuiltScope: Hashable {
     /// The sixty-second reconciliation, alive only while a signed-in reader
     /// has the app in front of them.
     private var unreadPoll: Task<Void, Never>?
+    /// Whether this launch has already had its one chance to open on My
+    /// Quilt (web ADR 035; see `LaunchLens`).
+    private var launchLens = LaunchLens()
+    /// Set when the reader has just deleted their account, so the quilt they
+    /// are left on can say so once the Settings sheet has gone.
+    @Published var farewell = false
     init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
     func apply(colorMode next: ColorMode) {
         QuiltTheme.colorMode = next
@@ -166,12 +197,17 @@ enum QuiltScope: Hashable {
     /// whole tree the first time, because Discover and search still read it.
     /// An answer that arrives after the reader has already switched lenses
     /// again is dropped rather than drawn under the wrong one.
-    func loadTree() async {
+    ///
+    /// `refreshingWhole` asks for the whole tree again even under My Quilt:
+    /// a saved discovery preference changes what the whole quilt holds
+    /// (`hide_amended_linings` never narrows `scope=my`), and Discover and
+    /// search read the whole tree.
+    func loadTree(refreshingWhole: Bool = false) async {
         let asked = scope
         loading = patches.isEmpty; error = nil
         defer { loading = false }
         do {
-            if asked == .my, wholeQuilt.isEmpty, let whole: TreeResponse = try? await api.get("nodes/tree") {
+            if asked == .my, wholeQuilt.isEmpty || refreshingWhole, let whole: TreeResponse = try? await api.get("nodes/tree") {
                 wholeQuilt = whole.tree.children ?? []
                 wholeBaseline = QuiltLayout.pack(wholeQuilt, affinity: whole.affinity ?? [])
             }
@@ -193,20 +229,27 @@ enum QuiltScope: Hashable {
     /// trip, so a signed-out launch reads exactly the public endpoints it
     /// always did.
     func refreshAccount() async {
-        guard api.hasSession() else { me = nil; memberships = []; scope = .whole; return }
+        guard api.hasSession() else {
+            me = nil; memberships = []; scope = .whole
+            _ = launchLens.accountRead(nil)
+            return
+        }
         do {
-            me = try await api.account()
+            let user = try await api.account()
+            me = user
+            if let lens = launchLens.accountRead(user) { scope = lens }
             await refreshMemberships()
             await refreshUnread()
             startUnreadPoll()
         }
-        catch APIError.unauthenticated { signedOut() }
+        catch APIError.unauthenticated { _ = launchLens.accountRead(nil); signedOut() }
         catch { /* A quilt that cannot be reached is not a quilt that signed us out. */ }
     }
 
     /// The sheet's ending: the account menu is what confirms it.
     func signedIn(_ user: User) {
         me = user
+        launchLens.signedInMidSession()
         Task {
             await refreshMemberships()
             await refreshUnread()
