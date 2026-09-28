@@ -197,7 +197,9 @@ struct TagTerm: Decodable, Hashable {
     let nodeCount: Int?
 }
 
-struct PatchLink: Decodable, Hashable {
+/// A `{url, label}` pair, the server's `NodeLink` — a patch's links and a
+/// person's alike. Encodable too, because a person saves their own.
+struct PatchLink: Codable, Hashable {
     let url: String
     let label: String
 }
@@ -812,6 +814,18 @@ struct User: Decodable, Hashable, Identifiable {
     let avatarUrl: String?
     let role: String?
     let email: String?
+    /// The rest of the person's own record, which only `auth/me` carries and
+    /// only the Settings sheet reads. Optional and defaulted so a user decoded
+    /// from a sign-in answer — which carries none of them — is still a user,
+    /// and so the memberwise initialiser the tests use keeps its shape.
+    var links: [PatchLink]? = nil
+    /// Web ADR 035: open on My Quilt rather than the whole quilt. Read once
+    /// per launch (see `LaunchLens`), never re-asserted.
+    var startOnMyQuilt: Bool? = nil
+    /// Web ADR 037: keep patches that amended the lining out of this reader's
+    /// discovery surfaces. The server applies it to the tree; the client only
+    /// saves it and asks again.
+    var hideAmendedLinings: Bool? = nil
     /// The name to print, the way a steward's is printed: what they filled in,
     /// or the handle with its at sign so a bare word is never mistaken for a
     /// display name nobody chose.

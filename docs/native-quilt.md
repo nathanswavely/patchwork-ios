@@ -721,3 +721,145 @@ picker and explores the quilt again. The card is opened by holding the tab
 Not verified: a live quilt, a saved second quilt in the card (the fixtures do
 not save quilts), VoiceOver, and the My Quilt empty states on screen (the
 fixture reader always holds one patch).
+
+## Account settings and deletion — 2026-09-28
+
+A signed-in reader has Settings now, and can delete their account from it.
+Reference: the web's `AccountSettings.svelte`, `SecuritySettings.svelte`,
+`StepUpPrompt.svelte` and `lib/stepUp.js`, the handlers behind them
+(`auth.go`'s `UpdateMe`, `StepUpStatus`, `StepUpRecovery`; `recovery.go`;
+`sessions.go`; `account_deletion.go`; `middleware.WriteSudoRequired`), and web
+ADRs 017, 035, 086 and 099.
+
+- **Shape.** A gear row in the account menu, between Notifications and Sign
+  out, opens a sheet holding a `NavigationStack`: the reader's name and handle,
+  then Profile · When you open Patchwork · Discovery · Security · Your data as
+  rows, and Delete account alone at the foot in the system red. Each row
+  pushes one page. This is the web's own phone layout since PR #363 — one
+  level on screen at a time, the rare things last, the decision within reach
+  without scrolling past explanation, finger-sized targets, actions wrapped
+  under what they act on — and it is also simply how an iOS settings screen
+  is built. The web's moving, contact card, personal feed and steward listing
+  are not here; they stay the website's, and nothing stands in for them.
+- **Only what changed.** Profile's Save (in the bar) sends `PATCH auth/me`
+  with the fields that differ from the account and nothing else, links
+  trimmed and a link with no address dropped; an untouched page cannot be
+  saved. `ProfileDraft.changes(from:)` is the whole rule, as a value. After
+  any save the account is read back (`refreshAccount`), so the menu and the
+  index say what the quilt now holds. `User` gained `links`,
+  `startOnMyQuilt` and `hideAmendedLinings`, all optional and defaulted so a
+  sign-in answer, which carries none of them, is still a user.
+- **Start on My Quilt, once.** Web ADR 035: the preference fires at a cold
+  load and never re-asserts. `LaunchLens` holds the rule — the first answer
+  about the account in a session object's life decides (a person with it on
+  opens on My Quilt; with it off, or nobody signed in, the question is
+  settled all the same), a failed read decides nothing, and a sign-in from
+  the sheet is never a cold load. So switching it on changes the next launch
+  and the page says so; switching it off mid-launch leaves the lens alone.
+- **Discovery.** `hide_amended_linings` is applied by the server to the
+  tree, strictest-wins against the quilt's own policy and never to
+  `scope=my` (`tree.go`, `lining_update.go`). The toggle saves, then reloads
+  the tree — the whole tree too, even under My Quilt, since Discover and
+  search read it.
+- **Refusals with names.** `APIError` kept only a sentence. It now has
+  `.refused(Refusal, status:)` for a body that carries a `code` — the
+  sentence, the code, and `patches` where a deletion is blocked — while a
+  body with only `{"error"}` is still `.message`, so every refusal already
+  handled reads exactly as before. `errorDescription` is still the server's
+  sentence.
+- **Step-up.** `StepUpGate.run` does the act; on a 403 coded
+  `sudo_required` or `passkey_required` it presents the Confirm sheet and,
+  once the sheet reports the window open, does the act once more — once,
+  because a second refusal means something is wrong. The sheet answers
+  after it has gone (its `onDismiss` resumes the act), so whatever follows —
+  dismissing Settings, signing out — never races a sheet on its way down.
+  The sheet reads `auth/step-up` first; if a window is already open it
+  closes without asking (a recovery sign-in opens one on arrival); otherwise
+  `StepUp.decide` picks one of three states: a code field when
+  `recovery_ready > 0`; "sign out, then sign back in with one of them" when
+  the account holds unused codes that are all newer than this sign-in; and
+  "you have none yet", with a door to making a set, otherwise. "Holds" is
+  counted as unused codes rather than codes ever made, because a spent set
+  cannot sign anybody back in. The four failures (`no_recovery_codes`,
+  `recovery_codes_too_new`, `invalid_code`, 429) are four sentences, and the
+  two that no other code will fix carry their door under the sentence. A
+  spend that leaves two or fewer stops to say so. The code is normalised as
+  `NormalizeRecoveryCode` does it — trimmed, lowercased, hyphens and spaces
+  out — rather than uppercased: the server's alphabet is lowercase. Passkeys
+  are not offered or mentioned on the sheet; Security says in one muted line
+  that this build has none.
+- **Deletion.** Its page says what is erased, what stays and why, that the
+  username is retired, and that none of it can be undone; the button is armed
+  only by the exact username and asks once more in a confirmation dialog.
+  `sole_admin` lists the patches as doors that dock them on the quilt;
+  `last_instance_admin` shows the quilt's sentence. On `{"status":"deleted"}`
+  the cookie is cleared, Settings closes, and only then is the session
+  signed out (which takes the Dashboard tab with it) and the alert "Your
+  account has been deleted." shown on the quilt. The same order carries a
+  sign-out chosen on the Confirm sheet. How Settings was left
+  (`SettingsExit`) is acted on in the presenting toolbar's `onDismiss`,
+  because a sheet cannot present over a sheet that is leaving and the
+  Dashboard's own toolbar may be the one that presented it.
+- **Recovery sign-in.** The email step ends in "Use a recovery code
+  instead": a username and a code, `POST auth/recovery`. The server gives one
+  sentence for every wrong pair so a stranger learns nothing about which
+  usernames exist, and the sheet does the same; the rate limit gets its own.
+  `SignInFlow` has a `.recovery` step and three new events, walked in the
+  same tests as the rest.
+- **Security and data.** Recovery codes show "N of M remaining" or "No
+  recovery codes yet"; a new set is shown once, monospaced, with Copy
+  (`UIPasteboard`) and Share (a share sheet of the codes as text) under it.
+  Devices are listed with "This device" tagged, Sign out under every other
+  row and on its swipe, and Sign out other devices behind a confirmation.
+  The export and the seamrip are fetched with a new `download(_:)` that
+  keeps the response headers, written under the file name the quilt gave in
+  `Content-Disposition` (path stripped) and handed to the share sheet.
+- **One visual fix in passing.** A prominent button's label was drawing in
+  ink, not white, because the app's root sets ink on every descendant; the
+  sign-in sheet's buttons had the same fault. Every filled button these
+  sheets draw now sets its white itself (DESIGN.md, `primary-action`).
+
+**Offline.** `PreviewData.write` answers `PATCH`, `PUT` and `DELETE` as well
+as `POST`. The fixture reader holds `PreviewData.recoveryCodes`, ten fixed
+codes treated as older than any preview session; a set generated during a
+session counts as too new until the next sign-in, which is how the second
+state can be reached. `auth/step-up` counts only usable codes, a code opens a
+window flag, `DELETE users/me` answers the passkey-less 403
+(`passkey_required`, which is what the server sends an account with no
+passkey) until that flag is set and 400 unless `confirm_username` is
+`samplereader`, and then signs the fixture out and resets its memberships and
+notifications. `auth/recovery` takes `samplereader` and any unused fixture
+code and arrives with the window open. Two sessions (this device and a
+laptop), the export (JSON) and the seamrip (a zip's magic number) round it
+out. Every preview launch writes its session and account to `UserDefaults`,
+and only a launch with `--preview-resume` reads them back — the one way to
+see a cold launch honour Start on My Quilt; every other test still starts
+signed out.
+
+**Verification.** 202 unit tests and 17 UI tests pass on the iPhone 17 Pro
+simulator. The 26 new unit tests: what a profile save sends (untouched sends
+nothing, only the changed field, links trimmed and addressless ones dropped,
+an emptied bio sent empty, one field per switch) and the account's new
+fields decoding; the launch rule (fires once, a reader with it off settles
+the launch, a signed-out launch and a sheet sign-in never fire); the Confirm
+sheet's three states including a spent set; the code's normalisation, and
+that the fixture codes are all in the alphabet; four distinct failure
+sentences and the running-low line; `APIError` with a code, with `patches`,
+without a code and with an empty one; the file name from
+`Content-Disposition`; session times in both of the server's spellings; and
+the recovery sign-in steps, their refusals and events out of turn. The three
+new UI tests (`AccountTests`): Settings saves a display name the account menu
+then wears, Start on My Quilt leaves this launch on the whole quilt and a
+resumed launch opens on My Quilt (and it is switched off again); Delete
+account is armed only by the exact username, the dialog stands before the
+call, the Confirm sheet refuses a wrong code in its own sentence and takes a
+fixture code, and the reader ends on the quilt signed out with the alert and
+no Dashboard; and a recovery-code sign-in refuses a wrong pair, lands signed
+in with a Dashboard, and Security then shows 9 of 10 remaining with this
+device tagged. Screenshots of the index, Profile, the deletion page, the
+Confirm sheet and the goodbye were read for clipped text and colour. Not
+verified: a live quilt, a real recovery code against a real step-up window,
+the too-new and no-codes states on screen (they are unit-tested and reachable
+offline, but no UI test walks them), the `sole_admin` and
+`last_instance_admin` refusals on screen, the share sheet's destinations, a
+seamrip of real size, VoiceOver, and a physical device.

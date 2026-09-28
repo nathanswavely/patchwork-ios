@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import Foundation
+import UIKit
 
 enum APIError: LocalizedError, Equatable {
     case address, response, status(Int)
@@ -9,6 +10,14 @@ enum APIError: LocalizedError, Equatable {
     /// taken", "that address isn’t an address" — so where it says something,
     /// that is what the person is shown.
     case message(String, status: Int)
+    /// A refusal that also names itself: `{"error", "code", …}`. The account
+    /// surfaces are where the server started answering with a machine code
+    /// beside its sentence — `sudo_required` asks for a fresh proof of
+    /// presence, `sole_admin` lists the patches in the way — and a client
+    /// that kept only the sentence would have to parse English to know which
+    /// door to open. A body with no code stays a `.message`, so every refusal
+    /// this client already handled is read exactly as it was.
+    case refused(Refusal, status: Int)
     /// A 401 from an authenticated call: the session is gone or was never
     /// there. It is a state, not a failure to report — whoever asked clears
     /// the account and carries on reading the public quilt.
@@ -19,18 +28,61 @@ enum APIError: LocalizedError, Equatable {
         case .response: return "This address did not return a Patchwork response. Check the address and try again."
         case .status(let status): return "The quilt could not complete the request (HTTP \(status)). Try again shortly."
         case .message(let message, _): return message
+        case .refused(let refusal, let status):
+            return refusal.error.isEmpty ? APIError.status(status).errorDescription : refusal.error
         case .unauthenticated: return "You are signed out of this quilt."
+        }
+    }
+    /// The server's machine-readable reason, where it gave one.
+    var code: String? {
+        if case .refused(let refusal, _) = self { return refusal.code }
+        return nil
+    }
+    /// The HTTP status behind a refusal, where there was one.
+    var httpStatus: Int? {
+        switch self {
+        case .status(let status), .message(_, let status), .refused(_, let status): return status
+        case .unauthenticated: return 401
+        case .address, .response: return nil
         }
     }
     /// What a non-2xx answer means, read from the body where the body says.
     static func from(status: Int, data: Data) -> APIError {
         if status == 401 { return .unauthenticated }
+        if let refusal = try? JSONDecoder().decode(Refusal.self, from: data), let code = refusal.code, !code.isEmpty {
+            return .refused(refusal, status: status)
+        }
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let message = (object["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !message.isEmpty {
             return .message(message, status: status)
         }
         return .status(status)
+    }
+}
+
+/// A refusal with a name. `error` is the sentence, `code` is what a client
+/// branches on, and `patches` is the one list a refusal carries today — the
+/// patches that stand between a person and deleting their account, because
+/// they are those patches' only admin (web `account_deletion.go`).
+struct Refusal: Decodable, Equatable {
+    struct PatchRef: Decodable, Equatable, Hashable {
+        let slug: String
+        let name: String
+    }
+    let error: String
+    let code: String?
+    let patches: [PatchRef]?
+    init(error: String, code: String?, patches: [PatchRef]? = nil) {
+        self.error = error; self.code = code; self.patches = patches
+    }
+    private enum CodingKeys: String, CodingKey { case error, code, patches }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        error = ((try? container.decodeIfPresent(String.self, forKey: .error)) ?? nil)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        code = (try? container.decodeIfPresent(String.self, forKey: .code)) ?? nil
+        patches = (try? container.decodeIfPresent([PatchRef].self, forKey: .patches)) ?? nil
     }
 }
 
@@ -59,8 +111,22 @@ struct PatchworkAPI {
         config.httpCookieStorage = HTTPCookieStorage.shared
         config.timeoutIntervalForRequest = 20
         config.timeoutIntervalForResource = 30
+        // The quilt names each signed-in session after its user agent
+        // (Security → Signed-in devices), and the system's default says
+        // nothing a person would recognise. This one says the device.
+        config.httpAdditionalHeaders = ["User-Agent": userAgent(
+            model: UIDevice.current.model,
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        )]
         return URLSession(configuration: config)
     }()
+    /// `Patchwork/1.0 (iPhone)`: the app, its version, and the device the
+    /// way the server's `osFamily` reads it — it looks for "iPhone" or "iPad"
+    /// in the string, so the model goes in as the system spells it.
+    static func userAgent(model: String, version: String?) -> String {
+        let version = version?.trimmingCharacters(in: .whitespaces)
+        return "Patchwork/\(version?.isEmpty == false ? version! : "dev") (\(model))"
+    }
     private static var isPreview: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("--preview")
@@ -116,6 +182,19 @@ struct PatchworkAPI {
     /// Neither carries a body: the path is the whole of what they say.
     func patchVoid(_ path: String) async throws { _ = try await write("PATCH", path, payload: nil) }
     func deleteVoid(_ path: String) async throws { _ = try await write("DELETE", path, payload: nil) }
+    /// A write in any verb that carries a body and reads one back — the
+    /// account's `PATCH auth/me` and `DELETE users/me`, whose answers are the
+    /// user and a status. The same road as `post`, for the same reason.
+    func send<T: Decodable>(_ method: String, _ path: String, body: some Encodable) async throws -> T {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let data = try await write(method, path, payload: try encoder.encode(body))
+        do { return try Self.decoder().decode(T.self, from: data) }
+        catch { throw APIError.response }
+    }
+    func patch<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("PATCH", path, body: body) }
+    func put<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("PUT", path, body: body) }
+    func delete<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("DELETE", path, body: body) }
     /// One request for every non-GET this client makes.
     private func write(_ method: String, _ path: String, payload: Data?) async throws -> Data {
         #if DEBUG
@@ -252,6 +331,51 @@ struct PatchworkAPI {
         let (data, response) = try await Self.session.data(for: URLRequest(url: base.appendingPathComponent("api/v1/" + path)))
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.response }
         return data
+    }
+    /// Raw bytes with the headers they came with, for the two files a reader
+    /// takes away — the personal export and the member seamrip. The quilt
+    /// names each file in `Content-Disposition`, and the name is the one
+    /// thing the bytes cannot say about themselves. A refusal is read the way
+    /// every other one is, so a 401 is still the signed-out state.
+    func download(_ path: String) async throws -> Download {
+        #if DEBUG
+        if Self.isPreview { return try PreviewData.download(path) }
+        #endif
+        var request = URLRequest(url: base.appendingPathComponent("api/v1/" + path))
+        // A seamrip is a whole quilt; the request timeout is not its budget.
+        request.timeoutInterval = 120
+        let (data, response) = try await Self.session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.response }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.from(status: http.statusCode, data: data) }
+        var headers: [String: String] = [:]
+        for (key, value) in http.allHeaderFields {
+            if let key = key as? String, let value = value as? String { headers[key.lowercased()] = value }
+        }
+        return Download(data: data, headers: headers)
+    }
+}
+
+/// A file the quilt handed over, and what it said about it.
+struct Download: Equatable {
+    let data: Data
+    /// Lowercased names, because HTTP's are case-insensitive and a proxy is
+    /// free to respell them.
+    let headers: [String: String]
+    var filename: String? { headers["content-disposition"].flatMap(Self.filename(fromDisposition:)) }
+    /// The name in `attachment; filename="…"`, quoted or bare, with any path
+    /// in it thrown away: the name is only ever a file in the app's own
+    /// temporary directory, never a place to write to.
+    static func filename(fromDisposition value: String) -> String? {
+        for part in value.split(separator: ";") {
+            let pair = part.trimmingCharacters(in: .whitespaces)
+            guard pair.lowercased().hasPrefix("filename=") else { continue }
+            var name = String(pair.dropFirst("filename=".count)).trimmingCharacters(in: .whitespaces)
+            if name.hasPrefix("\""), name.hasSuffix("\""), name.count >= 2 { name = String(name.dropFirst().dropLast()) }
+            name = (name as NSString).lastPathComponent
+            guard !name.isEmpty, name != ".", name != ".." else { return nil }
+            return name
+        }
+        return nil
     }
 }
 

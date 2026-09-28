@@ -138,11 +138,36 @@ enum PreviewData {
     /// cookie jar to consult, so this stands in for the cookie itself — set by
     /// a verified code, cleared by signing out, and gone at the next launch,
     /// which is what a fixture should be.
-    static var signedIn = false
+    ///
+    /// The one exception is a launch that asks for it: `--preview-resume`
+    /// picks up the session and account the previous preview launch left,
+    /// because "start on My Quilt" is a rule about a cold launch and a cold
+    /// launch is the only place it can be seen. Every preview launch writes
+    /// the snapshot; only a resuming one reads it, so no other test starts
+    /// anywhere but signed out.
+    static var signedIn = (resumed?["signedIn"] as? Bool) ?? false { didSet { persist() } }
     /// The account the fixtures name. `auth/signup` replaces it with the
-    /// username the person chose, so the menu shows their word and not ours.
-    static var account = #"{"id":"demo-user","username":"samplereader","display_name":"Sample Reader","role":"member"}"#
-    private static let sampleAccount = account
+    /// username the person chose, so the menu shows their word and not ours,
+    /// and `PATCH auth/me` edits it in place.
+    static var account = (resumed?["account"] as? String) ?? sampleAccount { didSet { persist() } }
+    private static let sampleAccount = #"{"id":"demo-user","username":"samplereader","display_name":"Sample Reader","role":"member"}"#
+    private static let snapshotKey = "preview-account-snapshot"
+    private static let resumed: [String: Any]? = {
+        guard ProcessInfo.processInfo.arguments.contains("--preview-resume") else { return nil }
+        return UserDefaults.standard.dictionary(forKey: snapshotKey)
+    }()
+    private static func persist() {
+        UserDefaults.standard.set(["signedIn": signedIn, "account": account], forKey: snapshotKey)
+    }
+    /// The account's fields as a dictionary, for the writes that edit them.
+    private static var accountFields: [String: Any] {
+        get { (try? JSONSerialization.jsonObject(with: Data(account.utf8))) as? [String: Any] ?? [:] }
+        set {
+            guard let data = try? JSONSerialization.data(withJSONObject: newValue, options: [.sortedKeys]),
+                  let text = String(data: data, encoding: .utf8) else { return }
+            account = text
+        }
+    }
 
     /// The two patches a membership can be held on offline, with the facts the
     /// relationship rules read: whether it is public, and how it takes
@@ -158,18 +183,162 @@ enum PreviewData {
     /// `events?scope=my` all read back. A signed-in reader starts out
     /// following the Listening Room and nothing else: enough for the Dashboard
     /// to have something in it on arrival, and every other act still to make.
-    private static var held: [String: (role: String, status: String)] = [:]
+    private static var held: [String: (role: String, status: String)] = signedIn ? freshHeld : [:]
+    private static let freshHeld: [String: (role: String, status: String)] = ["listening-room": (role: "follower", status: "active")]
 
     static func signOut() {
         signedIn = false
         account = sampleAccount
         held = [:]
         notifications = []
+        stepUpOpen = false
     }
     private static func startSession() {
         signedIn = true
-        held = ["listening-room": (role: "follower", status: "active")]
+        held = freshHeld
         notifications = Self.freshNotifications
+        sessionRows = freshSessionRows
+        // A new sign-in is younger than whatever batch the account already
+        // holds, so that batch can confirm from now on (web ADR 099).
+        batchPredatesSession = true
+        stepUpOpen = false
+    }
+
+    // MARK: The account's own security
+
+    /// The fixture reader's recovery codes: a set made before any preview
+    /// session began, so every one of them can confirm a step-up and sign
+    /// in. Printed the way the server prints them.
+    static let recoveryCodes = [
+        "abcd-efgh-jkm2", "npqr-stuv-wxy3", "zabc-defg-hjk4", "mnpq-rstu-vwx5", "yzab-cdef-ghj6",
+        "kmnp-qrst-uvw7", "xyza-bcde-fgh8", "jkmn-pqrs-tuv9", "wxyz-abcd-efg2", "hjkm-npqr-stu3",
+    ]
+    /// The batch the account holds, normalised, and which of it is spent.
+    /// Kept across sign-out, because on a quilt the codes are the account's
+    /// and outlive any one session; reset only when the account is deleted.
+    private static var batch = recoveryCodes.map(RecoveryCode.normalize)
+    private static var spent = Set<String>()
+    /// Whether the batch was made before the current session began. A batch
+    /// generated during a preview session is too new to confirm anything
+    /// until the next sign-in, exactly as on a quilt.
+    private static var batchPredatesSession = true
+    /// The five-minute window, as a flag.
+    private static var stepUpOpen = false
+    private static var unusedCodes: Int { batch.filter { !spent.contains($0) }.count }
+
+    /// Two sessions: this one and a laptop.
+    private static let freshSessionRows: [(id: String, label: String, current: Bool)] = [
+        ("session-this", "iPhone", true),
+        ("session-laptop", "Firefox on Linux", false),
+    ]
+    private static var sessionRows = freshSessionRows
+
+    /// A refusal in the server's own shape, read the way a real one is.
+    private static func refuse(_ status: Int, _ error: String, code: String? = nil, extra: String = "") -> APIError {
+        let codeField = code.map { ",\"code\":\"\($0)\"" } ?? ""
+        return APIError.from(status: status, data: Data("{\"error\":\"\(error)\"\(codeField)\(extra)}".utf8))
+    }
+
+    /// The account's writes: the profile, the codes, step-up, the session
+    /// list, deletion and the recovery sign-in. Nil means "not one of
+    /// these", so every other write keeps its own road.
+    private static func accountWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
+        switch (method, path) {
+        case ("POST", "auth/recovery"):
+            // One sentence for every failure, as the server gives it.
+            let username = ((fields["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let code = RecoveryCode.normalize((fields["code"] as? String) ?? "")
+            guard username == "samplereader", batch.contains(code), !spent.contains(code) else {
+                throw APIError.message("invalid username or recovery code", status: 400)
+            }
+            spent.insert(code)
+            startSession()
+            account = sampleAccount
+            // Redeeming a code is itself the proof: the window opens on arrival.
+            stepUpOpen = true
+            return account
+        default:
+            break
+        }
+        let ours = path == "auth/me" || path == "users/me" || path.hasPrefix("auth/recovery-codes")
+            || path.hasPrefix("auth/step-up") || path.hasPrefix("auth/sessions")
+        guard ours else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+        switch (method, path) {
+        case ("PATCH", "auth/me"):
+            var current = accountFields
+            for key in ["display_name", "bio", "links", "start_on_my_quilt", "hide_amended_linings"] {
+                if let value = fields[key] { current[key] = value }
+            }
+            accountFields = current
+            return account
+        case ("POST", "auth/recovery-codes"):
+            let alphabet = Array(RecoveryCode.alphabet)
+            let codes = (0..<10).map { _ in
+                (0..<3).map { _ in String((0..<4).map { _ in alphabet.randomElement()! }) }.joined(separator: "-")
+            }
+            batch = codes.map(RecoveryCode.normalize)
+            spent = []
+            batchPredatesSession = false
+            return "{\"codes\":[\(codes.map { "\"\($0)\"" }.joined(separator: ","))]}"
+        case ("POST", "auth/step-up/recovery"):
+            let code = RecoveryCode.normalize((fields["code"] as? String) ?? "")
+            guard unusedCodes > 0 else {
+                throw refuse(400, "this account has no unused recovery codes", code: "no_recovery_codes")
+            }
+            guard batchPredatesSession else {
+                throw refuse(400, "these codes were made during this sign-in", code: "recovery_codes_too_new")
+            }
+            guard batch.contains(code), !spent.contains(code) else {
+                throw refuse(400, "that recovery code is not one of yours, or has been used", code: "invalid_code")
+            }
+            spent.insert(code)
+            stepUpOpen = true
+            return "{\"active\":true,\"expires_at\":\"\(stamp(minutesAgo: -5))\",\"codes_remaining\":\(unusedCodes),\"used_recovery_code\":true}"
+        case ("POST", "auth/sessions/revoke-others"):
+            sessionRows = sessionRows.filter(\.current)
+            return #"{"status":"ok"}"#
+        case ("DELETE", "users/me"):
+            // The route is step-up gated, and this reader has no passkey, so
+            // the server's own refusal is the passkey-less one.
+            guard stepUpOpen else {
+                throw refuse(403, "This action needs a passkey. Enroll one in Security settings first.", code: "passkey_required")
+            }
+            let username = (accountFields["username"] as? String) ?? ""
+            guard ((fields["confirm_username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == username else {
+                throw APIError.message("type your username exactly to confirm", status: 400)
+            }
+            signOut()
+            batch = recoveryCodes.map(RecoveryCode.normalize)
+            spent = []
+            batchPredatesSession = true
+            return #"{"status":"deleted"}"#
+        default:
+            if method == "DELETE", path.hasPrefix("auth/sessions/") {
+                let id = String(path.dropFirst("auth/sessions/".count))
+                guard sessionRows.contains(where: { $0.id == id }) else { throw APIError.message("session not found", status: 404) }
+                sessionRows.removeAll { $0.id == id }
+                return "{\"status\":\"ok\",\"was_current\":\(id == "session-this")}"
+            }
+            throw APIError.status(405)
+        }
+    }
+
+    /// The two files a reader takes away, with the names the server gives them.
+    static func download(_ path: String) throws -> Download {
+        guard signedIn else { throw APIError.unauthenticated }
+        switch path {
+        case "users/me/export":
+            let body = "{\"format\":\"patchwork-personal-export\",\"user\":\(account),\"memberships\":\(myNodes)}"
+            return Download(data: Data(body.utf8), headers: ["content-disposition": #"attachment; filename="patchwork-samplereader.json""#])
+        case "users/me/seamrip":
+            // A zip's magic number and nothing else: enough to be a file a
+            // share sheet can hand on, which is all the offline path checks.
+            return Download(data: Data([0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18)),
+                            headers: ["content-disposition": #"attachment; filename="patchwork-member-seamrip.zip""#])
+        default:
+            throw APIError.status(404)
+        }
     }
 
     // MARK: The bell
@@ -234,7 +403,7 @@ enum PreviewData {
 
     /// The set the writes mutate. Empty while signed out, which is what makes
     /// a signed-out fixture exactly what it was before this slice.
-    private static var notifications: [Notif] = []
+    private static var notifications: [Notif] = signedIn ? freshNotifications : []
 
     /// The server's own category table (`internal/handler/notifications.go`).
     /// Moderation is the one that is not a single prefix, and it deliberately
@@ -405,11 +574,14 @@ enum PreviewData {
     /// a write with nothing to read (`auth/logout`, marking a notification
     /// read) runs the same path as one with a user in the answer.
     ///
-    /// `PATCH` and `DELETE` arrived with the notifications list and belong to
-    /// it alone, so they are answered first and everything else is still a
-    /// `POST`.
+    /// `PATCH` and `DELETE` arrived with the notifications list; the
+    /// account's settings brought more of both (and a `PUT` would take the
+    /// same road). The notifications and account paths are answered first,
+    /// and everything else is still a `POST`.
     static func write(_ method: String, _ path: String, body: Data?) throws -> String {
         if let answer = try notificationWrite(method, path) { return answer }
+        let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
+        if let answer = try accountWrite(method, path, fields: fields) { return answer }
         guard method == "POST" else { throw APIError.status(405) }
         return try post(path, body: body ?? Data())
     }
@@ -480,6 +652,10 @@ enum PreviewData {
             if query.contains(where: { $0.name == "scope" && $0.value == "my" }) {
                 let held = signedIn ? heldNodeIds : []
                 children = children.filter { json in held.contains { json.hasPrefix("{\"id\":\"\($0)\"") } }
+            } else if signedIn, accountFields["hide_amended_linings"] as? Bool == true {
+                // The reader's own discovery filter (web ADR 037), which never
+                // narrows My Quilt: the studio is the patch whose lining diverged.
+                children.removeAll { $0.hasPrefix("{\"id\":\"demo-patch\"") }
             }
             json = "{\"tree\":{\"children\":[\(children.joined(separator: ","))]}}"
         // The node carries its own membership policy always, and who the
@@ -496,6 +672,19 @@ enum PreviewData {
         case "auth/me":
             guard signedIn else { throw APIError.unauthenticated }
             json = account
+        case "auth/recovery-codes":
+            guard signedIn else { throw APIError.unauthenticated }
+            json = "{\"total\":\(batch.count),\"remaining\":\(unusedCodes)}"
+        case "auth/step-up":
+            guard signedIn else { throw APIError.unauthenticated }
+            json = "{\"has_passkey\":false,\"active\":\(stepUpOpen),\"window_secs\":300,\"recovery_ready\":\(batchPredatesSession ? unusedCodes : 0)}"
+        case "auth/sessions":
+            guard signedIn else { throw APIError.unauthenticated }
+            let rows = sessionRows.enumerated().map { index, row in
+                "{\"id\":\"\(row.id)\",\"label\":\"\(row.label)\",\"created_at\":\"\(stamp(minutesAgo: (index + 1) * 3 * 24 * 60))\"," +
+                    "\"last_used_at\":\"\(stamp(minutesAgo: index * 26 * 60))\",\"current\":\(row.current)}"
+            }
+            json = "[\(rows.joined(separator: ","))]"
         // The bell's two reads. Both are about the reader, so both are 401
         // while there is nobody to be about — a signed-out fixture makes
         // exactly the public reads it always did.
