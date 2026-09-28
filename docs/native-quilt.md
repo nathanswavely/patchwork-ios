@@ -863,3 +863,137 @@ the too-new and no-codes states on screen (they are unit-tested and reachable
 offline, but no UI test walks them), the `sole_admin` and
 `last_instance_admin` refusals on screen, the share sheet's destinations, a
 seamrip of real size, VoiceOver, and a physical device.
+
+## Posting and suggesting events — 2026-09-28
+
+A signed-in reader can add an event to a patch, the way the web's
+`/events/new?node=slug` door does, and the app says whether it will publish
+or wait for review before anybody fills the form. Reference: the web's
+`EventForm.svelte`, `patchWorkspace.js` (`eventPostingRight`),
+`PatchBarMenu.svelte`, `PatchEvents.svelte` and `datetime.js`; the server's
+`CreateEvent`, `GetEvent`, `validateRecurrence`, `validEventVisibility`,
+`validateImageRef`, `validateEventURL` and `writeMovedAway`; and web ADRs
+026, 045, 067, 079, 090, 093, 2026-09-18 and 2026-09-19.
+
+- **The rule is a value.** `EventPosting.right` is `eventPostingRight`,
+  line for line, with the web's defaults: signed out or banned, nothing;
+  the instance admin, direct; a moved patch refuses strangers but keeps
+  its own members and admins; an unclaimed patch is direct for a trusted
+  contributor (`viewer_trusted`, a field the `PatchResponse` envelope now
+  keeps) and a suggestion for everybody else while the quilt's
+  `submissions_enabled` holds; a claimed patch is direct for a member or an
+  admin and a suggestion only where it says `accept_event_suggestions`.
+  "Member or admin" is the membership index's active role — a follower is a
+  visitor and a pending request is not a membership, which is the bug the
+  web's own test names. `Patch` gained `timezone`,
+  `accept_event_suggestions` and `follower_permissions` (only `events` is
+  decoded).
+- **Two doors, one decision.** `QuiltSession.eventDoor(for:envelope:)`
+  reads the rule's inputs and answers none, the sign-in sheet, or the form
+  with its right. The calendar fetches `nodes/{slug}` for itself (and again
+  when the reader changes), because the tree row carries neither the
+  envelope nor the patch's switches; the profile already has the envelope.
+  The labels are the web's: "New event" and "Suggest an event".
+- **Signed out, a door where a stranger would be taken.** The web draws
+  none. Here the door is the sign-in sheet, labelled "Suggest an event", on
+  exactly the patches a signed-in stranger could suggest to — so the sheet
+  never leads to a form that refuses — and a member who signs in through it
+  finds "New event" in its place.
+- **The calendar's door is in the bottom bar.** It was first a top-bar
+  button beside Subscribe and Done, and the system drew it as a bare plus:
+  the one control whose words are the point said nothing. The bottom bar
+  holds a plus and the words, under the calendar it adds to. The profile's
+  door is an ink row under the Events glimpse.
+- **The form** is a sheet in the step pattern (heading, sentence, fields,
+  refusal, filled act at the foot), with the web's sentences under the
+  heading and the web's field order: title, description, who can see this
+  (direct only), location, event page, image address, the description of
+  the image once there is an address, starts, and an end behind a switch.
+  The act is disabled until there is a title. `EventDraft.problem()` says,
+  before sending, what the server would refuse — the image rule and the
+  link rule in the server's order and words (lengths in bytes, as Go
+  counts them), then the title, then an end that is not after its start —
+  and the server's own sentence is shown for anything else, first letter
+  raised. A disabled filled button's white label vanished on the system's
+  grey; a disabled one is muted ink now.
+- **Time belongs to the place.** The pickers carry the patch's zone
+  (`timezone`, else the quilt's) through `\.timeZone`, the start opens on
+  the next whole hour on that clock, and "Times are in …, this patch's
+  timezone." appears only where that clock differs from the device's, by
+  the web's `sameZoneAsViewer` test (a name match, else the same offset and
+  abbreviation now). The instants travel in the web's `toISOString()` shape,
+  to the minute, and no `timezone` is sent, so the event inherits its
+  patch's zone (ADR 045) rather than freezing a copy of it.
+- **What travels.** `EventDraft.body` trims every field, leaves out every
+  empty one (the server reads absence and `""` alike), leaves out `ends_at`
+  without an end, drops an image description once its address is gone,
+  never sends `timezone` or `recurrence`, and sends `visibility` only when
+  posting directly — a suggestion is public whatever it asks for, so the
+  control is absent and nothing is sent.
+- **The ending is the server's.** A 201 whose `status` is `active` closes
+  the form and opens `EventDetail` from where the door was (a push once the
+  sheet has gone), with the calendar or the glimpse and the head's count
+  read again. `pending_review` replaces the form with the web's card —
+  "Submitted for review", "The patch admins (or quilt admins) will look at
+  it…" — and one Done. The status decides, not the door's prediction. A
+  pending suggestion is on no list; nothing tries to list it. No
+  notification is involved either way (ADR 093).
+- **Refusals.** A 403 in the server's words ("this patch does not accept
+  event suggestions", "community submissions are disabled on this
+  instance"), a 400's validation sentence, and the moved-away 403, whose
+  `moved_to` rides beside the sentence: `Refusal` keeps it and `APIError`
+  now treats a body carrying it as a named refusal, so the form offers the
+  new home as an exit link. A 401 signs the session out and the form closes
+  with it.
+
+**Offline.** `PreviewData` answers `POST events` with `CreateEvent`'s own
+order and sentences: the image and link checks, recurrence, the required
+three, the tier's spelling, the patch, then who posts directly. The fixture
+reader now starts as a follower of the Listening Room (which says
+`accept_event_suggestions: true`) and a member of the Repair Cafe
+(`extra-6`), whose node answers `is_member`/`membership_role` and whose
+`follower_permissions.events` is false, so the ceiling shows offline; the
+studio says `accept_event_suggestions: false` and a non-member's suggestion
+there is refused in the server's sentence. The membership sits on an extra
+so the follow and join tests, which read the studio and the Listening Room,
+are untouched. Every node fixture carries `timezone` and the envelope's
+`viewer_trusted: false`. An active post joins the fixture feed (now sorted
+by `starts_at`, as the server orders it); a pending one is answered only by
+`events/{id}`, to a signed-in reader.
+
+**Verification.** 233 unit tests and 20 UI tests pass on the iPhone 17
+Pro simulator. The 30 new unit tests (`EventPostingTests`): the posting
+rule through every branch — signed out, banned (over every other right),
+the instance admin, trust on an unclaimed patch and its worthlessness on a
+claimed one, the submissions switch (which never gates a member), the
+patch's own switch, a moved patch refusing strangers and keeping its own,
+and the follower and the pending request who are not members; the door
+signed in and signed out; what a draft sends (trimmed, empties absent, no
+end, no tier on a suggestion, a tier on every direct post, no zone, no
+recurrence, an orphaned image description dropped, the instant to the
+minute); the image and link rules in the server's sentences, bytes
+counted as Go counts them, and the draft's checks in the server's order;
+an end after its start; the reviewers' words; the zone chosen, said only
+where it differs (New York and Detroit agree), and the next whole hour on
+the patch's clock, Kolkata's half hour included; the tier's ceiling; the
+node's new fields decoding; and a moved patch's refusal keeping its
+address. The three new UI tests (`EventPostingFlowTests`): signed in, the
+Listening Room's calendar says "Suggest an event", the form says it will
+be reviewed and offers no tier, the button waits for a title, and a title
+and the default start end on "Submitted for review" with the patch admins
+named, and Done returns to a calendar that does not list it; the Repair
+Cafe, reached from the Dashboard, wears "New event" under its glimpse and
+on its calendar, its form offers Public and Members only with the ceiling's
+line, and a post opens the event's page and then sits in Upcoming; signed
+out, the Listening Room's door opens the sign-in sheet. Every existing test
+passes unchanged. Screenshots of both doors, both forms, the times, the
+card, the posted event and the calendar after it were read for clipped
+text and colour. Not verified: a live quilt (the server's `CreateEvent`
+was read, not called), the moved-away and submissions-disabled refusals on
+screen (both are answered by the fixtures and unit-tested, but no UI test
+walks them), posting from the profile glimpse's own row through to the
+pushed event page (the calendar's door is the one the UI test posts
+through), a trusted contributor and an instance admin (the fixture reader
+is neither), the zone note on screen (the simulator keeps New York time,
+as the fixtures do), a 401 mid-form, VoiceOver, Dynamic Type at the
+accessibility sizes on this form, and a physical device.

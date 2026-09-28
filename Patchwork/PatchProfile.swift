@@ -30,6 +30,12 @@ struct PatchSheet: View {
     /// What the last act on the cover came back with, printed under the
     /// cover where a sentence can be read rather than over the cloth.
     @State private var feedback: RelationshipFeedback?
+    /// The events glimpse's door: the form, the sign-in sheet in its place,
+    /// and a post waiting for the form to leave before it is opened.
+    @State private var composing = false
+    @State private var signingIn = false
+    @State private var posted: PatchworkEvent?
+    @State private var opened: PatchworkEvent?
     /// How much of the first glimpse shows under the head at rest: enough for
     /// its rule, its title and a line of it, cut off. The cut is the invitation.
     private let peek: CGFloat = 96
@@ -73,7 +79,19 @@ struct PatchSheet: View {
             // this is, and the two acts a bar would hold ride the cover
             // instead. The rooms pushed from here keep their own bars.
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $opened) { EventDetail(quilt: session.quilt, initial: $0, close: close) }
         }
+        .sheet(isPresented: $composing, onDismiss: { if let posted { opened = posted; self.posted = nil } }) {
+            if case .form(let right) = eventDoor {
+                EventFormSheet(patch: patch, right: right, unclaimed: isUnclaimed, zone: session.eventZone(for: patch),
+                               followersAllowed: patch.followerPermissions?.events != false) { event in
+                    posted = event
+                    // The glimpse and the head's count are the quilt's again.
+                    Task { await load(); await loadGlimpses() }
+                }
+            }
+        }
+        .signInGate($signingIn)
         .background(GeometryReader { proxy in Color.clear.preference(key: SheetTopKey.self, value: proxy.frame(in: .global).minY) })
         .onPreferenceChange(HeadBottomKey.self) { headBottom = $0; measure() }
         .onPreferenceChange(SheetTopKey.self) { sheetTop = $0; measure() }
@@ -301,8 +319,12 @@ struct PatchSheet: View {
                     }
                 }
             } else { Text("Pull up to see what’s coming.").foregroundStyle(Color.pwTextMuted) }
+            // Under the events it adds to, worded as what it will do. Signed
+            // out it is the sign-in sheet, the way the heart on a card is.
+            EventDoorRow(door: eventDoor) { if eventDoor == .signIn { signingIn = true } else { composing = true } }
         }
     }
+    private var eventDoor: EventPosting.Door { session.eventDoor(for: patch, envelope: envelope) }
     private var moreEvents: Int {
         let shown = events?.prefix(3).count ?? 0
         return max(0, (patch.upcomingEventCount ?? shown) - shown)
