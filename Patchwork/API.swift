@@ -311,8 +311,10 @@ private struct SignUpBody: Encodable {
             return
         }
         #endif
+        // Most recent first: the quilt you just used is the one you will
+        // want next time, so it goes to the top rather than the foot.
         saved.removeAll { $0.id == quilt.id }
-        saved.append(quilt)
+        saved.insert(quilt, at: 0)
         if let data = try? JSONEncoder().encode(saved) { UserDefaults.standard.set(data, forKey: "savedQuilts") }
         selected = quilt
     }
