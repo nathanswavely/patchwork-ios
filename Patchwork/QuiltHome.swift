@@ -32,9 +32,13 @@ struct QuiltHome: View {
                     if session.me != nil {
                         Tab("Dashboard", systemImage: "rectangle.stack", value: Pane.dashboard) { dashboardPane }
                     }
-                    // A place, as the system's search tab is: the pill stays
-                    // selected while the field is live (see onChange).
-                    Tab("Search", systemImage: "magnifyingglass", value: Pane.search, role: .search) { searchPane }
+                    // A plain tab, not a search-role one: the system lays a
+                    // search-role tab out as its own magnifier pill once it has
+                    // been selected, which split the bar and read as a lost
+                    // item. This app has its own field in the top bar and uses
+                    // none of the search role's behaviour, so the tab stays in
+                    // line with the other four (see onChange).
+                    Tab("Search", systemImage: "magnifyingglass", value: Pane.search) { searchPane }
                 }
             } else {
                 TabView(selection: $pane) {
