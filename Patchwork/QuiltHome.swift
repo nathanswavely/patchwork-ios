@@ -8,6 +8,8 @@ struct QuiltHome: View {
     @State private var pane = Pane.quilt
     /// Where the reader was before Search, which is where the X takes them.
     @State private var lastPane = Pane.quilt
+    /// The filter sheet over the Events tab; the quilt's own lives in QuiltBrowser.
+    @State private var eventFiltering = false
     /// The reader's colour register, read here so a change to it reaches the
     /// session — and through it the canvas — wherever the sheet was opened from.
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
@@ -105,7 +107,15 @@ struct QuiltHome: View {
                 }
             }
     }
-    private var eventsPane: some View { NavigationStack { EventList(quilt: session.quilt).modifier(DiscoveryToolbar()) } }
+    /// The calendar narrows through the host patch, so it wears the quilt's
+    /// Filter too: the same sheet, the same state the canvas reads.
+    private var eventsPane: some View {
+        NavigationStack {
+            EventList(quilt: session.quilt)
+                .modifier(DiscoveryToolbar(filter: $eventFiltering))
+                .sheet(isPresented: $eventFiltering) { FilterSheet() }
+        }
+    }
     private var discoverPane: some View { NavigationStack { Discover() } }
     private var dashboardPane: some View {
         NavigationStack { Dashboard(openDiscover: { pane = .discover }) }

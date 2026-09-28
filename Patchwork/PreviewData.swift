@@ -2,6 +2,7 @@
 
 #if DEBUG
 import Foundation
+import UIKit
 
 /// Fictional, offline design fixtures. Only enabled by an explicit debug launch argument.
 enum PreviewData {
@@ -65,6 +66,29 @@ enum PreviewData {
         "node_name":"The Listening Room","node_slug":"listening-room","node_status":"unclaimed"}
         """
         return [("demo-event", tonight), ("demo-event-2", soon), ("demo-event-3", later)]
+    }
+
+    /// The fictional quilt's icon, drawn rather than shipped: a pinwheel
+    /// block in the app's rust on cloth, at the side `instance/icon` serves.
+    static func icon() -> Data {
+        let side: CGFloat = 50, half: CGFloat = 25
+        let cloth = UIColor(red: 0.96, green: 0.94, blue: 0.90, alpha: 1)
+        let rust = UIColor(red: 0.72, green: 0.29, blue: 0.10, alpha: 1)
+        let ink = UIColor(red: 0.12, green: 0.11, blue: 0.10, alpha: 1)
+        let blades: [(CGPoint, CGPoint, CGPoint, UIColor)] = [
+            (CGPoint(x: 0, y: 0), CGPoint(x: half, y: 0), CGPoint(x: half, y: half), rust),
+            (CGPoint(x: half, y: 0), CGPoint(x: side, y: 0), CGPoint(x: side, y: half), ink),
+            (CGPoint(x: side, y: half), CGPoint(x: side, y: side), CGPoint(x: half, y: side), rust),
+            (CGPoint(x: 0, y: half), CGPoint(x: half, y: side), CGPoint(x: 0, y: side), ink),
+        ]
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).pngData { context in
+            cloth.setFill(); context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            for (a, b, c, color) in blades {
+                let path = UIBezierPath()
+                path.move(to: a); path.addLine(to: b); path.addLine(to: c); path.close()
+                color.setFill(); path.fill()
+            }
+        }
     }
 
     /// The offline stand-in for `events/{id}/event.ics`, so the share

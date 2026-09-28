@@ -237,6 +237,21 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Fall mending circle"].exists, "the whole calendar reads soonest first")
         capture(app, "10 Events list")
 
+        // The quilt's Filter is on this bar too, and it narrows the calendar
+        // through the host patch: only the venue's own gathering wears "venue".
+        app.buttons["Filter"].tap()
+        XCTAssertTrue(app.buttons["venue"].waitForExistence(timeout: 5))
+        app.buttons["venue"].tap()
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Records and coffee"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Fall mending circle"].exists, "a studio's evening is not a venue's")
+        capture(app, "10c Events filtered by tag")
+        app.buttons["Filter"].tap()
+        XCTAssertTrue(app.buttons["Clear"].waitForExistence(timeout: 5))
+        app.buttons["Clear"].tap()
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Fall mending circle"].waitForExistence(timeout: 10))
+
         // One preset, applied: only tonight's event survives it.
         app.buttons["dateFilter"].tap()
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 5))

@@ -89,7 +89,8 @@ The Events tab and an event's detail were brought level with the web's public
   `include_past` for a patch's whole calendar.
 - **Tags and the search chip narrow through the host patch**, as they do on
   the web: an event has no tags of its own, so the filter resolves
-  `node_id` (falling back to `node_slug`) against `session.patches`. The two
+  `node_id` (falling back to `node_slug`) against `session.patches`, and the
+  top bar's Filter button is on the Events tab as well (added 2026-09-28). The two
   silences stay distinct — "No events match your filter" with a Clear beside
   it, against "No upcoming events", which is nobody's mistake.
 - **Rows** state when, what, where and whose, wear "Community-submitted"

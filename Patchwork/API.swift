@@ -237,10 +237,14 @@ struct PatchworkAPI {
         parts?.scheme = "webcal"
         return parts?.url
     }
-    /// Raw bytes, for the quilt's icon. Preview data serves no images.
+    /// Raw bytes, for the quilt's icon. Preview data serves one image, the
+    /// quilt's own, so the tab bar looks the same over fixtures as over a quilt.
     func data(_ path: String) async throws -> Data {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--preview") { throw APIError.status(404) }
+        if Self.isPreview {
+            if path == "instance/icon" { return PreviewData.icon() }
+            throw APIError.status(404)
+        }
         #endif
         let (data, response) = try await Self.session.data(for: URLRequest(url: base.appendingPathComponent("api/v1/" + path)))
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.response }
