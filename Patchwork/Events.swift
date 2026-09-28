@@ -26,12 +26,16 @@ struct EventList: View {
     private var zone: TimeZone { TimeZone(identifier: session.instance?.geography.timezone ?? "") ?? .current }
     /// The tag chips and the search chip narrow the calendar through the
     /// host patch, as they do on the web: an event has no tags of its own.
+    /// The host is looked up in the whole quilt even in My Quilt, because the
+    /// server's scope already chose the events, and a followed patch's
+    /// confirmed link brings in nights hosted by a patch the reader does not
+    /// hold (web ADR 032) — its tags still have to answer the filter.
     private var visiblePatchIDs: Set<String> {
-        Set(session.patches.filter { QuiltLayout.matches($0, query: session.query, tags: session.tags) }.map(\.id))
+        Set(session.wholeQuilt.filter { QuiltLayout.matches($0, query: session.query, tags: session.tags) }.map(\.id))
     }
     private var visiblePatchSlugs: Set<String> {
         let ids = visiblePatchIDs
-        return Set(session.patches.filter { ids.contains($0.id) }.map(\.slug))
+        return Set(session.wholeQuilt.filter { ids.contains($0.id) }.map(\.slug))
     }
     private var filtered: [PatchworkEvent] {
         guard session.activeFilterCount > 0 else { return events }
@@ -43,6 +47,10 @@ struct EventList: View {
         }
     }
     private var forRange: String { dates.isActive ? " for this date range" : "" }
+    /// The quilt's lens, where it applies: the quilt-wide calendar reads
+    /// through it, and a patch's own calendar never does — it is already one
+    /// patch, and narrowing it to the reader's own could only empty it.
+    private var scope: QuiltScope { slug == nil ? session.scope : .whole }
 
     var body: some View {
         List {
@@ -82,6 +90,7 @@ struct EventList: View {
         .sheet(isPresented: $pickingRange) { CustomRangeSheet(filter: $dates, timeZone: zone) }
         .task { if !loaded { await load() } }
         .onChange(of: dates) { _, _ in Task { await load() } }
+        .onChange(of: session.scope) { _, _ in if slug == nil { Task { await load() } } }
         .refreshable { await load() }
     }
 
@@ -118,7 +127,31 @@ struct EventList: View {
     /// nobody's mistake.
     @ViewBuilder private var emptyState: some View {
         if loaded && !loading && error == nil && filtered.isEmpty {
-            if session.activeFilterCount > 0 {
+            // In My Quilt both silences name the lens, and both offer the
+            // whole quilt back beside whatever else would clear them.
+            if scope == .my && session.activeFilterCount > 0 {
+                ContentUnavailableView {
+                    Label("No events match your filter in My Quilt", systemImage: "line.3.horizontal.decrease.circle")
+                } description: {
+                    Text("Nothing from the patches you follow or join matches what you picked\(forRange).")
+                } actions: {
+                    Button("Clear filter") { session.clearFilters() }
+                        .font(Font.pw.headline).buttonStyle(.borderedProminent)
+                    Button("Show the whole quilt") { session.scope = .whole }
+                        .font(Font.pw.subheadlineMedium).accessibilityIdentifier("showWholeQuilt")
+                }
+                .accessibilityIdentifier("eventsMyFilteredEmpty")
+            } else if scope == .my {
+                ContentUnavailableView {
+                    Label("No events in My Quilt", systemImage: "calendar")
+                } description: {
+                    Text(dates.isActive ? "Nothing from the patches you follow or join in this range." : "The patches you follow or join have nothing coming up.")
+                } actions: {
+                    Button("Show the whole quilt") { session.scope = .whole }
+                        .font(Font.pw.subheadlineMedium).accessibilityIdentifier("showWholeQuilt")
+                }
+                .accessibilityIdentifier("eventsMyEmpty")
+            } else if session.activeFilterCount > 0 {
                 ContentUnavailableView {
                     Label("No events match your filter", systemImage: "line.3.horizontal.decrease.circle")
                 } description: {
@@ -144,9 +177,14 @@ struct EventList: View {
         loading = true; error = nil
         defer { loading = false; loaded = true }
         let bounds = EventDateBounds.resolve(dates, timeZone: zone)
+        let asked = scope
         do {
             let page = try await PatchworkAPI(base: quilt.url)
-                .events(slug: slug, after: after, fromInstant: bounds.from, toInstant: bounds.to)
+                .events(slug: slug, after: after, fromInstant: bounds.from, toInstant: bounds.to, scope: asked.value)
+            // The lens moved while this was in flight: its answer belongs to
+            // the other scope, so it is not drawn, and the list asks again
+            // once this load has let go of `loading`.
+            guard asked == scope else { Task { await load() }; return }
             if after == nil { events = page.items ?? [] }
             else {
                 let ids = Set(events.map(\.id))

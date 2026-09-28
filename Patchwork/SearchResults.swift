@@ -13,7 +13,10 @@ struct SearchResults: View {
     @EnvironmentObject private var session: QuiltSession
     @State private var events: [PatchworkEvent] = []
     private var trimmed: String { session.searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var patches: [Patch] { trimmed.isEmpty ? [] : session.patches.filter { QuiltLayout.matches($0, query: trimmed, tags: []) } }
+    /// Finding reads the whole quilt whatever the scope, as the events below
+    /// already did: the chip it sets is what narrows, and in My Quilt a chip
+    /// that matches nothing says so and offers the whole quilt back.
+    private var patches: [Patch] { trimmed.isEmpty ? [] : session.wholeQuilt.filter { QuiltLayout.matches($0, query: trimmed, tags: []) } }
     private var matchingEvents: [PatchworkEvent] {
         trimmed.isEmpty ? [] : events.filter { $0.title.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
     }

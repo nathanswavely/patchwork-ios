@@ -166,14 +166,14 @@ struct PatchworkAPI {
     /// presets produce. `from`/`to` travel as instants, never bare dates: the
     /// server compares `starts_at` as text, so a bare date as `to` would drop
     /// the day it names.
-    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, fromInstant: String?, toInstant: String? = nil) async throws -> EventPage {
-        var query = Self.eventsQuery(slug: slug, after: after, limit: limit)
+    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, fromInstant: String?, toInstant: String? = nil, scope: String? = nil) async throws -> EventPage {
+        var query = Self.eventsQuery(slug: slug, after: after, limit: limit, scope: scope)
         if let fromInstant, !fromInstant.isEmpty { query.append(URLQueryItem(name: "from", value: fromInstant)) }
         if let toInstant, !toInstant.isEmpty { query.append(URLQueryItem(name: "to", value: toInstant)) }
         return try await get("events", query: query)
     }
-    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false) async throws -> EventPage {
-        try await get("events", query: Self.eventsQuery(slug: slug, after: after, limit: limit, from: from, to: to, includePast: includePast))
+    func events(slug: String? = nil, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false, scope: String? = nil) async throws -> EventPage {
+        try await get("events", query: Self.eventsQuery(slug: slug, after: after, limit: limit, from: from, to: to, includePast: includePast, scope: scope))
     }
     /// The events query, built apart from the request so the gates a patch's
     /// calendar turns on can be checked without a network. `from` keeps a
@@ -182,14 +182,17 @@ struct PatchworkAPI {
     /// deliberate request for what already happened. The server orders
     /// events oldest first and pages forward, so asking for the whole
     /// calendar at once hands a busy venue its own history before tonight —
-    /// which is why the two halves are asked for separately.
-    static func eventsQuery(slug: String?, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false) -> [URLQueryItem] {
+    /// which is why the two halves are asked for separately. `scope` is the
+    /// quilt's lens (`my` while the reader is in My Quilt) and travels only
+    /// when asked for, so every public read stays exactly what it was.
+    static func eventsQuery(slug: String?, after: String? = nil, limit: Int = 30, from: Date? = nil, to: Date? = nil, includePast: Bool = false, scope: String? = nil) -> [URLQueryItem] {
         var query = [URLQueryItem(name: "limit", value: String(limit))]
         if let slug { query.append(URLQueryItem(name: "node_slug", value: slug)) }
         if let from { query.append(URLQueryItem(name: "from", value: ISO8601DateFormatter().string(from: from))) }
         if let to { query.append(URLQueryItem(name: "to", value: ISO8601DateFormatter().string(from: to))) }
         if includePast { query.append(URLQueryItem(name: "include_past", value: "true")) }
         if let after, !after.isEmpty { query.append(URLQueryItem(name: "after", value: after)) }
+        if let scope, !scope.isEmpty { query.append(URLQueryItem(name: "scope", value: scope)) }
         return query
     }
     /// The same feed, narrowed to the patches the reader actually holds an
@@ -237,10 +240,14 @@ struct PatchworkAPI {
         parts?.scheme = "webcal"
         return parts?.url
     }
-    /// Raw bytes, for the quilt's icon. Preview data serves no images.
+    /// Raw bytes, for the quilt's icon. Preview data serves one image, the
+    /// quilt's own, so the tab bar looks the same over fixtures as over a quilt.
     func data(_ path: String) async throws -> Data {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--preview") { throw APIError.status(404) }
+        if Self.isPreview {
+            if path == "instance/icon" { return PreviewData.icon() }
+            throw APIError.status(404)
+        }
         #endif
         let (data, response) = try await Self.session.data(for: URLRequest(url: base.appendingPathComponent("api/v1/" + path)))
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.response }
@@ -311,8 +318,10 @@ private struct SignUpBody: Encodable {
             return
         }
         #endif
+        // Most recent first: the quilt you just used is the one you will
+        // want next time, so it goes to the top rather than the foot.
         saved.removeAll { $0.id == quilt.id }
-        saved.append(quilt)
+        saved.insert(quilt, at: 0)
         if let data = try? JSONEncoder().encode(saved) { UserDefaults.standard.set(data, forKey: "savedQuilts") }
         selected = quilt
     }

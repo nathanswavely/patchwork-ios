@@ -18,10 +18,10 @@ struct Discover: View {
     private var visible: [(tag: String, count: Int)] { showAll ? ranked : Array(ranked.prefix(shortlist)) }
     private var answer: DiscoverAnswer.Split {
         DiscoverAnswer.split(
-            session.patches,
+            session.wholeQuilt,
             picked: picked,
             soonest: next.compactMapValues(\.date),
-            order: Dictionary(uniqueKeysWithValues: session.baseline.enumerated().map { ($1.id, $0) })
+            order: Dictionary(uniqueKeysWithValues: session.wholeBaseline.enumerated().map { ($1.id, $0) })
         )
     }
     var body: some View {
@@ -112,7 +112,7 @@ struct Discover: View {
                 .inkAction("arrow.uturn.backward")
                 .plainRow()
             }
-            if session.patches.isEmpty {
+            if session.wholeQuilt.isEmpty {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Nothing here yet").font(Font.pw.title2).foregroundStyle(Color.pwText)

@@ -155,10 +155,100 @@ final class BrowsingTests: XCTestCase {
 
         app.buttons["Events"].firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Events"].waitForExistence(timeout: 10))
+        // The account menu's Switch quilt opens the same card the tab's hold
+        // does; the full picker is one button further in.
         app.buttons["Account"].tap()
         app.buttons["Switch quilt"].tap()
+        let find = app.buttons["findQuilt"]
+        XCTAssertTrue(find.waitForExistence(timeout: 10))
+        find.tap()
         XCTAssertTrue(app.navigationBars["Choose a quilt"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Neighbor quilt"].exists, "Connected quilts are doorways in the switcher")
+    }
+
+    /// My Quilt, end to end: the card offers it only to a reader the quilt
+    /// knows; choosing it narrows the quilt and the calendar to the patches
+    /// the reader holds (the fixtures' reader follows the Listening Room and
+    /// nothing else), the tab says which lens is on, and the card takes the
+    /// reader back to the whole quilt and on to the full picker.
+    func testMyQuiltNarrowsTheQuiltAndEventsFromTheSwitcher() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--skip-intro"]
+        app.launch()
+        openSampleQuilt(app)
+        let held = app.buttons["quiltTile-listening-room"]
+        let unheld = app.buttons["quiltTile-common-thread"]
+        XCTAssertTrue(unheld.waitForExistence(timeout: 10))
+
+        // Signed out there is no My Quilt to offer, only a line saying what
+        // an account would bring.
+        openSwitcher(app, tab: "Quilt")
+        XCTAssertTrue(app.buttons["scopeWhole"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["scopeSignedOut"].exists)
+        XCTAssertFalse(app.buttons["scopeMy"].exists, "no stub for an act that needs an account")
+        capture(app, "30 Switcher, signed out")
+        app.buttons["Done"].tap()
+
+        signIn(app)
+        openSwitcher(app, tab: "Quilt")
+        let my = app.buttons["scopeMy"]
+        XCTAssertTrue(my.waitForExistence(timeout: 5), "an account brings its own quilt")
+        capture(app, "31 Switcher, signed in")
+        my.tap()
+        XCTAssertTrue(held.waitForExistence(timeout: 10), "a followed patch is in My Quilt")
+        XCTAssertTrue(gone(unheld), "a patch the reader holds nothing on is not")
+        XCTAssertTrue(app.tabBars.buttons["My Quilt"].exists, "the tab says which lens is on")
+        capture(app, "32 My Quilt")
+
+        // The calendar reads through the same lens: the held patch's own
+        // night, and the studio's evening the Listening Room is a confirmed
+        // link on — a link travels with the relationship (web ADR 032) — but
+        // not the studio's own circle, which nothing the reader holds is on.
+        app.buttons["Events"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Events"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Records and coffee"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Saturday open studio"].exists, "a followed patch's confirmed link comes along")
+        XCTAssertFalse(app.staticTexts["Fall mending circle"].exists, "a studio the reader does not follow")
+        capture(app, "33 My Quilt events")
+
+        // And back: the whole quilt, the whole calendar.
+        openSwitcher(app, tab: "My Quilt")
+        let whole = app.buttons["scopeWhole"]
+        XCTAssertTrue(whole.waitForExistence(timeout: 5))
+        whole.tap()
+        // Holding the tab may also have selected it, so go to Events by name.
+        app.buttons["Events"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Fall mending circle"].waitForExistence(timeout: 10), "the Events tab reloads under the whole quilt")
+        XCTAssertTrue(app.tabBars.buttons["Quilt"].exists)
+        app.tabBars.buttons["Quilt"].tap()
+        XCTAssertTrue(unheld.waitForExistence(timeout: 10), "the whole quilt is back")
+
+        // Find a quilt is the full picker, and its own flow still works.
+        openSwitcher(app, tab: "Quilt")
+        let find = app.buttons["findQuilt"]
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        find.tap()
+        XCTAssertTrue(app.navigationBars["Choose a quilt"].waitForExistence(timeout: 10))
+        app.buttons["quiltChoice"].firstMatch.tap()
+        let explore = app.buttons["exploreQuilt"]
+        XCTAssertTrue(explore.waitForExistence(timeout: 10))
+        explore.tap()
+        XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
+    }
+
+    /// Hold the Quilt tab, the way a profile tab is held to switch accounts.
+    private func openSwitcher(_ app: XCUIApplication, tab: String) {
+        let item = app.tabBars.buttons[tab]
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        item.press(forDuration: 0.8)
+        XCTAssertTrue(app.navigationBars["Switch quilt"].waitForExistence(timeout: 5), "holding the tab opens the switcher card")
+    }
+
+    /// Waits for an element to leave: a lens change redraws after the
+    /// server answers, which is a round trip after the tap.
+    private func gone(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
     /// The quilt's information stack, and the Display settings a reader with
     /// no account can still make. Both hang off the account menu.
@@ -236,6 +326,21 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(app.buttons["eventRow"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Fall mending circle"].exists, "the whole calendar reads soonest first")
         capture(app, "10 Events list")
+
+        // The quilt's Filter is on this bar too, and it narrows the calendar
+        // through the host patch: only the venue's own gathering wears "venue".
+        app.buttons["Filter"].tap()
+        XCTAssertTrue(app.buttons["venue"].waitForExistence(timeout: 5))
+        app.buttons["venue"].tap()
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Records and coffee"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Fall mending circle"].exists, "a studio's evening is not a venue's")
+        capture(app, "10c Events filtered by tag")
+        app.buttons["Filter"].tap()
+        XCTAssertTrue(app.buttons["Clear"].waitForExistence(timeout: 5))
+        app.buttons["Clear"].tap()
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Fall mending circle"].waitForExistence(timeout: 10))
 
         // One preset, applied: only tonight's event survives it.
         app.buttons["dateFilter"].tap()
@@ -523,11 +628,14 @@ final class BrowsingTests: XCTestCase {
         openSampleQuilt(app)
         signIn(app)
 
-        let bell = app.buttons["notificationBell"]
-        XCTAssertTrue(bell.waitForExistence(timeout: 10), "an account brings the bell with it")
-        XCTAssertTrue(wait(bell, labelContains: "2 unread"), "the badge is the quilt's own count")
-        capture(app, "25 The bell with a badge")
+        let account = app.buttons["Account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait(account, labelContains: "2 unread"), "the badge on the account is the quilt's own count")
+        capture(app, "25 The account with a badge")
 
+        account.tap()
+        let bell = app.buttons["notificationBell"]
+        XCTAssertTrue(bell.waitForExistence(timeout: 5), "an account brings the bell with it, under its own menu")
         bell.tap()
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
         capture(app, "26 Notifications")
@@ -543,7 +651,7 @@ final class BrowsingTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
         app.buttons["Done"].tap()
 
-        XCTAssertTrue(wait(bell, labelContains: "1 unread"),
+        XCTAssertTrue(wait(account, labelContains: "1 unread"),
                       "reading one takes the badge down straight away, not on the next poll")
     }
 
@@ -556,9 +664,12 @@ final class BrowsingTests: XCTestCase {
         openSampleQuilt(app)
         signIn(app)
 
+        let account = app.buttons["Account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait(account, labelContains: "2 unread"))
+        account.tap()
         let bell = app.buttons["notificationBell"]
-        XCTAssertTrue(bell.waitForExistence(timeout: 10))
-        XCTAssertTrue(wait(bell, labelContains: "2 unread"))
+        XCTAssertTrue(bell.waitForExistence(timeout: 5))
         bell.tap()
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 10))
 
@@ -574,7 +685,7 @@ final class BrowsingTests: XCTestCase {
         capture(app, "28 A filtered empty state")
 
         app.buttons["Done"].tap()
-        XCTAssertTrue(wait(bell, labelContains: "0 unread"),
+        XCTAssertTrue(wait(account, labelContains: "0 unread"),
                       "mark all read empties the whole table, so the badge goes to zero")
     }
 

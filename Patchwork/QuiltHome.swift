@@ -6,9 +6,18 @@ import UIKit
 struct QuiltHome: View {
     @StateObject private var session: QuiltSession
     @State private var pane = Pane.quilt
+    /// Where the reader was before Search, which is where the X takes them.
+    @State private var lastPane = Pane.quilt
+    /// The filter sheet over the Events tab; the quilt's own lives in QuiltBrowser.
+    @State private var eventFiltering = false
     /// The reader's colour register, read here so a change to it reaches the
     /// session — and through it the canvas — wherever the sheet was opened from.
     @AppStorage(DisplayDefaults.colorsKey) private var colors = ColorMode.standard.rawValue
+    /// The full quilt picker, reached from the switcher card's "Find a quilt".
+    /// The card closes first and the picker opens once it has gone (see the
+    /// switcher's `onDismiss`); `wantsPicker` is the note passed between them.
+    @State private var finding = false
+    @State private var wantsPicker = false
     /// The one-time orientation card, over the foot of the quilt (see Orientation.swift).
     @State private var intro = false
     /// Read here, where there is exactly one of them. The unread poll belongs
@@ -22,7 +31,7 @@ struct QuiltHome: View {
         Group {
             if #available(iOS 18.0, *) {
                 TabView(selection: $pane) {
-                    Tab(value: Pane.quilt) { quiltPane } label: { Label { Text("Quilt") } icon: { quiltIcon } }
+                    Tab(value: Pane.quilt) { quiltPane } label: { quiltLabel }
                     Tab("Events", systemImage: "calendar", value: Pane.events) { eventsPane }
                     Tab("Discover", systemImage: "safari", value: Pane.discover) { discoverPane }
                     // There is no Dashboard until there is an account to dash:
@@ -30,33 +39,49 @@ struct QuiltHome: View {
                     if session.me != nil {
                         Tab("Dashboard", systemImage: "rectangle.stack", value: Pane.dashboard) { dashboardPane }
                     }
-                    // A button, not a place: choosing it focuses the top bar's field (see onChange).
-                    Tab("Search", systemImage: "magnifyingglass", value: Pane.search, role: .search) { Color.clear }
+                    // A plain tab, not a search-role one: the system lays a
+                    // search-role tab out as its own magnifier pill once it has
+                    // been selected, which split the bar and read as a lost
+                    // item. This app has its own field in the top bar and uses
+                    // none of the search role's behaviour, so the tab stays in
+                    // line with the other four (see onChange).
+                    Tab("Search", systemImage: "magnifyingglass", value: Pane.search) { searchPane }
                 }
             } else {
                 TabView(selection: $pane) {
-                    quiltPane.tabItem { Label { Text("Quilt") } icon: { quiltIcon } }.tag(Pane.quilt)
+                    quiltPane.tabItem { quiltLabel }.tag(Pane.quilt)
                     eventsPane.tabItem { Label("Events", systemImage: "calendar") }.tag(Pane.events)
                     discoverPane.tabItem { Label("Discover", systemImage: "safari") }.tag(Pane.discover)
                     if session.me != nil {
                         dashboardPane.tabItem { Label("Dashboard", systemImage: "rectangle.stack") }.tag(Pane.dashboard)
                     }
-                    Color.clear.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Pane.search)
+                    searchPane.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Pane.search)
                 }
             }
         }
         .onChange(of: pane) { was, now in
-            // Bouncing back from Search fires this again; that second pass must not end the search it just began.
-            if now == .search { pane = was; session.searching = true }
-            else if was != .search { session.endSearch() }
+            // Search is a place: choosing it keeps the pill selected while the
+            // field is live rather than bouncing the selection back, which
+            // slid the indicator across the bar. Where the reader came from is
+            // kept for the way back; choosing another tab ends the search.
+            if now == .search { session.searching = true }
+            else { lastPane = now; if was == .search { session.endSearch() } }
+        }
+        .onChange(of: session.searching) { _, now in
+            if !now, pane == .search { pane = lastPane }
         }
         // Letting go of the account takes its tab with it, so the selection
         // has to come home rather than point at a place that is gone.
         .onChange(of: session.me) { _, now in if now == nil, pane == .dashboard { pane = .quilt } }
-        // Hold the quilt's tab to switch quilts, the way a profile tab switches accounts.
+        // Hold the quilt's tab to switch lens or quilt, the way a profile tab switches accounts.
         .background(TabBarLongPress(item: 0) { session.switching = true })
         .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
-        .sheet(isPresented: $session.switching) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
+        .sheet(isPresented: $session.switching, onDismiss: {
+            if wantsPicker { wantsPicker = false; finding = true }
+        }) {
+            QuiltSwitcher { wantsPicker = true; session.switching = false }
+        }
+        .sheet(isPresented: $finding) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
         .task { await session.load() }
         .onAppear {
             session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard)
@@ -68,13 +93,19 @@ struct QuiltHome: View {
         .onChange(of: scenePhase) { _, now in session.scenePhaseChanged(to: now) }
         .environmentObject(session)
     }
+    /// The search tab's own page: the ground the results overlay draws on,
+    /// wearing the same top bar as every other surface so the field lands in
+    /// it, focused.
+    private var searchPane: some View {
+        NavigationStack { Color.pwGround.ignoresSafeArea().modifier(DiscoveryToolbar()) }
+    }
     /// The quilt, with the orientation card over the foot of it. The overlay
     /// goes on the tab's own content rather than on the `TabView`, so the
     /// card floats inside the canvas instead of underneath the tab bar; the
     /// padding clears the canvas's own Quilt/Map/List pill, because the card
     /// may cover the quilt but never a control.
     private var quiltPane: some View {
-        NavigationStack { QuiltBrowser() }
+        NavigationStack { QuiltBrowser(openDiscover: { pane = .discover }) }
             .overlay(alignment: .bottom) {
                 if intro, !session.searching {
                     IntroCard(quiltName: session.instance?.name ?? session.quilt.name) {
@@ -86,10 +117,25 @@ struct QuiltHome: View {
                 }
             }
     }
-    private var eventsPane: some View { NavigationStack { EventList(quilt: session.quilt).modifier(DiscoveryToolbar()) } }
+    /// The calendar narrows through the host patch, so it wears the quilt's
+    /// Filter too: the same sheet, the same state the canvas reads.
+    private var eventsPane: some View {
+        NavigationStack {
+            EventList(quilt: session.quilt)
+                .modifier(DiscoveryToolbar(filter: $eventFiltering))
+                .sheet(isPresented: $eventFiltering) { FilterSheet() }
+        }
+    }
     private var discoverPane: some View { NavigationStack { Discover() } }
     private var dashboardPane: some View {
         NavigationStack { Dashboard(openDiscover: { pane = .discover }) }
+    }
+    /// The tab says which lens is on, so a reader in My Quilt can see it from
+    /// every other tab too. The identifier is the stable handle; the words
+    /// are what change.
+    private var quiltLabel: some View {
+        Label { Text(session.scope == .my ? "My Quilt" : "Quilt") } icon: { quiltIcon }
+            .accessibilityIdentifier("quiltTab")
     }
     @ViewBuilder private var quiltIcon: some View {
         if let icon = session.tabIcon, let dim = session.tabIconDim { Image(uiImage: pane == .quilt ? icon : dim).renderingMode(.original) }
@@ -130,14 +176,11 @@ struct DiscoveryToolbar: ViewModifier {
                     }
                 }
                 ToolbarItem(placement: .principal) { field }
-                // The bell belongs beside the account, because it is the
-                // account's: a signed-out reader has nothing to be told.
-                if session.me != nil, !session.searching {
-                    ToolbarItem(placement: .topBarTrailing) { NotificationBell(presented: $notifications) }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if session.searching {
-                        Button("Cancel") { session.endSearch() }
+                        Button { session.endSearch() } label: { Image(systemName: "xmark") }
+                            .accessibilityLabel("Cancel search")
+                            .accessibilityIdentifier("cancelSearch")
                     } else {
                         Menu {
                             // Signing in is native now. Joining a patch,
@@ -153,6 +196,16 @@ struct DiscoveryToolbar: ViewModifier {
                                 // spoken. Both, in one sentence.
                                 .accessibilityLabel("Signed in as \(me.title), \(me.handle)")
                                 .accessibilityIdentifier("accountMe")
+                                // The bell lives under the account rather than
+                                // beside it: a second bar button squeezed the
+                                // field, and what it opens is the account's.
+                                Button { notifications = true } label: {
+                                    Text("Notifications")
+                                    if session.unread > 0 { Text("\(UnreadTally.badge(session.unread)) unread") }
+                                    Image(systemName: session.unread > 0 ? "bell.badge" : "bell")
+                                }
+                                .accessibilityLabel("Notifications, \(session.unread) unread")
+                                .accessibilityIdentifier("notificationBell")
                                 Button { Task { await session.signOut() } } label: {
                                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                                 }
@@ -163,8 +216,25 @@ struct DiscoveryToolbar: ViewModifier {
                             Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
                             Button { display = true } label: { Label("Display", systemImage: "slider.horizontal.3") }
                             Button { session.switching = true } label: { Label("Switch quilt", systemImage: "square.grid.2x2") }
-                        } label: { Image(systemName: "person.crop.circle") }
-                        .accessibilityLabel("Account")
+                        } label: {
+                            // The unread count rides the account glyph, hung
+                            // inside a padded frame so the capsule cannot clip
+                            // it; the padding is unconditional so the glyph
+                            // does not shift when the count arrives.
+                            Image(systemName: "person.crop.circle")
+                                .padding(.top, 6).padding(.trailing, 7)
+                                .overlay(alignment: .topTrailing) {
+                                    if session.unread > 0 {
+                                        Text(UnreadTally.badge(session.unread))
+                                            .font(Font.pw.caption2Semibold).foregroundStyle(Color(.systemBackground))
+                                            .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
+                                            .background(Color.pwAccent, in: Capsule())
+                                    }
+                                }
+                                .padding(.bottom, 6).padding(.leading, 7)
+                        }
+                        .accessibilityLabel(session.me == nil ? "Account" : "Account, \(session.unread) unread")
+                        .accessibilityIdentifier("Account")
                     }
                 }
             }
@@ -220,14 +290,20 @@ private struct FieldChrome: ViewModifier {
     }
 }
 
-/// Liquid glass where the system has it; material where it does not. The
-/// glass is tinted with the app's own surface: the quilt under it is dense
-/// and unpredictable, and a control that carries text needs a floor of its
-/// own without a band behind it. Tinted regular glass is the system's answer
-/// to exactly that — it stays glass, it just reads frosted.
+/// Liquid glass where the system has it, the same glass the bar's own
+/// buttons wear so the field and its neighbours are one family; material
+/// with a hairline where it does not. The glass carries a tint of the app's
+/// surface, because the quilt under it is dense and unpredictable and a
+/// control that carries text needs some floor of its own.
 private struct GlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
-        content.background(.thickMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
+        if #available(iOS 26, *) {
+            // The same glass the bar's buttons wear, tinted with the app's
+            // surface so a placeholder still reads over dense cloth.
+            content.glassEffect(.regular.tint(Color.pwSurface.opacity(0.72)).interactive(), in: Capsule())
+        } else {
+            content.background(.thickMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
+        }
     }
 }
 

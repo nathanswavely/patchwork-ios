@@ -271,41 +271,6 @@ extension PatchworkAPI {
 
 // MARK: - The bell
 
-/// The bell in the discovery bar, beside the account it belongs to. It is
-/// drawn only where there is an account: a signed-out reader has no
-/// notifications, no count, and nothing to press.
-struct NotificationBell: View {
-    @EnvironmentObject private var session: QuiltSession
-    @Binding var presented: Bool
-    var body: some View {
-        Button { presented = true } label: {
-            // The badge is hung on a frame that has already been given room
-            // for it, and the balance is put back with the opposite padding
-            // afterwards. The Filter button's own badge is offset out past
-            // its glyph, which works at the bar's leading edge and does not
-            // here: the bell shares a capsule with the account menu, and an
-            // overhanging badge was clipped square down its right-hand side.
-            // The padding is unconditional so the bell does not shift when
-            // the count arrives.
-            Image(systemName: session.unread > 0 ? "bell.fill" : "bell")
-                .padding(.top, 6)
-                .padding(.trailing, 7)
-                .overlay(alignment: .topTrailing) {
-                    if session.unread > 0 {
-                        Text(UnreadTally.badge(session.unread))
-                            .font(Font.pw.caption2Semibold).foregroundStyle(Color(.systemBackground))
-                            .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
-                            .background(Color.pwAccent, in: Capsule())
-                    }
-                }
-                .padding(.bottom, 6)
-                .padding(.leading, 7)
-        }
-        .accessibilityLabel("Notifications, \(session.unread) unread")
-        .accessibilityIdentifier("notificationBell")
-    }
-}
-
 // MARK: - The sheet
 
 /// The web's notifications page as a sheet: chips across the top, a stack of

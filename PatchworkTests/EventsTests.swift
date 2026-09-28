@@ -330,4 +330,23 @@ final class EventQueryTests: XCTestCase {
         XCTAssertEqual(api.feedURL(slug: "common-thread").absoluteString,
                        "https://quilt.example.org/api/v1/nodes/common-thread/events.rss")
     }
+
+    /// My Quilt's calendar is the server's narrowing: `scope=my` travels only
+    /// when asked for, so every public read stays exactly what it was.
+    func testScopeTravelsOnlyWhenAskedFor() {
+        let plain = PatchworkAPI.eventsQuery(slug: nil, limit: 30)
+        XCTAssertNil(plain.first { $0.name == "scope" }, "the whole quilt is the unmarked default")
+        let mine = PatchworkAPI.eventsQuery(slug: nil, after: "cursor-1", limit: 30, scope: "my")
+        XCTAssertEqual(mine.filter { $0.name == "scope" }.map(\.value), ["my"])
+        XCTAssertEqual(mine.first { $0.name == "after" }?.value, "cursor-1", "paging still rides along")
+        XCTAssertNil(PatchworkAPI.eventsQuery(slug: nil, scope: "").first { $0.name == "scope" }, "an empty scope is no scope")
+    }
+
+    /// The list's own mapping from the quilt's lens to that one value.
+    func testTheQuiltScopeNamesItsOwnQuery() {
+        XCTAssertNil(QuiltScope.whole.value)
+        XCTAssertTrue(QuiltScope.whole.query.isEmpty, "the whole tree is the public read, unchanged")
+        XCTAssertEqual(QuiltScope.my.value, "my")
+        XCTAssertEqual(QuiltScope.my.query, [URLQueryItem(name: "scope", value: "my")])
+    }
 }

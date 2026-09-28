@@ -2,6 +2,7 @@
 
 #if DEBUG
 import Foundation
+import UIKit
 
 /// Fictional, offline design fixtures. Only enabled by an explicit debug launch argument.
 enum PreviewData {
@@ -65,6 +66,29 @@ enum PreviewData {
         "node_name":"The Listening Room","node_slug":"listening-room","node_status":"unclaimed"}
         """
         return [("demo-event", tonight), ("demo-event-2", soon), ("demo-event-3", later)]
+    }
+
+    /// The fictional quilt's icon, drawn rather than shipped: a pinwheel
+    /// block in the app's rust on cloth, at the side `instance/icon` serves.
+    static func icon() -> Data {
+        let side: CGFloat = 50, half: CGFloat = 25
+        let cloth = UIColor(red: 0.96, green: 0.94, blue: 0.90, alpha: 1)
+        let rust = UIColor(red: 0.72, green: 0.29, blue: 0.10, alpha: 1)
+        let ink = UIColor(red: 0.12, green: 0.11, blue: 0.10, alpha: 1)
+        let blades: [(CGPoint, CGPoint, CGPoint, UIColor)] = [
+            (CGPoint(x: 0, y: 0), CGPoint(x: half, y: 0), CGPoint(x: half, y: half), rust),
+            (CGPoint(x: half, y: 0), CGPoint(x: side, y: 0), CGPoint(x: side, y: half), ink),
+            (CGPoint(x: side, y: half), CGPoint(x: side, y: side), CGPoint(x: half, y: side), rust),
+            (CGPoint(x: 0, y: half), CGPoint(x: half, y: side), CGPoint(x: 0, y: side), ink),
+        ]
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).pngData { context in
+            cloth.setFill(); context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            for (a, b, c, color) in blades {
+                let path = UIBezierPath()
+                path.move(to: a); path.addLine(to: b); path.addLine(to: c); path.close()
+                color.setFill(); path.fill()
+            }
+        }
     }
 
     /// The offline stand-in for `events/{id}/event.ics`, so the share
@@ -448,7 +472,16 @@ enum PreviewData {
         case "instance/lining": json = ###"{"title":"Community Standards","body":"This fictional patch, like every patch on this fictional quilt, starts by agreeing to the lining.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are. We regulate actions, not identity.\n\n## Say what you are\n\nA patch describes itself honestly: who it is, what it does, and who it answers to.","version":1}"###
         case "legal/privacy": json = ###"{"doc":"privacy","title":"Privacy Policy","markdown":"## The short version\n\nNothing here is real, so nothing here is collected. This document exists so the app has a document to render.\n\n- No ads.\n- No trackers.","customized":true,"updated_at":"2026-01-01T00:00:00.000Z"}"###
         case "legal/terms": json = ###"{"doc":"terms","title":"User Agreement","markdown":"## The short version\n\nBe someone your community would vouch for. This fictional agreement has no force anywhere.","customized":false,"updated_at":"2026-01-01T00:00:00.000Z"}"###
-        case "nodes/tree": json = "{\"tree\":{\"children\":[\(([patch, second] + extras).joined(separator: ","))]}}"
+        case "nodes/tree":
+            // `scope=my` narrows the tree the way it narrows the feed: to the
+            // patches the reader holds an active row on. Signed out there is
+            // nobody for it to be about, so it answers an empty quilt.
+            var children = [patch, second] + extras
+            if query.contains(where: { $0.name == "scope" && $0.value == "my" }) {
+                let held = signedIn ? heldNodeIds : []
+                children = children.filter { json in held.contains { json.hasPrefix("{\"id\":\"\($0)\"") } }
+            }
+            json = "{\"tree\":{\"children\":[\(children.joined(separator: ","))]}}"
         // The node carries its own membership policy always, and who the
         // reader is to it only where there is a session (see `relation`).
         case "nodes/common-thread": json = "{\"node\":\(node(patch, slug: "common-thread")),\"is_unclaimed\":false,\"lining_status\":\"diverged\"}"

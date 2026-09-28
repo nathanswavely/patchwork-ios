@@ -4,6 +4,9 @@ import MapKit
 
 struct QuiltBrowser: View {
     @EnvironmentObject private var session: QuiltSession
+    /// The door to Discover, which is not scoped: where My Quilt is empty,
+    /// the whole quilt's question is the natural next place to look.
+    var openDiscover: (() -> Void)? = nil
     @State private var mode = "Quilt"
     @State private var sort = PatchOrder.quilt
     @State private var filtering = false
@@ -18,7 +21,25 @@ struct QuiltBrowser: View {
         Group {
             if session.loading { ProgressView("Loading quilt…") }
             else if let error = session.error { FailureView(message: error) { Task { await session.load() } } }
-            else if session.patches.isEmpty {
+            else if session.patches.isEmpty && session.scope == .my {
+                // An empty My Quilt is not an empty quilt: the reader simply
+                // holds nothing yet. It says which lens is on and offers the
+                // two ways out of it.
+                ContentUnavailableView {
+                    Label("Nothing in My Quilt yet", systemImage: "heart")
+                } description: {
+                    Text("Patches you follow or join gather here.")
+                } actions: {
+                    showWholeQuilt
+                    if let openDiscover {
+                        Button("Find patches in Discover", action: openDiscover)
+                            .font(Font.pw.subheadlineMedium)
+                            .accessibilityIdentifier("myQuiltDiscover")
+                    }
+                }
+                .accessibilityIdentifier("myQuiltEmpty")
+                .background(Color.pwGround.ignoresSafeArea())
+            } else if session.patches.isEmpty {
                 // The web's two silences, kept distinct: an empty quilt is
                 // nobody's mistake and offers no action but the one door out.
                 ContentUnavailableView {
@@ -26,6 +47,19 @@ struct QuiltBrowser: View {
                 } description: {
                     Text("No patches on this quilt so far.")
                 } actions: { suggestLink }
+                .background(Color.pwGround.ignoresSafeArea())
+            } else if filtered.isEmpty && session.scope == .my {
+                // Two lenses at once (web ADR 022): the empty result names
+                // both, and each can be let go of on its own.
+                ContentUnavailableView {
+                    Label("No patches match your filter in My Quilt", systemImage: "line.3.horizontal.decrease")
+                } description: {
+                    Text("Nothing you follow or join matches your filter.")
+                } actions: {
+                    Button("Clear filter") { session.clearFilters() }
+                    showWholeQuilt
+                }
+                .accessibilityIdentifier("myQuiltFilteredEmpty")
                 .background(Color.pwGround.ignoresSafeArea())
             } else if filtered.isEmpty {
                 ContentUnavailableView {
@@ -139,6 +173,12 @@ struct QuiltBrowser: View {
                 .exitLink(fills: false)
                 .accessibilityIdentifier("suggestPatch")
         }
+    }
+
+    /// The way back out of My Quilt, from wherever it came up empty.
+    private var showWholeQuilt: some View {
+        Button("Show the whole quilt") { session.scope = .whole }
+            .accessibilityIdentifier("showWholeQuilt")
     }
 
     /// The view switcher rides the foot of the canvas, in thumb reach.
