@@ -126,7 +126,53 @@ final class RelationshipTests: XCTestCase {
         XCTAssertEqual(RelationshipControl.sentence(for: "pending"), "Membership request sent")
     }
 
+    /// A follow and a join both come back `active`. The follow says so
+    /// itself, or a reader who followed is told they joined.
+    func testAFollowIsNotWordedAsAJoin() {
+        XCTAssertEqual(RelationshipControl.sentence(for: "following"), "Following patch")
+        XCTAssertEqual(RelationshipControl.sentence(for: "active"), "You are now a member")
+    }
+
     // MARK: - The membership index
+
+    /// The index is served a page at a time, oldest first. A reader holding
+    /// more rows than one page has to be read to the end, or the follow they
+    /// just made is the row nobody fetched and the button offers it again.
+    func testTheIndexIsReadToItsLastPage() async throws {
+        func page(_ range: Range<Int>, next: String) throws -> MembershipPage {
+            let rows = range.map { #"{"id":"m\#($0)","role":"follower","status":"active","node_slug":"patch-\#($0)"}"# }
+            let json = #"{"items":[\#(rows.joined(separator: ","))],"next_cursor":"\#(next)"}"#
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            return try decoder.decode(MembershipPage.self, from: Data(json.utf8))
+        }
+        var asked: [[URLQueryItem]] = []
+        let rows = try await MembershipPage.all { query in
+            asked.append(query)
+            switch query.first(where: { $0.name == "after" })?.value {
+            case nil: return try page(0..<100, next: "m99")
+            case "m99": return try page(100..<123, next: "")
+            default: XCTFail("An unknown cursor was asked for"); return try page(0..<0, next: "")
+            }
+        }
+        XCTAssertEqual(rows.count, 123)
+        XCTAssertEqual(asked.count, 2)
+        XCTAssertEqual(asked[0], [URLQueryItem(name: "limit", value: "100")])
+        XCTAssertEqual(asked[1].last, URLQueryItem(name: "after", value: "m99"))
+        XCTAssertEqual(QuiltSession.standing(in: rows, for: "patch-122"), .active(.follower),
+                       "The newest follow is on the last page")
+    }
+
+    /// A cursor that never runs out is stopped, not followed forever.
+    func testACursorThatRepeatsEndsTheRead() async throws {
+        let json = #"{"items":[{"id":"m1","status":"active","role":"member","node_slug":"a"}],"next_cursor":"m1"}"#
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let page = try decoder.decode(MembershipPage.self, from: Data(json.utf8))
+        var calls = 0
+        _ = try await MembershipPage.all { _ in calls += 1; return page }
+        XCTAssertEqual(calls, 2)
+    }
 
     func testTheIndexAnswersForOnePatchAndNotForAnother() throws {
         let rows = [
