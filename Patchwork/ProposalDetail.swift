@@ -476,10 +476,16 @@ struct ProposalDetailView: View {
         if canReply || canEdit || canDelete {
             HStack(spacing: 18) {
                 if canReply {
-                    smallAct("Reply", id: "commentReply") { replyingTo = comment.id; replyText = ""; editing = nil }
+                    smallAct("Reply", id: "commentReply") {
+                        replyingTo = comment.id; replyText = ""; editing = nil
+                        focusSoon("replyField")
+                    }
                 }
                 if canEdit {
-                    smallAct("Edit", id: "commentEdit") { editing = comment.id; editText = comment.body; replyingTo = nil }
+                    smallAct("Edit", id: "commentEdit") {
+                        editing = comment.id; editText = comment.body; replyingTo = nil
+                        focusSoon("commentEditField")
+                    }
                 }
                 if canDelete {
                     smallAct("Delete", id: "commentDelete") { deleting = comment }
@@ -487,6 +493,15 @@ struct ProposalDetailView: View {
                 Spacer(minLength: 0)
             }
             .disabled(commentBusy)
+        }
+    }
+
+    /// The inline field opens with the keyboard up, after the row that holds
+    /// it has been laid out.
+    private func focusSoon(_ field: String) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            typing = field
         }
     }
 
