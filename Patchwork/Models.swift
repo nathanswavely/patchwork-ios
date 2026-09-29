@@ -145,7 +145,26 @@ struct Patch: Decodable, Identifiable, Hashable {
     /// Present only while the row is active.
     let membershipRole: String?
     let isBanned: Bool?
+    /// Where this patch keeps time (web ADR 045), as an IANA name. Empty or
+    /// absent means it inherits the quilt's, which is the stored value's
+    /// own meaning rather than a gap in the payload.
+    let timezone: String?
+    /// The patch admins' switch for whether a stranger may suggest an event
+    /// here at all (web ADR 026). Absent reads as no, as the web reads it.
+    let acceptEventSuggestions: Bool?
+    /// What this patch's followers may have (web ADR 2026-09-19). Only the
+    /// events switch is read: it is a ceiling on an event's tier.
+    let followerPermissions: FollowerPermissions?
     var communityListing: Bool { isUnclaimed == true || status == "unclaimed" }
+}
+
+/// `follower_permissions`, the four switches a patch's rules carry. Only
+/// `events` is decoded, because it is the one this client acts on: where it
+/// is false the Followers tier is not offered on the event form. Absent
+/// reads as allowed, which is the server's own default for a patch that
+/// has never opened its rules editor.
+struct FollowerPermissions: Decodable, Hashable {
+    let events: Bool?
 }
 
 /// What a patch chose for its tile — palette, block, rotation, bundle, motif —
@@ -224,6 +243,10 @@ struct PatchResponse: Decodable {
     let isAdmin: Bool?
     let membershipRole: String?
     let isBanned: Bool?
+    /// Whether this reader's trusted-contributor grant — quilt-wide, or
+    /// scoped to this one patch — reaches it (web ADR 2026-09-18). Only ever
+    /// true on an unclaimed patch, where it turns a suggestion into a post.
+    let viewerTrusted: Bool?
     /// Banned, wherever this quilt said so. A banned reader is offered
     /// nothing at all, which is a fact about them rather than about the patch.
     var banned: Bool { isBanned ?? node.isBanned ?? false }

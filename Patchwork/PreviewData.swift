@@ -66,6 +66,20 @@ enum PreviewData {
         "node_name":"The Listening Room","node_slug":"listening-room","node_status":"unclaimed"}
         """
         return [("demo-event", tonight), ("demo-event-2", soon), ("demo-event-3", later)]
+            + postedEvents.filter(\.active).map { (id: $0.id, json: $0.json) }
+    }
+
+    /// What `POST events` has made this launch. An active one joins the
+    /// feed; a pending one is only ever answered by id, to its submitter.
+    private static var postedEvents: [(id: String, json: String, active: Bool)] = []
+    private static let extraMovedTo = "https://neighbor.example.org/patches/pottery-circle"
+
+    /// `starts_at` as the feed compares it: text.
+    private static func startsAt(_ json: String) -> String {
+        guard let range = json.range(of: "\"starts_at\":\"") else { return "" }
+        let rest = json[range.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return "" }
+        return String(rest[..<end])
     }
 
     /// The fictional quilt's icon, drawn rather than shipped: a pinwheel
@@ -121,14 +135,15 @@ enum PreviewData {
         let items = events.map(\.json).filter { json in
             if !slug.isEmpty && !json.contains("\"node_slug\":\"\(slug)\"") { return false }
             if let mine, !mine.contains(where: { json.contains("\"node_id\":\"\($0)\"") }) { return false }
-            guard let range = json.range(of: "\"starts_at\":\"") else { return true }
-            let rest = json[range.upperBound...]
-            guard let end = rest.firstIndex(of: "\"") else { return true }
-            let startsAt = String(rest[..<end])
+            let startsAt = startsAt(json)
+            if startsAt.isEmpty { return true }
             if !from.isEmpty && startsAt < from { return false }
             if !to.isEmpty && startsAt > to { return false }
             return true
         }
+        // Ascending, as the server orders them, now that a posted event can
+        // arrive after the fixtures that are later than it.
+        .sorted { startsAt($0) < startsAt($1) }
         return "{\"items\":[\(items.joined(separator: ","))],\"next_cursor\":\"\"}"
     }
 
@@ -169,22 +184,35 @@ enum PreviewData {
         }
     }
 
-    /// The two patches a membership can be held on offline, with the facts the
+    /// The patches a membership can be held on offline, with the facts the
     /// relationship rules read: whether it is public, and how it takes
-    /// members. Common Thread approves; the Listening Room admits anyone.
+    /// members. Common Thread approves; the Listening Room and the Repair
+    /// Cafe admit anyone.
     private static let holdable: [(slug: String, id: String, name: String, blurb: String, visibility: String, policy: String)] = [
         ("common-thread", "demo-patch", "Common Thread Studio",
          "A place to make things and meet your neighbors.", "public", "approval_required"),
         ("listening-room", "demo-patch-2", "The Listening Room",
          "Independent music in good company.", "public", "open"),
+        (memberSlug, memberSlug, extraNames[6], "", "public", "open"),
     ]
 
     /// The membership set the writes mutate and `me/nodes`, `nodes/{slug}` and
     /// `events?scope=my` all read back. A signed-in reader starts out
-    /// following the Listening Room and nothing else: enough for the Dashboard
-    /// to have something in it on arrival, and every other act still to make.
+    /// following the Listening Room and a member of the Repair Cafe: enough
+    /// for the Dashboard to have something in it on arrival, a patch the
+    /// reader can only suggest an event to and one they post to directly,
+    /// and every other act still to make. The membership is on one of the
+    /// extras so the follow and join tests, which read the studio and the
+    /// Listening Room, find both exactly as they were.
     private static var held: [String: (role: String, status: String)] = signedIn ? freshHeld : [:]
-    private static let freshHeld: [String: (role: String, status: String)] = ["listening-room": (role: "follower", status: "active")]
+    private static let freshHeld: [String: (role: String, status: String)] = [
+        "listening-room": (role: "follower", status: "active"),
+        memberSlug: (role: "member", status: "active"),
+    ]
+    /// The extra the fixture reader is a member of: the Repair Cafe.
+    static let memberSlug = "extra-6"
+    /// The quilt's other ten patches, by name; `extra-N` is the Nth.
+    private static let extraNames = ["Community Garden", "Bike Kitchen", "Neighborhood Books", "River Walkers", "Pottery Circle", "Market Friends", "Repair Cafe", "Film Club", "Food Share", "Evening Choir"]
 
     static func signOut() {
         signedIn = false
@@ -570,6 +598,85 @@ enum PreviewData {
         }
     }
 
+    // MARK: Posting an event
+
+    /// What `CreateEvent` needs to know about the patch an event is for.
+    private static func postingFacts(_ nodeId: String) -> (slug: String, name: String, unclaimed: Bool, accepts: Bool, movedTo: String)? {
+        switch nodeId {
+        case "demo-patch": return ("common-thread", "Common Thread Studio", false, false, "")
+        case "demo-patch-2": return ("listening-room", "The Listening Room", false, true, "")
+        default:
+            guard nodeId.hasPrefix("extra-"), let index = Int(nodeId.dropFirst("extra-".count)),
+                  extraNames.indices.contains(index) else { return nil }
+            return (nodeId, extraNames[index], index == 3, true, index == 4 ? extraMovedTo : "")
+        }
+    }
+
+    /// `POST events`, decided by the server's own rule in the server's own
+    /// order: the image and the link, recurrence, the required three, the
+    /// tier's spelling, the patch, then who may post directly. Everybody
+    /// else's event is a suggestion — refused where the patch has moved or
+    /// does not take them, and public whatever tier it asked for.
+    private static func eventPost(_ fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        let text = { (key: String) in (fields[key] as? String) ?? "" }
+        if let problem = EventPosting.imageProblem(url: text("image_url"), alt: text("image_alt")) { throw APIError.message(problem, status: 400) }
+        if let problem = EventPosting.linkProblem(text("event_url")) { throw APIError.message(problem, status: 400) }
+        if !text("recurrence").trimmingCharacters(in: .whitespaces).isEmpty {
+            throw APIError.message("this quilt does not expand recurring events — add each date as its own event, or attach the calendar as an event source in the patch's settings", status: 400)
+        }
+        let nodeId = text("node_id"), title = text("title"), starts = text("starts_at")
+        guard !nodeId.isEmpty, !title.isEmpty, !starts.isEmpty else {
+            throw APIError.message("node_id, title, and starts_at are required", status: 400)
+        }
+        var visibility = text("visibility")
+        if visibility.isEmpty { visibility = "public" }
+        guard ["public", "followers", "members"].contains(visibility) else {
+            throw APIError.message("visibility must be public, followers, or members", status: 400)
+        }
+        guard let target = postingFacts(nodeId) else { throw APIError.message("node not found", status: 404) }
+        let role = held[target.slug].flatMap { $0.status == "active" ? $0.role : nil }
+        // Members and admins of a claimed patch, the instance admin anywhere,
+        // and a trusted contributor on an unclaimed one — which the fixture
+        // reader is not. A follower is not a member.
+        let direct = (accountFields["role"] as? String) == "admin"
+            || (!target.unclaimed && (role == "member" || role == "admin"))
+        var status = "active"
+        if !direct {
+            if !target.movedTo.isEmpty {
+                throw refuse(403, "this patch has moved. Take part at its new home instead.", extra: ",\"moved_to\":\"\(target.movedTo)\"")
+            }
+            if !target.unclaimed && !target.accepts {
+                throw APIError.message("this patch does not accept event suggestions", status: 403)
+            }
+            status = "pending_review"
+            visibility = "public"
+        }
+        let id = "posted-\(postedEvents.count + 1)"
+        var event: [String: Any] = [
+            "id": id, "node_id": nodeId, "created_by": "demo-user", "title": title,
+            "description": text("description"), "location": text("location"),
+            "starts_at": starts, "timezone": "America/New_York", "recurrence": "", "visibility": visibility,
+            "image_url": text("image_url").trimmingCharacters(in: .whitespaces),
+            "image_alt": text("image_alt").trimmingCharacters(in: .whitespaces),
+            "event_url": text("event_url").trimmingCharacters(in: .whitespaces), "status": status,
+        ]
+        if let ends = fields["ends_at"] as? String { event["ends_at"] = ends }
+        // The 201 is the bare event; the list and `events/{id}` add the
+        // patch's name, slug and status beside it.
+        let answer = serialize(event)
+        event["node_name"] = target.name
+        event["node_slug"] = target.slug
+        event["node_status"] = target.unclaimed ? "unclaimed" : "active"
+        postedEvents.append((id: id, json: serialize(event), active: status == "active"))
+        return answer
+    }
+
+    private static func serialize(_ object: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// The offline stand-in for every non-GET. The JSON is returned as text so
     /// a write with nothing to read (`auth/logout`, marking a notification
     /// read) runs the same path as one with a user in the answer.
@@ -613,20 +720,25 @@ enum PreviewData {
         case "auth/logout":
             signOut()
             return "{}"
+        case "events":
+            return try eventPost(fields)
         default:
             return try membershipPost(path, fields: fields)
         }
     }
 
     static func response<T: Decodable>(_ path: String, query: [URLQueryItem] = []) throws -> T {
-        let patch = #"{"id":"demo-patch","name":"Common Thread Studio","slug":"common-thread","description":"A place to make things and meet your neighbors. Open studio evenings, shared tools, and room for your next idea.","tags":["craft","community"],"member_count":12,"follower_count":34,"upcoming_event_count":4,"appearance":{"palette":"anthem","block":"ohioStar","rotation":90,"icon":"scissors"},"address":"12 Example Street","latitude":40.04,"longitude":-76.3,"website":"https://commonthread.example.org","links":[{"url":"https://makers.example.org/common-thread","label":"Our makers’ directory"}],"did":"did:web:commonthread.example.org","visibility":"public","public_member_list":"everyone","public_governance_record":"everyone"}"#
-        let second = ##"{"id":"demo-patch-2","name":"The Listening Room","slug":"listening-room","description":"Independent music in good company.","tags":["music","venue"],"visibility":"public","public_member_list":"nobody","public_governance_record":"nobody","member_count":8,"follower_count":15,"appearance":{"block":{"grid":3,"colors":{"0,1":[1],"0,2":[2],"1,0":[1],"1,2":[1],"2,0":[2],"2,1":[1]}},"rotation":0,"bundle":["#2E7D5B","#204B4B","#D9D6AF","#D89E13"]}}"##
-        let names = ["Community Garden", "Bike Kitchen", "Neighborhood Books", "River Walkers", "Pottery Circle", "Market Friends", "Repair Cafe", "Film Club", "Food Share", "Evening Choir"]
-        let extras = names.enumerated().map { index, name in
+        let patch = #"{"id":"demo-patch","name":"Common Thread Studio","slug":"common-thread","description":"A place to make things and meet your neighbors. Open studio evenings, shared tools, and room for your next idea.","tags":["craft","community"],"member_count":12,"follower_count":34,"upcoming_event_count":4,"appearance":{"palette":"anthem","block":"ohioStar","rotation":90,"icon":"scissors"},"address":"12 Example Street","latitude":40.04,"longitude":-76.3,"website":"https://commonthread.example.org","links":[{"url":"https://makers.example.org/common-thread","label":"Our makers’ directory"}],"did":"did:web:commonthread.example.org","visibility":"public","public_member_list":"everyone","public_governance_record":"everyone","timezone":"America/New_York","accept_event_suggestions":false,"follower_permissions":{"events":true,"proposals":true,"charters":false,"members":true}}"#
+        let second = ##"{"id":"demo-patch-2","name":"The Listening Room","slug":"listening-room","description":"Independent music in good company.","tags":["music","venue"],"visibility":"public","public_member_list":"nobody","public_governance_record":"nobody","member_count":8,"follower_count":15,"appearance":{"block":{"grid":3,"colors":{"0,1":[1],"0,2":[2],"1,0":[1],"1,2":[1],"2,0":[2],"2,1":[1]}},"rotation":0,"bundle":["#2E7D5B","#204B4B","#D9D6AF","#D89E13"]},"timezone":"America/New_York","accept_event_suggestions":true,"follower_permissions":{"events":true,"proposals":true,"charters":false,"members":true}}"##
+        let extras = extraNames.enumerated().map { index, name in
             // One patch has left this quilt, so a list has something to wear
             // the Moved chip on (web ADR 090).
-            let moved = index == 4 ? ",\"moved_to\":\"https://neighbor.example.org/patches/pottery-circle\"" : ""
-            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")\(moved)}"
+            let moved = index == 4 ? ",\"moved_to\":\"\(extraMovedTo)\"" : ""
+            // Every extra keeps New York time and takes suggestions; the
+            // Repair Cafe keeps its non-public events from followers, so
+            // the tier's ceiling has somewhere to be seen offline.
+            let posting = ",\"timezone\":\"America/New_York\",\"accept_event_suggestions\":true,\"follower_permissions\":{\"events\":\(index != 6),\"proposals\":true,\"charters\":false,\"members\":true}"
+            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")\(moved)\(posting)}"
         }
         let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
@@ -660,8 +772,10 @@ enum PreviewData {
             json = "{\"tree\":{\"children\":[\(children.joined(separator: ","))]}}"
         // The node carries its own membership policy always, and who the
         // reader is to it only where there is a session (see `relation`).
-        case "nodes/common-thread": json = "{\"node\":\(node(patch, slug: "common-thread")),\"is_unclaimed\":false,\"lining_status\":\"diverged\"}"
-        case "nodes/listening-room": json = "{\"node\":\(node(second, slug: "listening-room")),\"is_unclaimed\":false,\"lining_status\":\"pristine\"}"
+        // `viewer_trusted` is always stated and only ever true on an unclaimed
+        // patch; the fixture reader holds no trusted-contributor grant.
+        case "nodes/common-thread": json = "{\"node\":\(node(patch, slug: "common-thread")),\"is_unclaimed\":false,\"lining_status\":\"diverged\",\"viewer_trusted\":false}"
+        case "nodes/listening-room": json = "{\"node\":\(node(second, slug: "listening-room")),\"is_unclaimed\":false,\"lining_status\":\"pristine\",\"viewer_trusted\":false}"
         case "me/nodes":
             guard signedIn else { throw APIError.unauthenticated }
             json = myNodes
@@ -712,7 +826,12 @@ enum PreviewData {
         case "proposals/demo-proposal-2": json = lapsed
         default:
             if let event = events.first(where: { "events/\($0.id)" == path }) { json = event.json }
-            else if let index = Int(path.replacingOccurrences(of: "nodes/extra-", with: "")), extras.indices.contains(index) { json = "{\"node\":\(extras[index])}" }
+            // A pending suggestion is readable by its submitter and nobody
+            // else, and it is on no list (the server's `GetEvent` rule).
+            else if let event = postedEvents.first(where: { "events/\($0.id)" == path }), signedIn { json = event.json }
+            else if let index = Int(path.replacingOccurrences(of: "nodes/extra-", with: "")), extras.indices.contains(index) {
+                json = "{\"node\":\(node(extras[index], slug: "extra-\(index)")),\"is_unclaimed\":\(index == 3),\"viewer_trusted\":false}"
+            }
             else { throw APIError.status(404) }
         }
         let decoder = JSONDecoder()

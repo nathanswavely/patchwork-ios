@@ -17,10 +17,26 @@ import SwiftUI
 /// Subscribing is the one thing a signed-out reader can genuinely do with a
 /// calendar, and the feeds exist only for a public patch (web ADR 031), so
 /// the affordance appears only when the patch says `visibility == "public"`.
+///
+/// The calendar is also where an event is added (web `PatchEvents.svelte`):
+/// "New event" for a member or an admin, "Suggest an event" for anybody the
+/// patch would take one from, as a button in the bar. Which of the two is
+/// read off the patch's own `nodes/{slug}` answer, fetched here, because the
+/// door has to say what posting will do before the form is filled.
 struct PatchCalendar: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let patch: Patch
     var close: (() -> Void)? = nil
+    /// The patch as `nodes/{slug}` states it to this reader, with the
+    /// envelope's trust and ban beside it.
+    @State private var envelope: PatchResponse?
+    @State private var composing = false
+    @State private var signingIn = false
+    /// A post the form handed back, waiting for the form to leave before it
+    /// is opened; and the one opened.
+    @State private var posted: PatchworkEvent?
+    @State private var opened: PatchworkEvent?
     @State private var upcoming: [PatchworkEvent] = []
     @State private var upcomingCursor: String?
     @State private var earlier: [PatchworkEvent] = []
@@ -32,6 +48,13 @@ struct PatchCalendar: View {
     @State private var error: String?
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     private var feedsAvailable: Bool { patch.visibility == "public" }
+    private var node: Patch { envelope?.node ?? patch }
+    /// Only on the quilt the reader is signed in to: a calendar read from
+    /// anywhere else is somebody else's quilt, and no act crosses to it.
+    private var door: EventPosting.Door {
+        guard quilt.url == session.quilt.url else { return .none }
+        return session.eventDoor(for: node, envelope: envelope)
+    }
     var body: some View {
         List {
             // One Group so every section's rows take the card surface: the
@@ -94,14 +117,44 @@ struct PatchCalendar: View {
                         .accessibilityIdentifier("subscribeToCalendar")
                 }
             }
+            if door != .none {
+                ToolbarItem(placement: .bottomBar) {
+                    EventDoorButton(door: door) { if door == .signIn { signingIn = true } else { composing = true } }
+                }
+            }
             if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
         }
         .sheet(isPresented: $subscribing) {
             NavigationStack { SubscribeToPatch(api: api, slug: patch.slug, name: patch.name) }
                 .presentationDetents([.medium, .large])
         }
-        .task { if !loaded { await loadUpcoming() } }
+        // The post opens once the form has gone, from here — a push onto
+        // this calendar's own stack, so Back is the calendar with the new
+        // night already in it.
+        .sheet(isPresented: $composing, onDismiss: { if let posted { opened = posted; self.posted = nil } }) {
+            if case .form(let right) = door {
+                EventFormSheet(patch: node, right: right, unclaimed: envelope?.isUnclaimed ?? node.communityListing,
+                               zone: session.eventZone(for: node),
+                               followersAllowed: node.followerPermissions?.events != false) { event in
+                    posted = event
+                    Task { await loadUpcoming() }
+                }
+            }
+        }
+        .signInGate($signingIn)
+        .navigationDestination(item: $opened) { EventDetail(quilt: quilt, initial: $0, close: close) }
+        .task {
+            if !loaded { await loadUpcoming() }
+            await loadNode()
+        }
+        // Signing in through the door changes who is asking: the envelope's
+        // trust and standing are read again for the new reader.
+        .onChange(of: session.me?.id) { _, _ in Task { await loadNode() } }
         .refreshable { await loadUpcoming() }
+    }
+    private func loadNode() async {
+        guard quilt.url == session.quilt.url else { return }
+        if let answer: PatchResponse = try? await api.get("nodes/\(patch.slug)") { envelope = answer }
     }
     private func heading(_ text: String) -> some View {
         Text(text).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)

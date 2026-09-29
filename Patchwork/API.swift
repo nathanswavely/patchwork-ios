@@ -16,7 +16,8 @@ enum APIError: LocalizedError, Equatable {
     /// presence, `sole_admin` lists the patches in the way — and a client
     /// that kept only the sentence would have to parse English to know which
     /// door to open. A body with no code stays a `.message`, so every refusal
-    /// this client already handled is read exactly as it was.
+    /// this client already handled is read exactly as it was — unless it
+    /// carries a moved patch's new address, which is a door of its own.
     case refused(Refusal, status: Int)
     /// A 401 from an authenticated call: the session is gone or was never
     /// there. It is a state, not a failure to report — whoever asked clears
@@ -38,6 +39,12 @@ enum APIError: LocalizedError, Equatable {
         if case .refused(let refusal, _) = self { return refusal.code }
         return nil
     }
+    /// Where a patch that has moved says it went, when the refusal is that
+    /// one (web ADR 090's `writeMovedAway`).
+    var movedTo: String? {
+        if case .refused(let refusal, _) = self { return refusal.movedTo }
+        return nil
+    }
     /// The HTTP status behind a refusal, where there was one.
     var httpStatus: Int? {
         switch self {
@@ -49,7 +56,8 @@ enum APIError: LocalizedError, Equatable {
     /// What a non-2xx answer means, read from the body where the body says.
     static func from(status: Int, data: Data) -> APIError {
         if status == 401 { return .unauthenticated }
-        if let refusal = try? JSONDecoder().decode(Refusal.self, from: data), let code = refusal.code, !code.isEmpty {
+        if let refusal = try? JSONDecoder().decode(Refusal.self, from: data),
+           !(refusal.code ?? "").isEmpty || !(refusal.movedTo ?? "").isEmpty {
             return .refused(refusal, status: status)
         }
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -65,6 +73,12 @@ enum APIError: LocalizedError, Equatable {
 /// branches on, and `patches` is the one list a refusal carries today — the
 /// patches that stand between a person and deleting their account, because
 /// they are those patches' only admin (web `account_deletion.go`).
+///
+/// `moved_to` is the other thing a refusal can carry: a patch that has left
+/// this quilt answers an outsider's event (or a join) with its sentence and
+/// the address of its new home as a field of its own, so a client can offer
+/// the address as a link without parsing prose (web ADR 090). It has no
+/// `code`, and it is still a refusal with a name — the address is the name.
 struct Refusal: Decodable, Equatable {
     struct PatchRef: Decodable, Equatable, Hashable {
         let slug: String
@@ -73,16 +87,19 @@ struct Refusal: Decodable, Equatable {
     let error: String
     let code: String?
     let patches: [PatchRef]?
-    init(error: String, code: String?, patches: [PatchRef]? = nil) {
-        self.error = error; self.code = code; self.patches = patches
+    let movedTo: String?
+    init(error: String, code: String?, patches: [PatchRef]? = nil, movedTo: String? = nil) {
+        self.error = error; self.code = code; self.patches = patches; self.movedTo = movedTo
     }
-    private enum CodingKeys: String, CodingKey { case error, code, patches }
+    private enum CodingKeys: String, CodingKey { case error, code, patches, movedTo = "moved_to" }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         error = ((try? container.decodeIfPresent(String.self, forKey: .error)) ?? nil)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         code = (try? container.decodeIfPresent(String.self, forKey: .code)) ?? nil
         patches = (try? container.decodeIfPresent([PatchRef].self, forKey: .patches)) ?? nil
+        movedTo = ((try? container.decodeIfPresent(String.self, forKey: .movedTo)) ?? nil)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
