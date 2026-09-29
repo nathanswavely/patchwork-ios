@@ -100,12 +100,39 @@ struct Membership: Decodable, Identifiable, Hashable {
 /// its own envelope and this client only needs the rows.
 struct MembershipPage: Decodable {
     let items: [Membership]
+    /// Where the next page starts, or empty on the last one. The index is
+    /// served twenty rows at a time, oldest first, so the newest follow is
+    /// the row a client that reads one page never sees.
+    let nextCursor: String?
     init(from decoder: Decoder) throws {
-        if let array = try? [Membership](from: decoder) { items = array; return }
+        if let array = try? [Membership](from: decoder) { items = array; nextCursor = nil; return }
         let container = try decoder.container(keyedBy: CodingKeys.self)
         items = try container.decodeIfPresent([Membership].self, forKey: .items) ?? []
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
     }
-    private enum CodingKeys: String, CodingKey { case items }
+    private enum CodingKeys: String, CodingKey { case items, nextCursor }
+
+    /// The whole index, a page at a time. `limit` is the server's ceiling and
+    /// `after` its cursor. The page cap is a guard against a cursor that
+    /// never runs out, not a limit anyone is expected to meet.
+    static let pageSize = 100
+    static let pageCap = 50
+    static func query(after cursor: String?) -> [URLQueryItem] {
+        var items = [URLQueryItem(name: "limit", value: String(pageSize))]
+        if let cursor, !cursor.isEmpty { items.append(URLQueryItem(name: "after", value: cursor)) }
+        return items
+    }
+    static func all(_ fetch: ([URLQueryItem]) async throws -> MembershipPage) async throws -> [Membership] {
+        var rows: [Membership] = []
+        var cursor: String?
+        for _ in 0..<pageCap {
+            let page = try await fetch(query(after: cursor))
+            rows += page.items
+            guard let next = page.nextCursor, !next.isEmpty, next != cursor else { break }
+            cursor = next
+        }
+        return rows
+    }
 }
 
 /// What `…/join`, `…/leave` and `…/withdraw` answer with.
@@ -184,4 +211,9 @@ enum Relationship: Equatable {
     static func joinOutcome(status: String?) -> String {
         status == "pending" ? "Membership request sent" : "You are now a member"
     }
+
+    /// What a follow turned out to be, in the web's words. The server answers
+    /// a follow and a join with the same `active`, so the act has to say
+    /// which of the two it was.
+    static let followOutcome = "Following patch"
 }

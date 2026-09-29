@@ -323,8 +323,8 @@ struct LaunchLens: Equatable {
     func refreshMemberships() async {
         guard me != nil else { memberships = []; return }
         do {
-            let page: MembershipPage = try await api.get("me/nodes")
-            memberships = page.items
+            let api = api
+            memberships = try await MembershipPage.all { try await api.get("me/nodes", query: $0) }
         } catch APIError.unauthenticated {
             signedOut()
         } catch {
@@ -344,8 +344,12 @@ struct LaunchLens: Equatable {
 
     /// Follow a patch: a membership with the follower role, which the server
     /// accepts on a public patch and refuses on anything else.
+    ///
+    /// The answer is `following` rather than the server's `active`: a join
+    /// answers `active` too, and the sentence that follows is not the same.
     @discardableResult func follow(_ slug: String) async throws -> String {
-        try await act("nodes/\(slug)/join", body: JoinRequest(role: "follower"))
+        let status = try await act("nodes/\(slug)/join", body: JoinRequest(role: "follower"))
+        return status == "active" ? "following" : status
     }
 
     /// Join a patch, with the message its admins will read where the policy

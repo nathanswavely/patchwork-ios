@@ -10,6 +10,10 @@ settings:
     ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     SWIFT_VERSION: '5.0'
     CODE_SIGN_STYLE: Automatic
+    # The team device builds are signed for. Simulator builds and the tests
+    # do not sign, so this costs a contributor without the team nothing
+    # until they build for a phone, where they pick their own.
+    DEVELOPMENT_TEAM: H886Z8M8DG
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
     INFOPLIST_KEY_UILaunchScreen_Generation: YES

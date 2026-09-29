@@ -1154,3 +1154,25 @@ test runner for 30 seconds (main thread busy) on the way into the
 followed patch; it did not recur in six further runs through the same patches,
 and the spindump taken was unsymbolicated, so it is reported here
 rather than fixed.
+
+## A follow the app could not see (2026-09-29)
+
+Found on a phone, on an account that follows more than twenty patches: Follow
+answered "You are now a member", and the button went on offering Follow, which
+the server then refused as "already following". Three things, all of them the
+client's:
+
+- `GET me/nodes` is paged — twenty rows by default, oldest first — and the
+  client read one page. The newest follow is the last row, so an account past
+  twenty never saw the follow it had just made. The index is now read to its
+  end (`limit=100`, `after=<next_cursor>`), which also mends the Dashboard and
+  every door that reads standing off it (posting an event, voting, discussing).
+  The web reads one page too; its patch page is right because it reads the
+  patch's own answer.
+- That answer is the second witness here as well, and it was not being heard:
+  a follower's `membership_role` rides the `nodes/{slug}` envelope, not the
+  node, and `is_member` is false for a follower (web ADR 117), so the node
+  alone can never say "follower". The control on the profile now takes the
+  envelope's standing, and stays busy until the node has been read back.
+- A follow and a join both answer `active`. The follow now says which it was,
+  and the sentence is the web's: "Following patch".

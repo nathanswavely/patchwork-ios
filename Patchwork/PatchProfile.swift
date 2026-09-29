@@ -152,7 +152,7 @@ struct PatchSheet: View {
             // The acts on their own line under the counts they change, never
             // beside the name: a name gets the whole width, and a button
             // never wraps mid-word to make room for one.
-            RelationshipControl(patch: patch, banned: envelope?.banned ?? false, placement: .cover, feedback: $feedback) { await load() }
+            RelationshipControl(patch: patch, banned: envelope?.banned ?? false, known: envelope?.standing, placement: .cover, feedback: $feedback) { await load() }
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.top, 8)
         }
