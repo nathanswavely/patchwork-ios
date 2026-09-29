@@ -997,3 +997,160 @@ through), a trusted contributor and an instance admin (the fixture reader
 is neither), the zone note on screen (the simulator keeps New York time,
 as the fixtures do), a 401 mid-form, VoiceOver, Dynamic Type at the
 accessibility sizes on this form, and a physical device.
+
+## Voting, ballots and discussion — 2026-09-29
+
+A member can take part in a patch's decisions natively: vote on a
+proposal and change the vote, cast an election's ballot, stand or put
+somebody forward while nominations are open, and discuss any proposal.
+Reference: the web's `ProposalDetail.svelte`, `VoteSection.svelte`,
+`StickyVoteBar.svelte`, `ProposalStatusBanner.svelte`, `ElectionPanel.svelte`,
+`CommentThread.svelte` and `ProposalList.svelte` (origin/main c30f99d, with
+the Sept 28 mobile pass as the phone layout); the server's `proposals.go`,
+`elections.go`, `election_view.go`, `comments.go` and the overview in
+`templates.go`; and web ADRs 041, 044, 047, 048, 050, 051, 092, 097, 098,
+106, 107, 109 and 117.
+
+- **The boundary grew by nine writes and two reads.** `POST
+  proposals/{id}/vote`, `PUT proposals/{id}/ballot`, `POST
+  proposals/{id}/candidates`, `DELETE proposals/{id}/candidates/me`, `GET`
+  and `POST proposals/{id}/comments`, `PATCH` and `DELETE comments/{id}`,
+  `POST comments/{id}/reactions` and `DELETE
+  comments/{id}/reactions/{emoji}`; and `nodes/{slug}/members` paged for the
+  nominee picker. `PUT` is new to this client. `Proposal` now decodes the
+  whole detail payload (every key optional, so a list row is still a
+  proposal; `voting_ends_at` and `election_turnout` may be JSON null), and
+  `GovernanceRules` the whole frozen `voting_terms`.
+- **The rules are values.** `VoteRules` (banner, time left in the web's
+  three spellings, quorum, threshold, terms and the tenure in force, who
+  owes a ballot, the ballot's gate, the election's words) and `Discussion`
+  (the six reactions and their order, who may comment, edit and delete) are
+  pure and tested; the screen only draws them.
+- **A write's path is escaped once.** `appendingPathComponent` escaped the
+  `%` of an already-encoded emoji a second time, so every write's URL is
+  now built from the path as encoded text (`PatchworkAPI.requestURL`): an
+  escaped heart stays `%E2%9D%A4%EF%B8%8F`, and anything unescaped is
+  escaped.
+- **The bar at the foot** stands in for the vote card's buttons once they
+  have scrolled away. `onScrollVisibilityChange` was tried first and does
+  not work inside a `List`: it reports a row arriving but never its cell
+  being recycled, so the bar never came back. The row reports its frame
+  (`onGeometryChange`, back-deployed to iOS 16, so iOS 17 gets the same bar)
+  and its disappearance instead.
+- **Web bugs deliberately not copied.** `CommentThread` gates Edit and
+  Delete on an `is_mine` field the server never sends, so on the web an
+  author cannot edit or delete their own comment; here it is `author_id`
+  against the signed-in user, and a patch admin (or a quilt admin) may also
+  delete. The web's Discussion badge reads a `comment_count` the server
+  never sends; here the count is the items plus their replies, worked out
+  on the device. The web's nominee picker pages with `cursor=`, which the
+  server ignores, so past a hundred members it re-reads page one forever;
+  here it pages with `after=`. The web does not pre-check a follower's
+  `follower_permissions.proposals` and answers a composer with a 403; here
+  a follower's composer and reaction chips wait for the switch and are
+  absent where it is off.
+- **Decisions on the contract's open questions.** Edit and delete your own:
+  yes (a web bug, not a product decision). No "edited" marker, as on the
+  web. Deleting a comment with replies says "Its n replies go with it." in
+  the confirmation, because the server cascades and keeps no tombstone.
+  A reader who can see an open vote but not cast it is told: signed out,
+  one quiet "Sign in to vote" door under the terms; a follower, "Become a
+  member to vote." with no door; a member inside the tenure bar, the terms
+  line's own date and nothing more; a refused vote, the server's sentence
+  where the buttons were. The ballot closes on the device once
+  `voting_ends_at` has passed, whatever the sweep has not got to. The home
+  trusts `needs_vote` as the server counts it (it still counts an
+  election the reader abstained in; that is the server's to fix, and the
+  number is the server's). No "you changed your vote" message: the filled
+  button moving is the answer. Reactions are drawn in the fixed web order,
+  zero-count chips only to somebody who may react. The heart is always
+  sent as U+2764 U+FE0F, and a bare heart from anywhere is read as it.
+- **Who is in the room.** A patch that keeps its record to the room
+  (`public_governance_record: nobody`, the default) still shows its members
+  their proposals: the governance home now trusts the overview's
+  `proposals_withheld`, which the server answers for the reader, once it
+  has arrived, and the profile's glimpse treats rows it was sent as not
+  withheld. Before, a member of a closed-record patch was told their own
+  proposals were not public.
+- **Out of scope, still the website's:** proposing, withdrawing, an admin's
+  approve / decline / apply / ask the members, revisions and History, and
+  the amendment's Changes. The room's note now reads "Proposing a change
+  happens on this quilt's website."; the proposal screen's note is gone.
+
+**Offline.** `PreviewData` holds proposals, elections and threads as
+values the writes mutate, and works every viewer field out for whoever is
+reading, the way `GetProposal` does. Common Thread has the open vote
+(`demo-proposal`: majority, 20% quorum, twelve eligible, six ballots, one of
+them no longer counted and one a hidden member), a lapsed one, one carried
+by a vote, a direct change, an election in its voting phase with three
+candidates and the reader's ballot already in, and one still taking names.
+The Listening Room now publishes its record, keeps followers out of its
+proposals (`follower_permissions.proposals: false`) and has one open vote
+with a comment; the Bike Kitchen (`extra-1`) keeps its record to the room
+and is the "not public" case. The writes refuse in the server's words
+(`demo-proposal-2` is "proposal is not open for voting"). A launch with
+`--preview-member` signs the fixture reader in as a member of Common
+Thread too; without it, the follow, join and My Quilt tests find the
+studio as they always did.
+
+**Verification.** 264 unit tests and 25 UI tests pass on the iPhone 17
+Pro simulator. The 31 new unit tests (`GovernanceTests`): the whole
+detail payload decoding with a null clock and a null turnout, an
+election's slate and turnout, and the comments payload with replies and
+reactions; time left at its boundaries and in its three spellings; the
+banner for every state, "Cast your vote below." only with a vote below,
+and an election still taking names; the quorum sentences and
+`ceil(eligible × q ÷ 100)`; the amendment threshold only on an
+amendment; the terms line with the eligible day (a calendar day, not the
+day before) and the tenure in force; where the tally and the buttons
+appear; the sole voter; the bar's fills and compact tally; who owes a
+ballot, ordinary and election; direct-change detection with and without
+voters; the ballot's gate, the election's words and the seated fallback;
+a statement counted in runes; who can be put forward; the ballot,
+candidacy and comment bodies; the heart surviving the reaction path,
+escaped once; the picker paging by `after`; a `text/plain` refusal read
+as the server's sentence; the reactions' fixed order; who may discuss,
+edit and delete; and the home's and the rows' words. The five new UI
+tests (`GovernanceFlowTests`): a member told a vote is owed, voting,
+changing the vote with the counts moving, the voters with one not
+counted, and the bar taking over below; an election ballot updated as a
+whole set, then standing with a statement and withdrawing; a reaction
+counted and a comment posted into the thread; signed out, no buttons and
+one door to the sign-in sheet; and a follower of a patch that keeps
+followers out, reading without a composer or a reaction to press.
+
+**Live, against a local server.** The v0.31.0 server (built from the
+`patchwork-native-auth` worktree, whose tree is the tag's; run from a
+copy of its data under the scratchpad), behind a TLS proxy on
+`localhost:8443` with its certificate trusted on the iPhone 17 Pro
+simulator, signed in as a member by the emailed code read from the
+server log. On Code & Coffee (majority, a 20% quorum, its record kept to
+the room): the room said "2 proposals need your vote"; a vote was cast,
+changed, and read back from `GET proposals/{id}` as `reject` with the
+tally 1 · 2 · 0; the voters and the bar at the foot were seen; a
+comment was posted, a reply posted and then deleted through the
+confirmation, the comment edited, a heart added and taken off again
+(`DELETE comments/{id}/reactions/%E2%9D%A4%EF%B8%8F`, answered and read
+back) and a thumbs-up left on; an election ballot was saved, replaced by
+"take part without approving anyone" and then updated to two names, and
+the server's `approved_by_me`, `i_abstained` and turnout agreed; the
+reader stood in a contest still taking names, withdrew, and put another
+member forward. On First Friday (a 30-day bar in force, the reader
+joined yesterday) the terms said "You can vote here from October 28" and
+no buttons were drawn, and `curl` got the server's own 403 ("must be a
+member for at least 30 days to vote"). On Tellus360 (followed, followers
+kept out of proposals) the screen said "Become a member to vote." and
+drew no composer, and the server refused a follower's vote and comment
+in the words the contract gives. The contract held: refusals arrive as
+`text/plain` JSON, a bare U+2764 is "invalid emoji", `voting_ends_at` is
+`null` while nominations are open, and `needs_vote` counted the voting
+election as well as the ordinary vote. No governance act was made
+against lancasterpatchwork.org. Not verified: VoiceOver, Dynamic Type at
+the accessibility sizes on these screens, an advisory vote and a sole
+voter against a live server, `sole_admin`-style refusals on comments, a
+nominee picker past a hundred members, and a physical device. Twice
+while the live probe was being written the app stopped answering the
+test runner for 30 seconds (main thread busy) on the way into the
+followed patch; it did not recur in six further runs through the same patches,
+and the spindump taken was unsymbolicated, so it is reported here
+rather than fixed.
