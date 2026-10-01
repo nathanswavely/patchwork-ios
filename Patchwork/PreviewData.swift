@@ -395,9 +395,10 @@ enum PreviewData {
     /// Six rows across the categories, newest first — the order the server
     /// serves them in (`ORDER BY id DESC`). Two are unread, one points at a
     /// patch, one at an event, one at a proposal, one at a charter, one at
-    /// the noticeboard (which this client does not draw, so it is an exit to
-    /// the website), and the warning carries no link at all, because there is
-    /// nowhere in this app to send somebody about one.
+    /// a notice on the Repair Cafe's board (the patch the fixture reader is
+    /// a member of, so the notice is theirs to read), and the warning
+    /// carries no link at all, because there is nowhere in this app to send
+    /// somebody about one.
     private static var freshNotifications: [Notif] {
         [
             Notif(id: "notif-6", type: "proposal.voting_opened",
@@ -421,9 +422,9 @@ enum PreviewData {
                   link: "/patches/common-thread/governance/docs/demo-doc",
                   minutesAgo: 5 * 24 * 60, read: true),
             Notif(id: "notif-2", type: "notice.posted",
-                  title: "A new notice on Common Thread Studio’s board",
-                  body: "The kiln is out of action until the part arrives.",
-                  link: "/patches/common-thread/noticeboard/x",
+                  title: "Soldering irons are back",
+                  body: "Both irons are back from repair and on the bench by the window.",
+                  link: "/patches/\(memberSlug)/noticeboard/notice-r1",
                   minutesAgo: 9 * 24 * 60, read: true),
             Notif(id: "notif-1", type: "account.warned",
                   title: "A moderator sent you a warning",
@@ -1149,6 +1150,261 @@ enum PreviewData {
         return nil
     }
 
+
+    // MARK: The noticeboard
+
+    /// Two boards (web ADR 081). Common Thread's is the full one — members
+    /// put up notices there, and the fixture reader is in that room only on
+    /// a `--preview-member` launch. The Repair Cafe's is the one a plain
+    /// sign-in lands in: its admins put up the notices, so a member reads
+    /// and replies and is offered nothing to post with.
+    private struct FixtureNotice {
+        let id: String
+        let slug: String
+        let authorId: String
+        let authorName: String
+        let authorUsername: String
+        var title: String
+        var body: String
+        var imageURL = ""
+        var imageAlt = ""
+        var repliesOpen = true
+        var membersTold = false
+        let createdMinutesAgo: Int
+        var editedMinutesAgo: Int?
+    }
+
+    private struct FixtureReply {
+        let id: String
+        let noticeId: String
+        let authorId: String
+        let authorName: String
+        let authorUsername: String
+        var body: String
+        let createdMinutesAgo: Int
+    }
+
+    private static let boards: [String: (nodeId: String, posting: String, repliesDefault: Bool)] = [
+        "common-thread": ("demo-patch", "members", true),
+        memberSlug: (memberSlug, "admins", true),
+    ]
+
+    /// Newest first, the order the server serves them in. One was put up
+    /// by the reader, one has its replies switched off with one kept, and
+    /// one outlived its author's account.
+    private static var notices: [FixtureNotice] = [
+        FixtureNotice(id: "notice-4", slug: "common-thread", authorId: "u1", authorName: "Rowan Hale", authorUsername: "rowan",
+                      title: "The kiln is out of action",
+                      body: "The element went on Thursday. A new one is **on order** and should be here *next week*.\n\nUntil then:\n\n- Bisque firings are paused.\n- Leave finished pieces on the left-hand shelf, labelled with your name.\n\nRowan\nStudio desk, most evenings",
+                      membersTold: true, createdMinutesAgo: 3 * 60),
+        FixtureNotice(id: "notice-3", slug: "common-thread", authorId: me, authorName: "Sample Reader", authorUsername: "samplereader",
+                      title: "Spare fabric on the back shelf",
+                      body: "Two boxes of offcuts, free to whoever can use them.",
+                      createdMinutesAgo: 2 * day),
+        FixtureNotice(id: "notice-2", slug: "common-thread", authorId: "u2", authorName: "Imani Osei", authorUsername: "imani",
+                      title: "Keys for Tuesday evenings",
+                      body: "Sorted. Thank you, everyone who offered.",
+                      repliesOpen: false, createdMinutesAgo: 6 * day),
+        FixtureNotice(id: "notice-1", slug: "common-thread", authorId: "gone", authorName: "Deleted account", authorUsername: "",
+                      title: "Welcome to the board",
+                      body: "Notices for the people who use the studio. Nobody outside it reads them.",
+                      createdMinutesAgo: 40 * day),
+        FixtureNotice(id: "notice-r1", slug: memberSlug, authorId: "rc1", authorName: "Dee Marsh", authorUsername: "dee",
+                      title: "Soldering irons are back",
+                      body: "Both irons are back from repair and on the bench by the window.\n\nPlease switch them off at the wall when you finish.",
+                      membersTold: true, createdMinutesAgo: 9 * day),
+    ]
+
+    /// Oldest first, as the server serves them.
+    private static var noticeReplies: [FixtureReply] = [
+        FixtureReply(id: "reply-1", noticeId: "notice-2", authorId: "u1", authorName: "Rowan Hale", authorUsername: "rowan",
+                     body: "I can hold a set.", createdMinutesAgo: 5 * day),
+        FixtureReply(id: "reply-2", noticeId: "notice-4", authorId: "u2", authorName: "Imani Osei", authorUsername: "imani",
+                     body: "Thanks for chasing it. Is the small kiln still fine for glaze tests?", createdMinutesAgo: 150),
+        FixtureReply(id: "reply-3", noticeId: "notice-4", authorId: me, authorName: "Sample Reader", authorUsername: "samplereader",
+                     body: "I can drive over and collect the part if that is quicker.", createdMinutesAgo: 90),
+        FixtureReply(id: "reply-r1", noticeId: "notice-r1", authorId: "rc2", authorName: "Kofi Adu", authorUsername: "kofi",
+                     body: "Good news. I will bring the spare tips on Saturday.", createdMinutesAgo: 8 * day),
+    ]
+    private static var noticeSerial = 100
+    private static var reportSerial = 0
+
+    private static func noticeJSON(_ n: FixtureNotice) -> [String: Any] {
+        [
+            "id": n.id, "node_id": boards[n.slug]?.nodeId ?? "", "author_id": n.authorId,
+            "title": n.title, "body": n.body, "image_url": n.imageURL, "image_alt": n.imageAlt,
+            "replies_open": n.repliesOpen, "members_told": n.membersTold,
+            "created_at": stamp(minutesAgo: n.createdMinutesAgo),
+            "updated_at": stamp(minutesAgo: n.editedMinutesAgo ?? n.createdMinutesAgo),
+            "author_username": n.authorUsername, "author_display_name": n.authorName,
+            "reply_count": noticeReplies.filter { $0.noticeId == n.id }.count,
+        ]
+    }
+
+    private static func replyJSON(_ r: FixtureReply) -> [String: Any] {
+        [
+            "id": r.id, "notice_id": r.noticeId, "author_id": r.authorId, "body": r.body,
+            "created_at": stamp(minutesAgo: r.createdMinutesAgo), "updated_at": stamp(minutesAgo: r.createdMinutesAgo),
+            "author_username": r.authorUsername, "author_display_name": r.authorName,
+        ]
+    }
+
+    /// One page of rows after a cursor, and the cursor after it: the id of
+    /// the last row served, or empty on the last page.
+    private static func page<Row>(_ rows: [Row], id: (Row) -> String, query: [URLQueryItem]) -> (rows: [Row], next: String) {
+        let asked = Int(query.first { $0.name == "limit" }?.value ?? "") ?? 20
+        let limit = asked <= 0 ? 20 : min(asked, 100)
+        let after = query.first { $0.name == "after" }?.value ?? ""
+        let start = after.isEmpty ? 0 : (rows.firstIndex { id($0) == after }.map { $0 + 1 } ?? rows.count)
+        let slice = Array(rows.dropFirst(start).prefix(limit))
+        let more = start + slice.count < rows.count
+        return (slice, more ? (slice.last.map(id) ?? "") : "")
+    }
+
+    /// The notice, for a reader in its room. Anybody else — and a notice
+    /// that is not there — gets the same 404, as the server answers.
+    private static func noticeIndex(_ id: String) throws -> Int {
+        guard let index = notices.firstIndex(where: { $0.id == id }), inRoom(notices[index].slug) else {
+            throw APIError.message("notice not found", status: 404)
+        }
+        return index
+    }
+
+    private static func noticeboardRead(_ path: String, query: [URLQueryItem]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        if parts.count == 3, parts[0] == "nodes", parts[2] == "notices" {
+            guard signedIn else { throw APIError.unauthenticated }
+            guard let board = boards[parts[1]], inRoom(parts[1]) else { throw APIError.message("not found", status: 404) }
+            let answer = page(notices.filter { $0.slug == parts[1] }, id: { $0.id }, query: query)
+            return serialize([
+                "items": answer.rows.map(noticeJSON), "next_cursor": answer.next,
+                "may_post": board.posting == "members" || role(parts[1]) == "admin",
+                "replies_default": board.repliesDefault, "notice_posting": board.posting,
+            ])
+        }
+        guard parts.first == "notices", parts.count == 2 || (parts.count == 3 && parts[2] == "replies") else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+        let n = notices[try noticeIndex(parts[1])]
+        if parts.count == 2 {
+            return serialize([
+                "notice": noticeJSON(n), "node_slug": n.slug,
+                "may_edit": n.authorId == me, "may_manage": n.authorId == me || role(n.slug) == "admin",
+            ])
+        }
+        let answer = page(noticeReplies.filter { $0.noticeId == n.id }, id: { $0.id }, query: query)
+        return serialize(["items": answer.rows.map(replyJSON), "next_cursor": answer.next])
+    }
+
+    private static func noticeDraft(_ fields: [String: Any], over n: FixtureNotice? = nil) -> NoticeDraft {
+        func text(_ key: String, _ old: String?) -> String {
+            ((fields[key] as? String) ?? old ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return NoticeDraft(title: text("title", n?.title), body: text("body", n?.body),
+                           imageURL: text("image_url", n?.imageURL), imageAlt: text("image_alt", n?.imageAlt))
+    }
+
+    /// The noticeboard's writes, in the server's order of refusals. Nil
+    /// means "not one of these".
+    private static func noticeboardWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        let isCreate = parts.count == 3 && parts[0] == "nodes" && parts[2] == "notices"
+        guard isCreate || ["notices", "replies", "reports"].contains(parts.first ?? "") else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+
+        if isCreate {
+            guard method == "POST" else { throw APIError.status(405) }
+            let slug = parts[1]
+            guard let board = boards[slug], inRoom(slug) else { throw APIError.message("not found", status: 404) }
+            if board.posting == "admins" && role(slug) != "admin" {
+                throw APIError.message("this patch's admins put up its notices", status: 403)
+            }
+            let draft = noticeDraft(fields)
+            if let problem = Noticeboard.problem(draft) { throw APIError.message(problem, status: 400) }
+            noticeSerial += 1
+            let notice = FixtureNotice(
+                id: "notice-\(noticeSerial)", slug: slug, authorId: me, authorName: myName,
+                authorUsername: (accountFields["username"] as? String) ?? "samplereader",
+                title: draft.title, body: draft.body, imageURL: draft.imageURL,
+                imageAlt: draft.imageURL.isEmpty ? "" : draft.imageAlt,
+                repliesOpen: (fields["replies_open"] as? Bool) ?? board.repliesDefault,
+                membersTold: (fields["tell_members"] as? Bool) ?? false, createdMinutesAgo: 0)
+            notices.insert(notice, at: 0)
+            return serialize(noticeJSON(notice))
+        }
+
+        if parts[0] == "reports" {
+            guard method == "POST", parts.count == 1 else { throw APIError.status(405) }
+            let kind = (fields["entity_type"] as? String) ?? ""
+            let id = (fields["entity_id"] as? String) ?? ""
+            let reason = ((fields["reason"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !kind.isEmpty, !id.isEmpty, !reason.isEmpty else {
+                throw APIError.message("entity_type, entity_id, and reason are required", status: 400)
+            }
+            let noticeId = kind == "reply" ? noticeReplies.first { $0.id == id }?.noticeId : (kind == "notice" ? id : nil)
+            guard let noticeId, (try? noticeIndex(noticeId)) != nil else {
+                throw APIError.message("target entity not found", status: 404)
+            }
+            reportSerial += 1
+            return "{\"id\":\"report-\(reportSerial)\",\"status\":\"ok\"}"
+        }
+
+        if parts[0] == "replies" {
+            guard parts.count == 2, let index = noticeReplies.firstIndex(where: { $0.id == parts[1] }) else {
+                throw APIError.message("reply not found", status: 404)
+            }
+            let reply = noticeReplies[index]
+            let slug = notices[try noticeIndex(reply.noticeId)].slug
+            guard method == "DELETE" else { throw APIError.status(405) }
+            guard reply.authorId == me || role(slug) == "admin" else { throw APIError.message("insufficient permissions", status: 403) }
+            noticeReplies.remove(at: index)
+            return #"{"status":"deleted"}"#
+        }
+
+        // notices/{id}[/replies]
+        guard parts.count >= 2 else { return nil }
+        let index = try noticeIndex(parts[1])
+        var notice = notices[index]
+        let mine = notice.authorId == me
+        let manages = mine || role(notice.slug) == "admin"
+
+        if parts.count == 3, parts[2] == "replies", method == "POST" {
+            guard notice.repliesOpen else { throw APIError.message("replies are off on this notice", status: 403) }
+            let body = (fields["body"] as? String) ?? ""
+            if let problem = Noticeboard.replyProblem(body) { throw APIError.message(problem, status: 400) }
+            noticeSerial += 1
+            let reply = FixtureReply(id: "reply-\(noticeSerial)", noticeId: notice.id, authorId: me, authorName: myName,
+                                     authorUsername: (accountFields["username"] as? String) ?? "samplereader",
+                                     body: body.trimmingCharacters(in: .whitespacesAndNewlines), createdMinutesAgo: 0)
+            noticeReplies.append(reply)
+            return serialize(replyJSON(reply))
+        }
+        guard parts.count == 2 else { throw APIError.status(405) }
+        switch method {
+        case "PATCH":
+            if ["title", "body", "image_url", "image_alt"].contains(where: { fields[$0] != nil }) {
+                guard mine else { throw APIError.message("only the author can edit a notice", status: 403) }
+                let draft = noticeDraft(fields, over: notice)
+                if let problem = Noticeboard.problem(draft) { throw APIError.message(problem, status: 400) }
+                notice.title = draft.title; notice.body = draft.body
+                notice.imageURL = draft.imageURL; notice.imageAlt = draft.imageURL.isEmpty ? "" : draft.imageAlt
+                notice.editedMinutesAgo = 0
+            }
+            if let open = fields["replies_open"] as? Bool {
+                guard manages else { throw APIError.message("insufficient permissions", status: 403) }
+                notice.repliesOpen = open
+            }
+            notices[index] = notice
+            return serialize(noticeJSON(notice))
+        case "DELETE":
+            guard manages else { throw APIError.message("insufficient permissions", status: 403) }
+            notices.remove(at: index)
+            noticeReplies.removeAll { $0.noticeId == notice.id }
+            return #"{"status":"deleted"}"#
+        default:
+            throw APIError.status(405)
+        }
+    }
+
     /// The offline stand-in for every non-GET. The JSON is returned as text so
     /// a write with nothing to read (`auth/logout`, marking a notification
     /// read) runs the same path as one with a user in the answer.
@@ -1161,6 +1417,7 @@ enum PreviewData {
         if let answer = try notificationWrite(method, path) { return answer }
         let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
         if let answer = try governanceWrite(method, path, fields: fields) { return answer }
+        if let answer = try noticeboardWrite(method, path, fields: fields) { return answer }
         if let answer = try accountWrite(method, path, fields: fields) { return answer }
         guard method == "POST" else { throw APIError.status(405) }
         return try post(path, body: body ?? Data())
@@ -1225,7 +1482,7 @@ enum PreviewData {
         let withheldOverview = #"{"rules":{"decision_method":"admin","leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":true,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"invite_only","member_count":8,"document_count":0,"open_proposals":0,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
         let record = #"{"items":[{"kind":"vote","at":"2026-08-14T12:00:00Z","title":"Amend the studio hours","link":"/patches/common-thread/governance/demo-proposal-3","outcome":"carried"},{"kind":"vote","at":"2026-06-08T12:00:00Z","title":"Buy a second kiln","outcome":"lapsed"},{"kind":"direct","at":"2026-04-02T12:00:00Z","title":"Publish the charter","outcome":"applied","actor":"Rowan Hale"}],"public_governance_record":"everyone"}"#
         let json: String
-        if let governed = try governanceRead(path, query: query) { json = governed } else {
+        if let governed = try governanceRead(path, query: query) ?? noticeboardRead(path, query: query) { json = governed } else {
         switch path {
         case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York"},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true}"#
         case "label": json = ###"{"published":true,"stewards":[{"username":"samplesteward","display_name":"Sample Steward","avatar_url":"","blurb":"Keeps the lights on and answers the email."}],"prose":"## Why this exists\n\nThis quilt is fictional, and so is everything on this page. It is here so the app has something to draw.\n\nThe figures below are **made up**, and *nobody* is billed for them. Even `code` and ***both at once*** are only here to be looked at.\n\n- No real money changes hands.\n- No real person is named.","cost_items":[{"service":"Sample Hosting","purpose":"the server (where all this lives)","why":"invented, for the preview","amount_minor":1200,"period":"monthly"},{"service":"Sample Domain","purpose":"the address","why":"also invented","amount_minor":1800,"period":"yearly"}],"currency":"USD","total_monthly_minor":1350,"stale":true,"stated_on":"2026-01-01","version":"v0.0.0-preview","federation":false,"multi_quilt":false,"support_url":"https://example.org/support","feedback_url":"https://example.org/feedback","seamripped_from_name":"","seamripped_from_url":""}"###

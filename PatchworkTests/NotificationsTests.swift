@@ -50,7 +50,7 @@ final class NotificationsTests: XCTestCase {
     /// rule the rest of the app follows about the website's own pages.
     func testWhatThisClientDoesNotDrawIsAnExitToTheWebsite() {
         for path in ["/patches/common-thread/setup",
-                     "/patches/common-thread/noticeboard/019f-n",
+                     "/patches/common-thread/settings/noticeboard",
                      "/patches/common-thread/settings/sources",
                      "/submit",
                      "/sources",
@@ -61,12 +61,25 @@ final class NotificationsTests: XCTestCase {
         }
     }
 
+    /// The noticeboard is a native room now (web ADR 081): the board, and a
+    /// notice on it by id. The web's compose page is a sheet over the board
+    /// here, so its address opens the board. The board's settings — where a
+    /// report sends a patch's admins — are still the website's.
+    func testNoticeLinksOpenTheBoardAndTheNotice() {
+        XCTAssertEqual(NotificationLink.route("/patches/common-thread/noticeboard"), .noticeboard(slug: "common-thread"))
+        XCTAssertEqual(NotificationLink.route("/patches/common-thread/noticeboard/019f-n"),
+                       .notice(slug: "common-thread", id: "019f-n"))
+        XCTAssertEqual(NotificationLink.route("/patches/common-thread/noticeboard/new"), .noticeboard(slug: "common-thread"))
+        XCTAssertEqual(NotificationLink.route("/patches/common-thread/settings/noticeboard"),
+                       .website(path: "/patches/common-thread/settings/noticeboard"))
+    }
+
     /// An exit has to arrive with its query intact and without a slash the
     /// path builder would double: `appendingPathComponent` escapes a `?` into
     /// the path and hands the reader a 404 with a question mark in it.
     func testAnExitKeepsItsQueryAndLosesItsLeadingSlash() {
-        let plain = NotificationLink.exit("/patches/common-thread/noticeboard/x")
-        XCTAssertEqual(plain.path, "patches/common-thread/noticeboard/x")
+        let plain = NotificationLink.exit("/patches/common-thread/settings/noticeboard")
+        XCTAssertEqual(plain.path, "patches/common-thread/settings/noticeboard")
         XCTAssertTrue(plain.query.isEmpty)
         let filtered = NotificationLink.exit("/patches/common-thread/members?status=pending")
         XCTAssertEqual(filtered.path, "patches/common-thread/members")

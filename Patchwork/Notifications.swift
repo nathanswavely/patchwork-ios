@@ -167,8 +167,8 @@ enum NotificationTime {
 /// The server builds these paths in `internal/weblink` against the website's
 /// route table, and this client has to answer the same question about them
 /// without a router. Most of them have a native screen; the ones that do not
-/// — setup, the noticeboard, the submission form, a quilt's admin pages — are
-/// not stubbed here, they are exits to the website, which is the same rule
+/// — setup, the submission form, a patch's settings, a quilt's admin pages —
+/// are not stubbed here, they are exits to the website, which is the same rule
 /// the rest of this app follows about surfaces it has not built.
 enum NotificationLink {
     enum Destination: Equatable, Hashable {
@@ -179,6 +179,10 @@ enum NotificationLink {
         case governance(slug: String)
         case proposal(slug: String, id: String)
         case document(slug: String, id: String)
+        /// A patch's noticeboard, and one notice on it (web ADR 081). The
+        /// board's settings and report queue are still the website's.
+        case noticeboard(slug: String)
+        case notice(slug: String, id: String)
         case event(id: String)
         case remotePatch(host: String, slug: String)
         /// Not a native surface. The path travels whole, query and all.
@@ -199,8 +203,13 @@ enum NotificationLink {
                 case "events": return .calendar(slug: slug)
                 case "members": return .members(slug: slug)
                 case "governance": return .governance(slug: slug)
+                case "noticeboard": return .noticeboard(slug: slug)
                 default: break
                 }
+            case 4 where parts[2] == "noticeboard":
+                // `/noticeboard/new` is the web's compose page, which here
+                // is a sheet over the board; anything else is a notice's id.
+                return parts[3] == "new" ? .noticeboard(slug: slug) : .notice(slug: slug, id: parts[3])
             case 4 where parts[2] == "governance":
                 // The live server spells a proposal `/governance/{id}` and a
                 // charter `/governance/docs/{id}`; a four-part path whose
@@ -575,6 +584,12 @@ struct NotificationsSheet: View {
             if let proposal: Proposal = await fetch("proposals/\(id)") { route.append(.proposal(proposal)) }
         case .document(_, let id):
             if let document: GovernanceDocument = await fetch("governance/\(id)") { route.append(.document(document)) }
+        case .noticeboard(let slug):
+            if let patch = await patch(slug) { route.append(.noticeboard(patch)) }
+        case .notice(_, let id):
+            // The notice's screen reads itself, and is the one that knows
+            // how to say it was taken down — so it is pushed on its id.
+            route.append(.notice(Notice(id: id)))
         case .event(let id):
             if let event: PatchworkEvent = await fetch("events/\(id)") { route.append(.event(event)) }
         case .remotePatch(let host, let slug):
@@ -610,6 +625,8 @@ struct NotificationsSheet: View {
         case .governance(let patch): PatchGovernanceHome(quilt: session.quilt, patch: patch)
         case .proposal(let proposal): ProposalDetailView(quilt: session.quilt, initial: proposal)
         case .document(let document): GovernanceDocumentDetail(quilt: session.quilt, initial: document)
+        case .noticeboard(let patch): PatchNoticeboard(quilt: session.quilt, patch: patch)
+        case .notice(let notice): NoticeDetailView(quilt: session.quilt, initial: notice)
         case .event(let event): EventDetail(quilt: session.quilt, initial: event)
         case .remote(let host, let slug): RemotePatchView(host: host, slug: slug)
         }
@@ -624,6 +641,8 @@ enum NotificationRoute: Hashable {
     case governance(Patch)
     case proposal(Proposal)
     case document(GovernanceDocument)
+    case noticeboard(Patch)
+    case notice(Notice)
     case event(PatchworkEvent)
     case remote(host: String, slug: String)
 }
