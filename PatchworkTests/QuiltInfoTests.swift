@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import XCTest
+import SwiftUI
 @testable import Patchwork
 
 /// The quilt's information stack, the reader's Display settings, and the
@@ -145,6 +146,36 @@ final class QuiltInfoTests: XCTestCase {
         XCTAssertTrue(String(run.characters).contains("See the Label and this."))
         let link = run.runs.compactMap(\.link).first
         XCTAssertEqual(link?.absoluteString, "https://example.org/label")
+    }
+
+    /// Emphasised runs carry a font of their own and lose the intent that
+    /// would have `Text` swap in the system face; everything else is left to
+    /// the block's font.
+    func testMarkdownInlineSetsEmphasisInTheBlocksFace() {
+        let text = Markdown.inline("Plain, **strong**, *slanted*, ***both*** and `code`.")
+        XCTAssertEqual(String(text.characters), "Plain, strong, slanted, both and code.")
+        var fonts: [String: Font] = [:]
+        for run in text.runs {
+            let words = String(text[run.range].characters)
+            let intent = run.inlinePresentationIntent ?? []
+            XCTAssertFalse(intent.contains(.stronglyEmphasized), "\(words) kept its strong intent")
+            XCTAssertFalse(intent.contains(.emphasized), "\(words) kept its emphasis intent")
+            if ["strong", "slanted", "both"].contains(words) {
+                XCTAssertNotNil(run.font, "\(words) has no font of its own")
+                fonts[words] = run.font
+            } else {
+                XCTAssertNil(run.font, "\(words) should be set by its block")
+            }
+            if words == "code" { XCTAssertTrue(intent.contains(.code)) }
+        }
+        XCTAssertEqual(fonts["strong"], Font(PWTextSetting.body.uiFont(strong: true)))
+        XCTAssertEqual(fonts["slanted"], Font(PWTextSetting.body.uiFont(emphasized: true)))
+        XCTAssertEqual(fonts["both"], Font(PWTextSetting.body.uiFont(strong: true, emphasized: true)))
+        XCTAssertNotEqual(fonts["strong"], fonts["slanted"])
+
+        let heading = Markdown.inline("A **loud** heading", setting: Markdown.setting(forHeading: 1))
+        let loud = heading.runs.first { String(heading[$0.range].characters) == "loud" }
+        XCTAssertEqual(loud?.font, Font(PWTextSetting.title2.uiFont(strong: true)))
     }
 
     // MARK: - Muted colours (docs/adr/112)

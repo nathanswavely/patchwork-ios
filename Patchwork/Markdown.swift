@@ -90,7 +90,15 @@ enum Markdown {
 
     /// One block's inline run. A relative link — these documents link to
     /// `/label` and `/lining` — resolves against the quilt it came from.
-    static func inline(_ text: String, base: URL? = nil) -> AttributedString {
+    ///
+    /// Emphasis is set here rather than left to `Text`. Given an emphasised
+    /// run, `Text` asks its font for a bold or italic version of itself, and
+    /// the bundled variable fonts have neither to give: the run comes back in
+    /// the system face at the system's size. So each emphasised run carries
+    /// its own font — the block's face and size, at the strong weight or
+    /// through the italic shear — and the intent that would make `Text` try
+    /// again is taken off it.
+    static func inline(_ text: String, base: URL? = nil, setting: PWTextSetting = .body) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             allowsExtendedAttributes: true,
             interpretedSyntax: .inlineOnlyPreservingWhitespace,
@@ -105,7 +113,21 @@ enum Markdown {
         for run in parsed.runs where run.link != nil {
             parsed[run.range].underlineStyle = .single
         }
+        for run in parsed.runs {
+            guard let intent = run.inlinePresentationIntent else { continue }
+            let strong = intent.contains(.stronglyEmphasized)
+            let emphasized = intent.contains(.emphasized)
+            guard strong || emphasized else { continue }
+            parsed[run.range].font = Font(setting.uiFont(strong: strong, emphasized: emphasized))
+            let rest = intent.subtracting([.stronglyEmphasized, .emphasized])
+            parsed[run.range].inlinePresentationIntent = rest.isEmpty ? nil : rest
+        }
         return parsed
+    }
+
+    /// The scale a heading is set in, by its level.
+    static func setting(forHeading level: Int) -> PWTextSetting {
+        level <= 1 ? .title2 : (level == 2 ? .title3 : .headline)
     }
 }
 
@@ -113,14 +135,19 @@ enum Markdown {
 struct MarkdownText: View {
     let source: String
     var base: URL?
+    /// Read so the document is set again when the text size changes: the
+    /// emphasised runs carry fonts of their own, sized when they are made.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var blocks: [Markdown.Block] { Markdown.blocks(source) }
     var body: some View {
+        let _ = dynamicTypeSize
         VStack(alignment: .leading, spacing: 14) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .heading(let level, let text):
-                    Text(Markdown.inline(text, base: base))
-                        .font(level <= 1 ? Font.pw.title2 : (level == 2 ? Font.pw.title3 : Font.pw.headline))
+                    let setting = Markdown.setting(forHeading: level)
+                    Text(Markdown.inline(text, base: base, setting: setting))
+                        .font(setting.font)
                         .foregroundStyle(Color.pwText)
                         .padding(.top, 4)
                 case .paragraph(let text):
