@@ -12,9 +12,11 @@ import SwiftUI
 /// because an empty room would report a patch that deliberates in private as
 /// a patch that has never decided anything.
 ///
-/// Nothing here votes, proposes, stands or claims. Those need an account,
-/// this client has none, and a disabled button pretending otherwise would be
-/// the one thing the profile must not do.
+/// Voting, standing and discussing happen on a proposal's own screen, which
+/// the rows here lead to; a member who owes a ballot is told so at the top,
+/// as a door into the open proposals. Proposing a change stays the website's,
+/// and a disabled button pretending otherwise would be the one thing the
+/// profile must not do.
 struct PatchGovernanceHome: View {
     let quilt: Quilt
     let patch: Patch
@@ -23,10 +25,13 @@ struct PatchGovernanceHome: View {
     @State private var loading = true
     @State private var error: String?
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
-    /// The patch's own setting decides for a signed-out reader; the server
-    /// states the same fact back on the overview, and either is enough.
+    /// The patch's own setting decides until the overview answers; then the
+    /// overview does, because it is answered for this reader — a member of
+    /// a patch that keeps its record to the room is in the room, and must
+    /// not be told its own proposals are not public.
     private var recordWithheld: Bool {
-        patch.publicGovernanceRecord == "nobody" || overview?.proposalsWithheld == true
+        if let overview { return overview.proposalsWithheld == true }
+        return patch.publicGovernanceRecord == "nobody"
     }
     var body: some View {
         List {
@@ -34,13 +39,29 @@ struct PatchGovernanceHome: View {
             // modifier does not reach them from the List itself.
             Group {
             if let overview {
+                if let needs = overview.needsVote, needs > 0, !recordWithheld {
+                    Section {
+                        NavigationLink {
+                            PatchProposalList(quilt: quilt, slug: patch.slug, close: close)
+                        } label: {
+                            Label(Self.needsVoteLine(needs), systemImage: "checkmark.circle")
+                                .font(Font.pw.headline).foregroundStyle(Color.pwText)
+                        }
+                        .accessibilityIdentifier("needsYourVote")
+                    }
+                }
                 if let election = overview.election, election.phase == "nominating" {
                     Section {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Nominations are open for \(election.seats ?? 0) seat\((election.seats ?? 0) == 1 ? "" : "s")")
-                                .font(Font.pw.headline)
-                            Text(candidateLine(election)).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                        }.padding(.vertical, 2)
+                        NavigationLink {
+                            ProposalDetailView(quilt: quilt, initial: Proposal(id: election.id, title: ""), close: close)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Nominations are open for \(VoteRules.seatsLabel(election.seats ?? 0))")
+                                    .font(Font.pw.headline).foregroundStyle(Color.pwText)
+                                Text(candidateLine(election)).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                            }.padding(.vertical, 2)
+                        }
+                        .accessibilityIdentifier("electionNominating")
                     }
                 }
                 if !overview.decisionNarrative.isEmpty {
@@ -103,7 +124,7 @@ struct PatchGovernanceHome: View {
                 }
             }
             Section {
-                WebsiteOnlyNote(text: "Proposing, voting, and standing for a seat happen on this quilt’s website.")
+                WebsiteOnlyNote(text: "Proposing a change happens on this quilt’s website.")
             }
             }.listRows()
         }
@@ -111,6 +132,10 @@ struct PatchGovernanceHome: View {
         .navigationTitle("Governance").navigationBarTitleDisplayMode(.inline)
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .task { if overview == nil { await load() } }
+    }
+    /// "1 proposal needs your vote", "3 proposals need your vote".
+    static func needsVoteLine(_ count: Int) -> String {
+        count == 1 ? "1 proposal needs your vote" : "\(count) proposals need your vote"
     }
     private func candidateLine(_ election: GovernanceElection) -> String {
         var line = (election.candidates ?? 0) == 0 ? "Nobody has stood yet." : "\(election.candidates ?? 0) standing."
@@ -321,7 +346,16 @@ struct PatchProposalList: View {
                             }
                             if let created = ProfileDate.day(proposal.createdAt) { Text(created) }
                         }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
-                        OutcomeBadge(proposal: proposal)
+                        HStack(spacing: 8) {
+                            OutcomeBadge(proposal: proposal)
+                            if let line = Self.rowLine(proposal) {
+                                Text(line).font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted)
+                                    .accessibilityIdentifier("proposalTimeLeft")
+                            }
+                        }
+                        if (proposal.approveCount ?? 0) + (proposal.rejectCount ?? 0) > 0 {
+                            MiniTally(approve: proposal.approveCount ?? 0, reject: proposal.rejectCount ?? 0)
+                        }
                     }.padding(.vertical, 4)
                 }.accessibilityIdentifier("proposalRow")
             }
@@ -351,6 +385,18 @@ struct PatchProposalList: View {
         .task { if !loaded { await load() } }
         .refreshable { await load() }
     }
+    /// What a row says about where the proposal is (web `ProposalList`):
+    /// what it waits for, the time it has left, or the word for how it
+    /// ended. An open proposal with no clock and a direct change say
+    /// nothing more.
+    static func rowLine(_ proposal: Proposal, now: Date = Date()) -> String? {
+        if proposal.state == "awaiting_admin" { return "waiting on the maintainer" }
+        if proposal.status == "open" {
+            return VoteRules.timeLeftRow(VoteRules.timeLeft(proposal.votingEndsAt, now: now))
+        }
+        if proposal.isDirectChange { return nil }
+        return proposal.outcome.isEmpty ? nil : proposal.outcome
+    }
     private var emptyMessage: String {
         if withheld { return "Proposals and decisions here are not public." }
         switch filter {
@@ -374,68 +420,32 @@ struct PatchProposalList: View {
     }
 }
 
-struct ProposalDetailView: View {
-    let quilt: Quilt
-    let initial: Proposal
-    var close: (() -> Void)? = nil
-    @State private var detail: Proposal?
-    @State private var error: String?
-    private var proposal: Proposal { detail ?? initial }
-    private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
+/// A row's approve-against-reject bar, the web list's `vote-bar`, with the
+/// two counts under it. Abstentions are not in it: a row asks which way it
+/// is leaning.
+struct MiniTally: View {
+    let approve: Int
+    let reject: Int
     var body: some View {
-        List {
-            // One Group so every section's rows take the card surface: the
-            // modifier does not reach them from the List itself.
-            Group {
-            Section {
-                Text(proposal.title).font(Font.pw.title2).foregroundStyle(Color.pwText).fixedSize(horizontal: false, vertical: true)
-                OutcomeBadge(proposal: proposal)
-                if let author = proposal.authorName, !author.isEmpty {
-                    Text("\(proposal.isDirectChange ? "Applied by" : "Proposed by") \(author)")
-                        .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                }
-                if let created = ProfileDate.day(proposal.createdAt) {
-                    Text(created).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+        let share = Double(approve) / Double(max(1, approve + reject))
+        VStack(alignment: .leading, spacing: 3) {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.red.opacity(0.75))
+                    Capsule().fill(Color.green).frame(width: geometry.size.width * share)
                 }
             }
-            Section {
-                if let target = proposal.targetDoc, !target.isEmpty {
-                    Label("\(proposal.isDirectChange ? "Change" : "Amendment") to \(target)", systemImage: "doc.text")
-                }
-                if let type = proposal.proposalType, !type.isEmpty, type != "other" {
-                    Label(type.capitalized, systemImage: "tag")
-                }
-                if proposal.outcomeIsOpen, let ends = ProfileDate.day(proposal.votingEndsAt) {
-                    Label("Voting ends \(ends)", systemImage: "clock")
-                }
-                if proposal.ballots > 0 {
-                    Label("\(proposal.approveCount ?? 0) for · \(proposal.rejectCount ?? 0) against", systemImage: "chart.bar")
-                }
+            .frame(width: 120, height: 5)
+            HStack {
+                Text("\(approve)")
+                Spacer()
+                Text("\(reject)")
             }
-            if let body = proposal.body, !body.isEmpty {
-                Section("What it proposes") { DocumentBody(text: body) }
-            }
-            if let error {
-                Section {
-                    Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                    Button("Try again") { Task { await load() } }
-                        .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
-                }
-            }
-            Section {
-                WebsiteOnlyNote(text: "Voting and commenting on a proposal happen on this quilt’s website.")
-            }
-            }.listRows()
+            .frame(width: 120)
+            .font(Font.pw.caption2Semibold).foregroundStyle(Color.pwTextMuted)
         }
-        .groundedList()
-        .navigationTitle("Proposal").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
-        .task { await load() }
-    }
-    private func load() async {
-        error = nil
-        do { detail = try await api.get("proposals/\(initial.id)") }
-        catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        .accessibilityElement()
+        .accessibilityLabel("\(approve) approve, \(reject) reject")
     }
 }
 

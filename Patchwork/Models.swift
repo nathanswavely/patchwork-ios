@@ -158,13 +158,17 @@ struct Patch: Decodable, Identifiable, Hashable {
     var communityListing: Bool { isUnclaimed == true || status == "unclaimed" }
 }
 
-/// `follower_permissions`, the four switches a patch's rules carry. Only
-/// `events` is decoded, because it is the one this client acts on: where it
-/// is false the Followers tier is not offered on the event form. Absent
-/// reads as allowed, which is the server's own default for a patch that
+/// `follower_permissions`, the four switches a patch's rules carry. Two are
+/// decoded, because they are the two this client acts on: where `events` is
+/// false the Followers tier is not offered on the event form, and where
+/// `proposals` is false a follower is offered no composer. Absent reads as
+/// allowed, which is the server's own default for a patch that
 /// has never opened its rules editor.
 struct FollowerPermissions: Decodable, Hashable {
     let events: Bool?
+    /// Whether followers may comment and react on proposals (web ADR 050).
+    /// It gates taking part, never reading.
+    var proposals: Bool? = nil
 }
 
 /// What a patch chose for its tile — palette, block, rotation, bundle, motif —
@@ -535,16 +539,28 @@ struct GovernanceDocumentPage: Decodable {
     let publishedOnly: Bool?
 }
 
+/// `GovernanceConfig`: the patch's live rules on the overview, and the
+/// photograph of them a vote keeps as its `voting_terms` (web ADR 047).
 struct GovernanceRules: Decodable, Hashable {
-    let decisionMethod: String?
-    let quorumPercent: Int?
-    let defaultVoteDurationHours: Int?
-    let leadershipModel: String?
-    let leadershipVenue: String?
-    let proposalVenue: String?
-    let inactivityDays: Int?
-    let adminTermMonths: Int?
-    let maxAdmins: Int?
+    var decisionMethod: String? = nil
+    var quorumPercent: Int? = nil
+    var defaultVoteDurationHours: Int? = nil
+    var leadershipModel: String? = nil
+    var leadershipVenue: String? = nil
+    var proposalVenue: String? = nil
+    var inactivityDays: Int? = nil
+    var adminTermMonths: Int? = nil
+    var maxAdmins: Int? = nil
+    /// Read instead of `decisionMethod`, and only, on an amendment.
+    var amendmentThreshold: String? = nil
+    var amendmentAutoApply: Bool? = nil
+    var successionPolicy: String? = nil
+    /// The configured bar. Never printed: `tenure_days` on the proposal is
+    /// the bar in force (web ADR 098).
+    var minVotingTenureDays: Int? = nil
+    var subjectRecusal: Bool? = nil
+    var nominationDays: Int? = nil
+    var successionMethod: String? = nil
 }
 
 struct GovernanceAdmin: Decodable, Identifiable, Hashable {
@@ -632,6 +648,9 @@ struct GovernanceOverview: Decodable {
     let openProposals: Int?
     let passedProposals: Int?
     let rejectedProposals: Int?
+    /// Open proposals whose electorate holds this reader and that hold no
+    /// ballot of theirs. Zero for a follower and for nobody signed in.
+    var needsVote: Int? = nil
     var leadershipLabel: String {
         switch rules?.leadershipModel {
         case "maintainer": return "Maintainer"
@@ -688,24 +707,66 @@ struct GovernanceOverview: Decodable {
 }
 
 struct Proposal: Decodable, Identifiable, Hashable {
-    let id: String
-    let title: String
-    let body: String?
-    let status: String?
-    let state: String?
-    let proposalType: String?
-    let targetDoc: String?
-    let authorName: String?
-    let votingEndsAt: String?
-    let createdAt: String?
-    let approveCount: Int?
-    let rejectCount: Int?
-    let abstainCount: Int?
-    let electionPhase: String?
+    var id: String
+    var title: String
+    var body: String? = nil
+    var status: String? = nil
+    var state: String? = nil
+    var proposalType: String? = nil
+    var targetDoc: String? = nil
+    var authorName: String? = nil
+    /// JSON `null` for `awaiting_admin`, `elsewhere` and an election still
+    /// nominating: there is no clock on any of them.
+    var votingEndsAt: String? = nil
+    var createdAt: String? = nil
+    var approveCount: Int? = nil
+    var rejectCount: Int? = nil
+    var abstainCount: Int? = nil
+    var electionPhase: String? = nil
+    // The detail payload (`GET proposals/{id}`). A list row carries none of
+    // these, so every one is optional and a list row is still a proposal.
+    var nodeId: String? = nil
+    var authorId: String? = nil
+    var durationHours: Int? = nil
+    var targetUserName: String? = nil
+    /// Greater than zero on an election, and only on one (web ADR 051).
+    var seatsContested: Int? = nil
+    var nominationsCloseAt: String? = nil
+    var candidates: [Candidate]? = nil
+    var electionTurnout: ElectionTurnout? = nil
+    /// The reader took part in an election while approving nobody.
+    var iAbstained: Bool? = nil
+    /// `""`, `approve`, `reject` or `abstain`: the reader's ballot.
+    var myVote: String? = nil
+    /// The electorate under this vote's frozen terms (web ADR 044, 047).
+    var eligibleVoters: Int? = nil
+    /// The server's answer to "may this reader vote here now". Not
+    /// phase-aware for an election: read `electionPhase` beside it.
+    var canVote: Bool? = nil
+    /// The rules photographed when voting opened (web ADR 047).
+    var votingTerms: GovernanceRules? = nil
+    /// The tenure bar actually in force (web ADR 098), never the configured
+    /// number, and the day it lifts for a reader it is holding back.
+    var tenureDays: Int? = nil
+    var voteEligibleAt: String? = nil
+    var appliedAt: String? = nil
+    /// Any tally here advises a maintainer; it does not decide (web ADR 092).
+    var advisory: Bool? = nil
+    var canDecide: Bool? = nil
+    var declinedBy: String? = nil
+    /// Every ballot ever cast, counted or not. Only the detail carries it.
+    var voters: [Ballot]? = nil
     var ballots: Int { (approveCount ?? 0) + (rejectCount ?? 0) + (abstainCount ?? 0) }
-    /// An approved proposal with no ballots was born applied under
-    /// admin-decides rules: a direct change, not a vote nobody turned up to.
-    var isDirectChange: Bool { status == "approved" && ballots == 0 }
+    /// Born applied under admin-decides rules: a direct change, not a vote
+    /// nobody turned up to (web ADR 041). The detail says so off its voter
+    /// list, which is the whole record (web ADR 044); a list row carries no
+    /// voters, so it falls back to an approved row with no ballots, which is
+    /// the web list's own test.
+    var isDirectChange: Bool {
+        if let voters { return VoteRules.effectiveState(self) == "in_effect" && voters.isEmpty && !isElection }
+        return status == "approved" && ballots == 0
+    }
+    var isElection: Bool { (seatsContested ?? 0) > 0 || !(electionPhase ?? "").isEmpty }
     /// What this proposal's outcome is *called*. `state` is read before
     /// `status` because a lapsed vote and an unsettled contest both carry the
     /// schema's terminal `rejected` without anybody having rejected anything

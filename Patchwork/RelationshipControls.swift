@@ -73,6 +73,10 @@ struct RelationshipControl: View {
     /// Whether the quilt said this reader is banned from this patch, which
     /// rides the `nodes/{slug}` envelope rather than the node.
     var banned = false
+    /// The patch's own answer about this reader, off the `nodes/{slug}`
+    /// envelope. A follower's role rides the envelope and not the node, so
+    /// without it a follow the index has not caught up with reads as none.
+    var known: Standing? = nil
     var placement: Placement = .inline
     var feedback: Binding<RelationshipFeedback?>? = nil
     /// Read the node back after an act: `follower_count` and `member_count`
@@ -85,7 +89,7 @@ struct RelationshipControl: View {
     @State private var joining = false
     private var onCover: Bool { placement == .cover }
 
-    private var standing: Standing? { session.standing(for: patch.slug) ?? Standing.from(node: patch) }
+    private var standing: Standing? { session.standing(for: patch.slug) ?? known ?? Standing.from(node: patch) }
     private var relationship: Relationship {
         banned ? .none : Relationship.resolve(node: patch, standing: standing)
     }
@@ -214,9 +218,12 @@ struct RelationshipControl: View {
             refused = true
             note = SignInModel.sentence(error)
         }
-        busy = false
         feedback?.wrappedValue = note.map { RelationshipFeedback(text: $0, refused: refused) }
+        // Busy until the node is read back: the envelope is the second
+        // witness to the standing, and a control drawn between the two reads
+        // would offer the act that was just done.
         await reload()
+        busy = false
     }
 
     /// What the act turned out to be. `ok` is a leave, an unfollow or a
@@ -225,6 +232,7 @@ struct RelationshipControl: View {
     static func sentence(for status: String) -> String? {
         switch status {
         case "ok": return nil
+        case "following": return Relationship.followOutcome
         case "pending", "active": return Relationship.joinOutcome(status: status)
         default: return nil
         }

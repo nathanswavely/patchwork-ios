@@ -205,10 +205,14 @@ enum PreviewData {
     /// extras so the follow and join tests, which read the studio and the
     /// Listening Room, find both exactly as they were.
     private static var held: [String: (role: String, status: String)] = signedIn ? freshHeld : [:]
-    private static let freshHeld: [String: (role: String, status: String)] = [
-        "listening-room": (role: "follower", status: "active"),
-        memberSlug: (role: "member", status: "active"),
-    ]
+    private static var freshHeld: [String: (role: String, status: String)] {
+        var rows: [String: (role: String, status: String)] = [
+            "listening-room": (role: "follower", status: "active"),
+            memberSlug: (role: "member", status: "active"),
+        ]
+        if governanceMember { rows["common-thread"] = (role: "member", status: "active") }
+        return rows
+    }
     /// The extra the fixture reader is a member of: the Repair Cafe.
     static let memberSlug = "extra-6"
     /// The quilt's other ten patches, by name; `extra-N` is the Nth.
@@ -677,6 +681,474 @@ enum PreviewData {
         return String(decoding: data, as: UTF8.self)
     }
 
+    // MARK: Governance
+
+    /// A launch that asks for it (`--preview-member`) signs the fixture
+    /// reader in holding a member row on Common Thread as well, which is
+    /// where the proposals, the election and the discussion are. It is a
+    /// switch rather than the default because the follow, join and My Quilt
+    /// tests read the studio as a patch the reader is not in.
+    private static let governanceMember = ProcessInfo.processInfo.arguments.contains("--preview-member")
+    private static let me = "demo-user"
+    private static var myName: String { (accountFields["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Sample Reader" }
+
+    private struct FixtureBallot {
+        var userId: String
+        var name: String
+        var username: String
+        var value: String
+        var counted = true
+    }
+
+    private struct FixtureCandidate {
+        let id: String
+        let userId: String
+        let username: String
+        let name: String
+        var statement: String
+        var approvers: Set<String>
+    }
+
+    /// One proposal as the fixtures hold it: the facts, the ballots, and for
+    /// an election the slate. Every viewer field is worked out when it is
+    /// read, for whoever is reading, the way `GetProposal` works it out.
+    private struct FixtureProposal {
+        let id: String
+        let slug: String
+        let nodeId: String
+        let title: String
+        let body: String
+        var type = "action"
+        let author: String
+        let authorId: String
+        var status = "open"
+        var state = "voting"
+        var createdMinutesAgo: Int
+        /// Minutes from now; negative is past, nil is no clock at all.
+        var endsInMinutes: Int?
+        var ballots: [FixtureBallot] = []
+        var eligible = 12
+        var quorum = 20
+        var method = "majority"
+        var seats = 0
+        var phase = ""
+        var nominationsCloseInMinutes: Int?
+        var candidates: [FixtureCandidate] = []
+        var abstainers: Set<String> = []
+        var isElection: Bool { seats > 0 }
+    }
+
+    private struct FixtureComment {
+        let id: String
+        var body: String
+        let authorId: String
+        let authorName: String
+        let createdMinutesAgo: Int
+        var editedMinutesAgo: Int?
+        let parentId: String?
+        var reactions: [String: Set<String>]
+    }
+
+    private static let day = 24 * 60
+
+    private static var freshProposals: [FixtureProposal] {
+        [
+            FixtureProposal(
+                id: "demo-proposal-7", slug: "common-thread", nodeId: "demo-patch", title: "Publish the charter",
+                body: "The charter the founding members wrote, published as it stands.",
+                author: "Rowan Hale", authorId: "u1", status: "approved", state: "in_effect",
+                createdMinutesAgo: 180 * day, endsInMinutes: nil, method: "admin"),
+            FixtureProposal(
+                id: "demo-proposal-2", slug: "common-thread", nodeId: "demo-patch", title: "Buy a second kiln",
+                body: "The kiln is booked solid. A second one would halve the wait.",
+                author: "Rowan Hale", authorId: "u1", status: "rejected", state: "lapsed",
+                createdMinutesAgo: 120 * day, endsInMinutes: -106 * day,
+                ballots: [FixtureBallot(userId: "u1", name: "Rowan Hale", username: "rowan", value: "approve"),
+                          FixtureBallot(userId: "u2", name: "Imani Osei", username: "imani", value: "approve")]),
+            FixtureProposal(
+                id: "demo-proposal-3", slug: "common-thread", nodeId: "demo-patch", title: "Amend the studio hours",
+                body: "Open at ten on Saturdays rather than nine: nobody comes before ten.",
+                author: "Imani Osei", authorId: "u2", status: "approved", state: "in_effect",
+                createdMinutesAgo: 60 * day, endsInMinutes: -46 * day,
+                ballots: [FixtureBallot(userId: "u1", name: "Rowan Hale", username: "rowan", value: "approve"),
+                          FixtureBallot(userId: "u2", name: "Imani Osei", username: "imani", value: "approve"),
+                          FixtureBallot(userId: "u3", name: "theo", username: "theo", value: "approve"),
+                          FixtureBallot(userId: "u5", name: "Mara Quinn", username: "mara", value: "reject")]),
+            FixtureProposal(
+                id: "demo-proposal-5", slug: "common-thread", nodeId: "demo-patch", title: "Treasurer election",
+                body: "The treasurer’s seat comes up for its yearly contest.",
+                author: "Rowan Hale", authorId: "u1", createdMinutesAgo: 1 * day, endsInMinutes: nil,
+                seats: 1, phase: "nominating", nominationsCloseInMinutes: 6 * day,
+                candidates: [FixtureCandidate(id: "cand-rowan", userId: "u1", username: "rowan", name: "Rowan Hale",
+                                              statement: "I have kept the books since the studio opened.", approvers: [])]),
+            FixtureProposal(
+                id: "demo-proposal-4", slug: "common-thread", nodeId: "demo-patch", title: "Studio council election",
+                body: "Two council seats are up. The members approve as many candidates as they like, and the two most approved take the seats.",
+                author: "Rowan Hale", authorId: "u1", createdMinutesAgo: 9 * day, endsInMinutes: 5 * day,
+                seats: 2, phase: "voting", nominationsCloseInMinutes: -2 * day,
+                candidates: [
+                    FixtureCandidate(id: "cand-imani", userId: "u2", username: "imani", name: "Imani Osei",
+                                     statement: "I have held the studio’s keys for two years and would like to keep the calendar honest.",
+                                     approvers: ["u1", "u5", me]),
+                    FixtureCandidate(id: "cand-mara", userId: "u5", username: "mara", name: "Mara Quinn",
+                                     statement: "", approvers: ["u1", "u5"]),
+                    FixtureCandidate(id: "cand-theo", userId: "u3", username: "theo", name: "theo",
+                                     statement: "Tools, mostly.", approvers: ["u2"]),
+                ]),
+            FixtureProposal(
+                id: "demo-proposal", slug: "common-thread", nodeId: "demo-patch", title: "Add a Tuesday evening session",
+                body: "Saturdays fill up. A second session on Tuesdays would let people who work weekends take part.\n\n## What it costs\n\nNothing but a second set of keys.",
+                author: "Imani Osei", authorId: "u2", createdMinutesAgo: 3 * day, endsInMinutes: 4 * day - 90,
+                ballots: [FixtureBallot(userId: "u1", name: "Rowan Hale", username: "rowan", value: "approve"),
+                          FixtureBallot(userId: "u2", name: "Imani Osei", username: "imani", value: "approve"),
+                          FixtureBallot(userId: "u3", name: "theo", username: "theo", value: "approve"),
+                          FixtureBallot(userId: "", name: "Hidden member", username: "", value: "approve"),
+                          FixtureBallot(userId: "u5", name: "Mara Quinn", username: "mara", value: "reject"),
+                          FixtureBallot(userId: "u9", name: "Sam Ortiz", username: "sam", value: "approve", counted: false)]),
+            FixtureProposal(
+                id: "demo-proposal-6", slug: "listening-room", nodeId: "demo-patch-2", title: "Move the listening night to Thursdays",
+                body: "Wednesdays clash with the choir. Thursdays are free.",
+                author: "Dee Ramos", authorId: "l1", createdMinutesAgo: 2 * day, endsInMinutes: 5 * day,
+                ballots: [FixtureBallot(userId: "l1", name: "Dee Ramos", username: "dee", value: "approve"),
+                          FixtureBallot(userId: "l2", name: "Ade Bello", username: "ade", value: "approve")],
+                eligible: 5, quorum: 0),
+        ]
+    }
+
+    private static var freshThreads: [String: [FixtureComment]] {
+        [
+            "demo-proposal": [
+                FixtureComment(id: "comment-1", body: "I’d come on Tuesdays. Could we start at six, so people can come straight from work?",
+                               authorId: "u2", authorName: "Imani Osei", createdMinutesAgo: 2 * day, parentId: nil,
+                               reactions: ["\u{1F44D}": ["u1"], Discussion.heart: [me, "u3"]]),
+                FixtureComment(id: "comment-2", body: "Happy to open up on the first few Tuesdays.",
+                               authorId: me, authorName: "Sample Reader", createdMinutesAgo: 30 * 60, parentId: nil,
+                               reactions: ["\u{1F389}": ["u2"]]),
+                FixtureComment(id: "comment-3", body: "That would be a great help. Thank you.",
+                               authorId: "u2", authorName: "Imani Osei", createdMinutesAgo: 20 * 60, parentId: "comment-2",
+                               reactions: [:]),
+            ],
+            "demo-proposal-6": [
+                FixtureComment(id: "comment-6", body: "Thursdays work for the regulars I’ve asked.",
+                               authorId: "l2", authorName: "Ade Bello", createdMinutesAgo: 1 * day, parentId: nil,
+                               reactions: ["\u{1F44D}": ["l1"]]),
+            ],
+        ]
+    }
+
+    private static var proposals: [FixtureProposal] = freshProposals
+    private static var threads: [String: [FixtureComment]] = freshThreads
+    private static var commentSerial = 100
+
+    /// The reader's active role on a patch, or nothing.
+    private static func role(_ slug: String) -> String? {
+        guard signedIn, let row = held[slug], row.status == "active" else { return nil }
+        return row.role
+    }
+    private static func inRoom(_ slug: String) -> Bool { ["member", "admin"].contains(role(slug) ?? "") }
+    /// `follower_permissions.proposals`, as the node fixtures state it.
+    private static func followersTakePart(_ slug: String) -> Bool { slug != "listening-room" }
+
+    private static func instant(minutesFromNow minutes: Int?) -> Any {
+        guard let minutes else { return NSNull() }
+        return stamp(minutesAgo: -minutes)
+    }
+
+    /// The whole detail payload, for whoever is reading.
+    private static func detailFields(_ p: FixtureProposal) -> [String: Any] {
+        var fields = listFields(p)
+        let reader = signedIn ? me : ""
+        let open = p.status == "open" && p.state == "voting"
+        fields["target_user_id"] = ""
+        fields["target_user_name"] = ""
+        fields["seats_contested"] = p.seats
+        fields["nominations_close_at"] = p.isElection ? (instant(minutesFromNow: p.nominationsCloseInMinutes) as? String ?? "") : ""
+        fields["election_phase"] = p.isElection ? (open ? p.phase : "closed") : ""
+        fields["candidates"] = p.candidates
+            .enumerated()
+            .sorted { ($0.element.approvers.count, -$0.offset) > ($1.element.approvers.count, -$1.offset) }
+            .map { _, c -> [String: Any] in
+                var row: [String: Any] = ["id": c.id, "user_id": c.userId, "username": c.username, "display_name": c.name,
+                                          "approvals": c.approvers.count, "approved_by_me": !reader.isEmpty && c.approvers.contains(reader),
+                                          "seated": false]
+                if !c.statement.isEmpty { row["statement"] = c.statement }
+                return row
+            }
+        if p.isElection {
+            let voted = p.candidates.reduce(into: p.abstainers) { $0.formUnion($1.approvers) }.count
+            let needed = VoteRules.quorumNeeded(eligible: p.eligible, percent: p.quorum)
+            fields["election_turnout"] = ["voted": voted, "eligible": p.eligible, "needed": needed, "met": voted >= needed]
+        } else {
+            fields["election_turnout"] = NSNull()
+        }
+        fields["i_abstained"] = !reader.isEmpty && p.abstainers.contains(reader)
+        fields["voters"] = p.ballots.map { b -> [String: Any] in
+            ["user_id": b.userId, "display_name": b.name, "username": b.username, "value": b.value, "counted": b.counted]
+        }
+        fields["my_vote"] = p.ballots.first { !reader.isEmpty && $0.userId == reader }?.value ?? ""
+        fields["eligible_voters"] = p.eligible
+        fields["can_vote"] = open && inRoom(p.slug)
+        fields["voting_terms"] = [
+            "decision_method": p.method, "quorum_percent": p.quorum, "default_vote_duration_hours": 168,
+            "amendment_threshold": "", "amendment_auto_apply": false, "succession_policy": "", "min_voting_tenure_days": 0,
+        ] as [String: Any]
+        fields["tenure_days"] = 0
+        fields["vote_eligible_at"] = ""
+        fields["applied_at"] = p.state == "in_effect" ? stamp(minutesAgo: p.createdMinutesAgo - day) : ""
+        fields["advisory"] = false
+        fields["can_decide"] = false
+        fields["declined_by"] = ""
+        return fields
+    }
+
+    /// A list row: no viewer fields and no election's slate, as the list sends.
+    private static func listFields(_ p: FixtureProposal) -> [String: Any] {
+        let counted = p.ballots.filter(\.counted)
+        return [
+            "id": p.id, "node_id": p.nodeId, "author_id": p.authorId, "title": p.title, "body": p.body,
+            "status": p.status, "state": p.state, "proposal_type": p.type, "duration_hours": 168,
+            "voting_ends_at": instant(minutesFromNow: p.endsInMinutes),
+            "created_at": stamp(minutesAgo: p.createdMinutesAgo), "updated_at": stamp(minutesAgo: p.createdMinutesAgo),
+            "author_name": p.author,
+            "approve_count": counted.filter { $0.value == "approve" }.count,
+            "reject_count": counted.filter { $0.value == "reject" }.count,
+            "abstain_count": counted.filter { $0.value == "abstain" }.count,
+        ]
+    }
+
+    /// `GET nodes/{slug}/proposals`, filtered the server's way and newest first.
+    private static func proposalPage(_ slug: String, _ query: [URLQueryItem]) -> String {
+        let filter = query.first { $0.name == "status" }?.value ?? ""
+        let rows = proposals.filter { $0.slug == slug }.filter { p in
+            switch filter {
+            case "", "all": return true
+            case "open": return p.status == "open"
+            case "approved": return p.status == "approved"
+            case "rejected": return p.status == "rejected" && !["lapsed", "unsettled"].contains(p.state)
+            case "not_decided": return ["lapsed", "unsettled"].contains(p.state)
+            default: return p.status == filter
+            }
+        }
+        .sorted { $0.createdMinutesAgo < $1.createdMinutesAgo }
+        let limit = Int(query.first { $0.name == "limit" }?.value ?? "") ?? 20
+        let items = rows.prefix(limit).map { serialize(listFields($0)) }
+        return "{\"items\":[\(items.joined(separator: ","))],\"next_cursor\":\"\",\"public_governance_record\":\"everyone\"}"
+    }
+
+    /// The overview's live half: what is open, what needs this reader, and
+    /// the contest taking names.
+    private static func overviewJSON(_ slug: String, base: String) -> String {
+        guard var object = (try? JSONSerialization.jsonObject(with: Data(base.utf8))) as? [String: Any] else { return base }
+        let mine = proposals.filter { $0.slug == slug }
+        object["open_proposals"] = mine.filter { $0.status == "open" }.count
+        object["needs_vote"] = mine.filter { p in
+            guard p.status == "open", p.state == "voting", inRoom(slug) else { return false }
+            if p.isElection { return p.phase == "voting" && !p.candidates.contains { $0.approvers.contains(me) } && !p.abstainers.contains(me) }
+            return !p.ballots.contains { $0.userId == me }
+        }.count
+        if let election = mine.first(where: { $0.isElection && $0.phase == "nominating" && $0.status == "open" }) {
+            object["election"] = ["id": election.id, "phase": "nominating", "seats": election.seats,
+                                  "nominations_close_at": instant(minutesFromNow: election.nominationsCloseInMinutes),
+                                  "candidates": election.candidates.count] as [String: Any]
+        }
+        return serialize(object)
+    }
+
+    private static func commentJSON(_ c: FixtureComment, replies: [FixtureComment]) -> [String: Any] {
+        let reader = signedIn ? me : ""
+        let reactions = Discussion.emoji.compactMap { emoji -> [String: Any]? in
+            guard let holders = c.reactions[emoji], !holders.isEmpty else { return nil }
+            return ["emoji": emoji, "count": holders.count, "me": !reader.isEmpty && holders.contains(reader)]
+        }
+        return [
+            "id": c.id, "body": c.body, "author_name": c.authorName, "author_id": c.authorId,
+            "created_at": stamp(minutesAgo: c.createdMinutesAgo),
+            "updated_at": stamp(minutesAgo: c.editedMinutesAgo ?? c.createdMinutesAgo),
+            "parent_id": c.parentId.map { $0 as Any } ?? NSNull(),
+            "replies": replies.map { commentJSON($0, replies: []) },
+            "reactions": reactions,
+        ]
+    }
+
+    private static func threadJSON(_ id: String) -> String {
+        let all = threads[id] ?? []
+        let top = all.filter { $0.parentId == nil }
+        let items = top.map { c in serialize(commentJSON(c, replies: all.filter { $0.parentId == c.id })) }
+        return "{\"items\":[\(items.joined(separator: ","))]}"
+    }
+
+    /// A proposal a reader outside the room cannot read answers 404, as
+    /// `GetProposal` does for a closed record.
+    private static func readable(_ p: FixtureProposal) -> Bool { p.slug != "extra-1" }
+
+    private static func proposalIndex(_ id: String) throws -> Int {
+        guard let index = proposals.firstIndex(where: { $0.id == id }) else { throw APIError.message("proposal not found", status: 404) }
+        return index
+    }
+
+    private static func commentLocation(_ id: String) throws -> (proposal: String, index: Int) {
+        for (proposal, rows) in threads {
+            if let index = rows.firstIndex(where: { $0.id == id }) { return (proposal, index) }
+        }
+        throw APIError.message("comment not found", status: 404)
+    }
+
+    /// Who may comment and react: an active role, and a follower only where
+    /// the patch lets followers take part.
+    private static func mayDiscuss(_ slug: String) throws {
+        guard let role = role(slug) else { throw APIError.message("must be member of node", status: 403) }
+        if role == "follower" && !followersTakePart(slug) {
+            throw APIError.message("this patch does not include followers in its proposals", status: 403)
+        }
+    }
+
+    /// The governance writes, in the server's order of refusals. Nil means
+    /// "not one of these".
+    private static func governanceWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count >= 2, parts[0] == "proposals" || parts[0] == "comments" else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+        if parts[0] == "proposals" {
+            let index = try proposalIndex(parts[1])
+            var p = proposals[index]
+            switch (method, Array(parts.dropFirst(2))) {
+            case ("POST", ["vote"]):
+                guard p.status == "open" else { throw APIError.message("proposal is not open for voting", status: 400) }
+                guard inRoom(p.slug) else { throw APIError.message("must be member of node to vote", status: 403) }
+                let value = (fields["value"] as? String) ?? ""
+                guard ["approve", "reject", "abstain"].contains(value) else {
+                    throw APIError.message("value must be approve, reject, or abstain", status: 400)
+                }
+                p.ballots.removeAll { $0.userId == me }
+                p.ballots.append(FixtureBallot(userId: me, name: myName, username: "samplereader", value: value))
+                proposals[index] = p
+                return "{\"status\":\"ok\",\"vote_id\":\"vote-\(p.ballots.count)\"}"
+            case ("PUT", ["ballot"]):
+                guard p.isElection else { throw APIError.message("election not found", status: 404) }
+                guard p.status == "open" else { throw APIError.message("this election has closed", status: 409) }
+                guard p.phase == "voting" else { throw APIError.message("nominations are still open; voting has not started", status: 409) }
+                guard inRoom(p.slug) else { throw APIError.message("must be member of node to vote", status: 403) }
+                let ids = (fields["candidate_ids"] as? [String]) ?? []
+                let abstain = (fields["abstain"] as? Bool) ?? false
+                if abstain && !ids.isEmpty {
+                    throw APIError.message("a ballot either approves candidates or approves nobody, not both", status: 400)
+                }
+                for i in p.candidates.indices {
+                    if ids.contains(p.candidates[i].id) { p.candidates[i].approvers.insert(me) } else { p.candidates[i].approvers.remove(me) }
+                }
+                if abstain { p.abstainers.insert(me) } else { p.abstainers.remove(me) }
+                proposals[index] = p
+                return "{\"approved\":\(ids.count),\"abstain\":\(abstain)}"
+            case ("POST", ["candidates"]):
+                guard p.isElection else { throw APIError.message("election not found", status: 404) }
+                guard p.phase == "nominating" else { throw APIError.message("nominations have closed", status: 409) }
+                guard inRoom(p.slug) else { throw APIError.message("must be a member of this patch to nominate", status: 403) }
+                let nominee = ((fields["user_id"] as? String) ?? "").trimmingCharacters(in: .whitespaces)
+                let statement = ((fields["statement"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard statement.unicodeScalars.count <= VoteRules.statementLimit else {
+                    throw APIError.message("a candidate's statement is at most 500 characters", status: 400)
+                }
+                let people: [String: (String, String)] = ["u1": ("rowan", "Rowan Hale"), "u2": ("imani", "Imani Osei"), "u3": ("theo", "theo")]
+                let (id, username, name): (String, String, String)
+                if nominee.isEmpty || nominee == me {
+                    (id, username, name) = (me, "samplereader", myName)
+                } else if let person = people[nominee] {
+                    (id, username, name) = (nominee, person.0, person.1)
+                } else {
+                    throw APIError.message("a candidate must be an active member of this patch", status: 400)
+                }
+                if !p.candidates.contains(where: { $0.userId == id }) {
+                    p.candidates.append(FixtureCandidate(id: "cand-\(id)", userId: id, username: username, name: name,
+                                                         statement: id == me ? statement : "", approvers: []))
+                }
+                proposals[index] = p
+                return "{\"user_id\":\"\(id)\"}"
+            case ("DELETE", ["candidates", "me"]):
+                guard p.isElection else { throw APIError.message("election not found", status: 404) }
+                guard p.phase == "nominating" else {
+                    throw APIError.message("nominations have closed: the slate is what people are voting on", status: 409)
+                }
+                guard p.candidates.contains(where: { $0.userId == me }) else {
+                    throw APIError.message("you are not standing in this election", status: 404)
+                }
+                p.candidates.removeAll { $0.userId == me }
+                proposals[index] = p
+                return ""
+            case ("POST", ["comments"]):
+                guard readable(p) else { throw APIError.message("proposal not found", status: 404) }
+                try mayDiscuss(p.slug)
+                let body = (fields["body"] as? String) ?? ""
+                guard !body.isEmpty else { throw APIError.message("body is required", status: 400) }
+                let parent = fields["parent_id"] as? String
+                if let parent, !(threads[p.id] ?? []).contains(where: { $0.id == parent }) {
+                    throw APIError.message("parent comment not found or belongs to different proposal", status: 400)
+                }
+                commentSerial += 1
+                let comment = FixtureComment(id: "comment-\(commentSerial)", body: body, authorId: me, authorName: myName,
+                                             createdMinutesAgo: 0, parentId: parent, reactions: [:])
+                threads[p.id, default: []].append(comment)
+                return serialize(commentJSON(comment, replies: []))
+            default:
+                throw APIError.status(405)
+            }
+        }
+        // comments/{id}[/reactions[/{emoji}]]
+        let (proposalID, index) = try commentLocation(parts[1])
+        let slug = proposals.first { $0.id == proposalID }?.slug ?? ""
+        var comment = threads[proposalID]![index]
+        switch (method, parts.count) {
+        case ("PATCH", 2):
+            guard comment.authorId == me else { throw APIError.message("only the author can edit this comment", status: 403) }
+            let body = (fields["body"] as? String) ?? ""
+            guard !body.isEmpty else { throw APIError.message("body is required", status: 400) }
+            comment.body = body
+            comment.editedMinutesAgo = 0
+            threads[proposalID]![index] = comment
+            return serialize(commentJSON(comment, replies: []))
+        case ("DELETE", 2):
+            guard comment.authorId == me || role(slug) == "admin" else { throw APIError.message("insufficient permissions", status: 403) }
+            // The replies and the reactions go with it: there is no tombstone.
+            threads[proposalID]!.removeAll { $0.id == comment.id || $0.parentId == comment.id }
+            return #"{"status":"deleted"}"#
+        case ("POST", 3) where parts[2] == "reactions":
+            try mayDiscuss(slug)
+            let emoji = (fields["emoji"] as? String) ?? ""
+            // Byte for byte: a bare heart is not the heart.
+            guard Discussion.emoji.contains(where: { $0.unicodeScalars.elementsEqual(emoji.unicodeScalars) }) else {
+                throw APIError.message("invalid emoji", status: 400)
+            }
+            comment.reactions[emoji, default: []].insert(me)
+            threads[proposalID]![index] = comment
+            return #"{"status":"ok"}"#
+        case ("DELETE", 4) where parts[2] == "reactions":
+            try mayDiscuss(slug)
+            let emoji = parts[3].removingPercentEncoding ?? parts[3]
+            if let key = comment.reactions.keys.first(where: { $0.unicodeScalars.elementsEqual(emoji.unicodeScalars) }) {
+                comment.reactions[key]?.remove(me)
+            }
+            threads[proposalID]![index] = comment
+            return #"{"status":"ok"}"#
+        default:
+            throw APIError.status(405)
+        }
+    }
+
+    /// The governance reads that are not fixed text.
+    private static func governanceRead(_ path: String, query: [URLQueryItem]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        if parts.count == 2 || parts.count == 3, parts[0] == "proposals" {
+            let p = proposals[try proposalIndex(parts[1])]
+            guard readable(p) else { throw APIError.message("proposal not found", status: 404) }
+            if parts.count == 2 { return serialize(detailFields(p)) }
+            if parts[2] == "comments" { return threadJSON(p.id) }
+            return nil
+        }
+        if parts.count == 3, parts[0] == "nodes", parts[2] == "proposals", parts[1] != "extra-1" {
+            return proposalPage(parts[1], query)
+        }
+        return nil
+    }
+
     /// The offline stand-in for every non-GET. The JSON is returned as text so
     /// a write with nothing to read (`auth/logout`, marking a notification
     /// read) runs the same path as one with a user in the answer.
@@ -688,6 +1160,7 @@ enum PreviewData {
     static func write(_ method: String, _ path: String, body: Data?) throws -> String {
         if let answer = try notificationWrite(method, path) { return answer }
         let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
+        if let answer = try governanceWrite(method, path, fields: fields) { return answer }
         if let answer = try accountWrite(method, path, fields: fields) { return answer }
         guard method == "POST" else { throw APIError.status(405) }
         return try post(path, body: body ?? Data())
@@ -729,27 +1202,30 @@ enum PreviewData {
 
     static func response<T: Decodable>(_ path: String, query: [URLQueryItem] = []) throws -> T {
         let patch = #"{"id":"demo-patch","name":"Common Thread Studio","slug":"common-thread","description":"A place to make things and meet your neighbors. Open studio evenings, shared tools, and room for your next idea.","tags":["craft","community"],"member_count":12,"follower_count":34,"upcoming_event_count":4,"appearance":{"palette":"anthem","block":"ohioStar","rotation":90,"icon":"scissors"},"address":"12 Example Street","latitude":40.04,"longitude":-76.3,"website":"https://commonthread.example.org","links":[{"url":"https://makers.example.org/common-thread","label":"Our makers’ directory"}],"did":"did:web:commonthread.example.org","visibility":"public","public_member_list":"everyone","public_governance_record":"everyone","timezone":"America/New_York","accept_event_suggestions":false,"follower_permissions":{"events":true,"proposals":true,"charters":false,"members":true}}"#
-        let second = ##"{"id":"demo-patch-2","name":"The Listening Room","slug":"listening-room","description":"Independent music in good company.","tags":["music","venue"],"visibility":"public","public_member_list":"nobody","public_governance_record":"nobody","member_count":8,"follower_count":15,"appearance":{"block":{"grid":3,"colors":{"0,1":[1],"0,2":[2],"1,0":[1],"1,2":[1],"2,0":[2],"2,1":[1]}},"rotation":0,"bundle":["#2E7D5B","#204B4B","#D9D6AF","#D89E13"]},"timezone":"America/New_York","accept_event_suggestions":true,"follower_permissions":{"events":true,"proposals":true,"charters":false,"members":true}}"##
+        let second = ##"{"id":"demo-patch-2","name":"The Listening Room","slug":"listening-room","description":"Independent music in good company.","tags":["music","venue"],"visibility":"public","public_member_list":"nobody","public_governance_record":"everyone","member_count":8,"follower_count":15,"appearance":{"block":{"grid":3,"colors":{"0,1":[1],"0,2":[2],"1,0":[1],"1,2":[1],"2,0":[2],"2,1":[1]}},"rotation":0,"bundle":["#2E7D5B","#204B4B","#D9D6AF","#D89E13"]},"timezone":"America/New_York","accept_event_suggestions":true,"follower_permissions":{"events":true,"proposals":false,"charters":false,"members":true}}"##
         let extras = extraNames.enumerated().map { index, name in
             // One patch has left this quilt, so a list has something to wear
             // the Moved chip on (web ADR 090).
             let moved = index == 4 ? ",\"moved_to\":\"\(extraMovedTo)\"" : ""
+            // One patch keeps its record to the room, so "not public" has
+            // somewhere to be seen now the Listening Room publishes its own.
+            let record = index == 1 ? ",\"public_governance_record\":\"nobody\"" : ""
             // Every extra keeps New York time and takes suggestions; the
             // Repair Cafe keeps its non-public events from followers, so
             // the tier's ceiling has somewhere to be seen offline.
             let posting = ",\"timezone\":\"America/New_York\",\"accept_event_suggestions\":true,\"follower_permissions\":{\"events\":\(index != 6),\"proposals\":true,\"charters\":false,\"members\":true}"
-            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")\(moved)\(posting)}"
+            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")\(moved)\(record)\(posting)}"
         }
         let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
         let document = #"{"id":"demo-doc","node_id":"demo-patch","title":"How we decide","body":"This patch keeps its own copy of the shared standards, and adds one paragraph of its own.\n\n## Open studio hours\n\nAnyone may use the studio during open hours. Tools go back where they were found, and whoever is last out locks the door.\n\n## Changing this\n\nAny member may propose a change. A majority carries it.","kind":"charter","visibility":"public","version":3,"created_at":"2026-04-02T10:00:00Z","updated_at":"2026-08-14T10:00:00Z"}"#
         let lining = #"{"id":"demo-lining","node_id":"demo-patch","title":"Community Standards","body":"Every patch on this quilt starts by agreeing to the lining. This patch amended it.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are.","kind":"lining","visibility":"public","version":2,"created_at":"2026-03-01T10:00:00Z","updated_at":"2026-07-21T10:00:00Z"}"#
-        let proposal = #"{"id":"demo-proposal","title":"Add a Tuesday evening session","body":"Saturdays fill up. A second session on Tuesdays would let people who work weekends take part.","status":"open","state":"voting","proposal_type":"action","author_name":"Imani Osei","created_at":"2026-09-10T12:00:00Z","voting_ends_at":"2026-09-24T12:00:00Z","approve_count":5,"reject_count":1,"abstain_count":0}"#
-        let lapsed = #"{"id":"demo-proposal-2","title":"Buy a second kiln","status":"rejected","state":"lapsed","proposal_type":"action","author_name":"Rowan Hale","created_at":"2026-06-01T12:00:00Z","approve_count":2,"reject_count":0,"abstain_count":0}"#
         let overview = #"{"rules":{"decision_method":"majority","quorum_percent":20,"default_vote_duration_hours":336,"leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork","inactivity_days":90,"max_admins":3},"admins":[{"user_id":"u1","username":"rowan","display_name":"Rowan Hale","joined_at":"2026-01-14T10:00:00Z"}],"admins_withheld":false,"proposals_withheld":false,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"open","member_count":12,"document_count":2,"open_proposals":1,"passed_proposals":3,"rejected_proposals":1,"needs_vote":0}"#
+        let listeningOverview = #"{"rules":{"decision_method":"majority","quorum_percent":0,"default_vote_duration_hours":168,"leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":false,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"open","member_count":8,"document_count":0,"open_proposals":1,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
         let withheldOverview = #"{"rules":{"decision_method":"admin","leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":true,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"invite_only","member_count":8,"document_count":0,"open_proposals":0,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
         let record = #"{"items":[{"kind":"vote","at":"2026-08-14T12:00:00Z","title":"Amend the studio hours","link":"/patches/common-thread/governance/demo-proposal-3","outcome":"carried"},{"kind":"vote","at":"2026-06-08T12:00:00Z","title":"Buy a second kiln","outcome":"lapsed"},{"kind":"direct","at":"2026-04-02T12:00:00Z","title":"Publish the charter","outcome":"applied","actor":"Rowan Hale"}],"public_governance_record":"everyone"}"#
         let json: String
+        if let governed = try governanceRead(path, query: query) { json = governed } else {
         switch path {
         case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York"},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true}"#
         case "label": json = ###"{"published":true,"stewards":[{"username":"samplesteward","display_name":"Sample Steward","avatar_url":"","blurb":"Keeps the lights on and answers the email."}],"prose":"## Why this exists\n\nThis quilt is fictional, and so is everything on this page. It is here so the app has something to draw.\n\nThe figures below are **made up**, and *nobody* is billed for them. Even `code` and ***both at once*** are only here to be looked at.\n\n- No real money changes hands.\n- No real person is named.","cost_items":[{"service":"Sample Hosting","purpose":"the server (where all this lives)","why":"invented, for the preview","amount_minor":1200,"period":"monthly"},{"service":"Sample Domain","purpose":"the address","why":"also invented","amount_minor":1800,"period":"yearly"}],"currency":"USD","total_monthly_minor":1350,"stale":true,"stated_on":"2026-01-01","version":"v0.0.0-preview","federation":false,"multi_quilt":false,"support_url":"https://example.org/support","feedback_url":"https://example.org/feedback","seamripped_from_name":"","seamripped_from_url":""}"###
@@ -814,16 +1290,16 @@ enum PreviewData {
         case "nodes/listening-room/members": json = withheldMembers
         case "nodes/common-thread/governance": json = "{\"items\":[\(document),\(lining)],\"published_only\":true}"
         case "nodes/listening-room/governance": json = #"{"items":[],"published_only":true}"#
-        case "nodes/common-thread/governance/overview": json = overview
-        case "nodes/listening-room/governance/overview": json = withheldOverview
+        case "nodes/common-thread/governance/overview": json = overviewJSON("common-thread", base: overview)
+        case "nodes/listening-room/governance/overview": json = overviewJSON("listening-room", base: listeningOverview)
+        case "nodes/extra-1/governance/overview": json = withheldOverview
+        case "nodes/extra-1/governance": json = #"{"items":[],"published_only":true}"#
+        case "nodes/extra-1/governance/record": json = #"{"items":[],"public_governance_record":"nobody"}"#
+        case "nodes/extra-1/proposals": json = #"{"items":[],"next_cursor":"","public_governance_record":"nobody"}"#
         case "nodes/common-thread/governance/record": json = record
-        case "nodes/listening-room/governance/record": json = #"{"items":[],"public_governance_record":"nobody"}"#
-        case "nodes/common-thread/proposals": json = "{\"items\":[\(proposal),\(lapsed)],\"next_cursor\":\"\",\"public_governance_record\":\"everyone\"}"
-        case "nodes/listening-room/proposals": json = #"{"items":[],"next_cursor":"","public_governance_record":"nobody"}"#
+        case "nodes/listening-room/governance/record": json = #"{"items":[],"public_governance_record":"everyone"}"#
         case "governance/demo-doc": json = document
         case "governance/demo-lining": json = lining
-        case "proposals/demo-proposal": json = proposal
-        case "proposals/demo-proposal-2": json = lapsed
         default:
             if let event = events.first(where: { "events/\($0.id)" == path }) { json = event.json }
             // A pending suggestion is readable by its submitter and nobody
@@ -833,6 +1309,7 @@ enum PreviewData {
                 json = "{\"node\":\(node(extras[index], slug: "extra-\(index)")),\"is_unclaimed\":\(index == 3),\"viewer_trusted\":false}"
             }
             else { throw APIError.status(404) }
+        }
         }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

@@ -209,6 +209,13 @@ struct PatchworkAPI {
         do { return try Self.decoder().decode(T.self, from: data) }
         catch { throw APIError.response }
     }
+    /// The same write where the answer is not read — a ballot, whose echo
+    /// counts what was sent rather than what was stored.
+    func sendVoid(_ method: String, _ path: String, body: some Encodable) async throws {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        _ = try await write(method, path, payload: try encoder.encode(body))
+    }
     func patch<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("PATCH", path, body: body) }
     func put<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("PUT", path, body: body) }
     func delete<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("DELETE", path, body: body) }
@@ -217,7 +224,7 @@ struct PatchworkAPI {
         #if DEBUG
         if Self.isPreview { return Data(try PreviewData.write(method, path, body: payload).utf8) }
         #endif
-        var request = URLRequest(url: base.appendingPathComponent("api/v1/" + path))
+        var request = URLRequest(url: Self.requestURL(base: base, path: path))
         request.httpMethod = method
         request.httpBody = payload
         request.setValue("true", forHTTPHeaderField: "X-Patchwork-Request")
@@ -227,6 +234,21 @@ struct PatchworkAPI {
         guard let http = response as? HTTPURLResponse else { throw APIError.response }
         guard (200..<300).contains(http.statusCode) else { throw APIError.from(status: http.statusCode, data: data) }
         return data
+    }
+    /// A write's address. The path may arrive already percent-encoded — a
+    /// reaction's emoji rides it as `%E2%9D%A4%EF%B8%8F` — and
+    /// `appendingPathComponent` would encode the percent signs a second
+    /// time, so the path is set as encoded text: anything already escaped
+    /// stays as it is, and anything that still needs escaping is escaped.
+    static func requestURL(base: URL, path: String) -> URL {
+        let escaped = path.addingPercentEncoding(withAllowedCharacters: CharacterSet.urlPathAllowed.union(CharacterSet(charactersIn: "%"))) ?? path
+        guard var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            return base.appendingPathComponent("api/v1/" + path)
+        }
+        var prefix = parts.percentEncodedPath
+        while prefix.hasSuffix("/") { prefix.removeLast() }
+        parts.percentEncodedPath = prefix + "/api/v1/" + escaped
+        return parts.url ?? base.appendingPathComponent("api/v1/" + path)
     }
     /// Whether this quilt's host has a session cookie in the jar.
     ///

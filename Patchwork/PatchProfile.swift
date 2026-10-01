@@ -152,7 +152,7 @@ struct PatchSheet: View {
             // The acts on their own line under the counts they change, never
             // beside the name: a name gets the whole width, and a button
             // never wraps mid-word to make room for one.
-            RelationshipControl(patch: patch, banned: envelope?.banned ?? false, placement: .cover, feedback: $feedback) { await load() }
+            RelationshipControl(patch: patch, banned: envelope?.banned ?? false, known: envelope?.standing, placement: .cover, feedback: $feedback) { await load() }
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.top, 8)
         }
@@ -437,7 +437,10 @@ struct PatchSheet: View {
             roster = memberResult.map(MemberRoster.init(page:))
             documentsPublishedOnly = documentResult?.publishedOnly ?? false
             documents = documentResult.map { page in (page.items ?? []).filter { liningDiverged || $0.kind != "lining" } }
-            recordWithheld = proposalResult?.publicGovernanceRecord == "nobody" || patch.publicGovernanceRecord == "nobody"
+            // A record kept to the room still reaches the room: a member is
+            // answered with the rows, so rows mean it is not withheld here.
+            recordWithheld = (proposalResult?.publicGovernanceRecord == "nobody" || patch.publicGovernanceRecord == "nobody")
+                && (proposalResult?.items ?? []).isEmpty
             proposals = proposalResult.map { $0.items ?? [] }
         }
         roomsAnswered = true
