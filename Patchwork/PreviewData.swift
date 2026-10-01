@@ -818,7 +818,7 @@ enum PreviewData {
     private static var freshThreads: [String: [FixtureComment]] {
         [
             "demo-proposal": [
-                FixtureComment(id: "comment-1", body: "I’d come on Tuesdays. Could we start at six, so people can come straight from work?",
+                FixtureComment(id: "comment-1", body: "I’d come on Tuesdays. Could we start at **six**, so people can come *straight* from work?",
                                authorId: "u2", authorName: "Imani Osei", createdMinutesAgo: 2 * day, parentId: nil,
                                reactions: ["\u{1F44D}": ["u1"], Discussion.heart: [me, "u3"]]),
                 FixtureComment(id: "comment-2", body: "Happy to open up on the first few Tuesdays.",
