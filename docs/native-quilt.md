@@ -1176,3 +1176,120 @@ client's:
   envelope's standing, and stays busy until the node has been read back.
 - A follow and a join both answer `active`. The follow now says which it was,
   and the sentence is the web's: "Following patch".
+
+## The noticeboard — 2026-09-30
+
+**What it is.** Web ADR 081: a patch's room for notices, read by its active
+members and admins and nobody else — not a follower, not the public, not a
+quilt admin who holds no role in the patch. A notice is a title, a Markdown
+body and at most one image somebody already has online; a reply is a flat
+answer under it. No reactions, no replies to replies, no pinning, no expiry,
+no unread count. A notice rings the bell only where its author ticked Tell
+members; replies notify the notice's author and whoever has already replied.
+
+**Where it lives.** The web keeps the noticeboard as a workspace tab shown
+only to members. Here the docked profile is the workspace, so the door is a
+fifth glimpse — Noticeboard, after Governance — drawn only when the reader's
+standing is `.active(.member)` or `.active(.admin)`. The test is
+`Noticeboard.inRoom`, and it is deliberately not `is_admin`: the patch's
+payload answers that true for a quilt admin with no role, and every noticeboard
+route then answers that person 404. The glimpse costs one more request on the
+pull, made only for a reader in the room, and shows the newest three titles.
+Joining or leaving while the profile is up opens or shuts it.
+
+**The contract** (`Noticeboard.swift`). `GET nodes/{slug}/notices` pages by
+`after` and `limit=20`, newest first, and carries `may_post`,
+`replies_default` and `notice_posting` beside the items; `next_cursor` is an
+empty string on the last page. `GET notices/{id}` is the only read that
+carries `may_edit` and `may_manage` — a write answers with the bare notice —
+so they are kept from it. `PATCH notices/{id}` is two requests in this
+client: `NoticeEditBody` (the four content fields, the author's) and
+`RepliesSwitchBody` (`replies_open` alone, the author's or a patch admin's).
+Sent together, the server checks the edit first and refuses the whole request
+for an admin who is not the author. Replies are `GET`/`POST
+notices/{id}/replies`, oldest first, and `DELETE replies/{id}`; the server
+also has `PATCH replies/{id}`, which the web never calls and neither does
+this. A report is `POST reports` with `entity_type` `notice` or `reply`.
+Every one of these answers 404 to anybody outside the room, with no 403 to
+tell a non-member a board exists. Models decode leniently: the server sends
+every field and never a null, and a missing one is still read.
+
+**Checked before sending.** `Noticeboard.problem` is `validateNotice` in the
+server's order and words — title required, 140, body 20000, then the image
+checks `EventPosting.imageProblem` already ports. Lengths are UTF-8 bytes,
+as Go counts them; the web's `maxlength=140` counts UTF-16 units, so a title
+of emoji is refused by the server sooner than the web's field suggests.
+
+**The screens.** `PatchNoticeboard` is the board and `NoticeFormSheet` the
+compose and edit form (one sheet: the same four fields, with Take replies and
+Tell members on a new notice only). `NoticeDetailView` is the notice, its acts
+and its replies; `ReportSheet` is the report. The web's toasts become one line
+at the head of the notice. Nothing is drawn before the server has answered: a
+reply is appended from the server's own answer and the count bumped, the way
+the web does it, and `Noticeboard.appending` drops a row already on screen —
+a later "More replies", whose cursor is the last row loaded, hands that reply
+back. The heading over the replies uses the notice's `reply_count` until the
+last page is in; the web counts loaded rows and understates a long thread.
+
+**One thing changed on purpose.** The web's shared report dialog tells the
+reporter "Reports go to the instance admins". For a notice or a reply that is
+wrong: `content_reports.node_id` is set and the report goes to the patch's
+admins. The sheet here says so.
+
+**Markdown.** The web renders notices and replies with `breaks: true`, so a
+single return is a line break. `Markdown.blocks` and `MarkdownText` gained
+`hardBreaks` for these two; documents keep Markdown's own rule. A bullet in a
+`List` row was being cut to one line with an ellipsis and now takes the
+height it needs. Not ported: bare URLs are not auto-linked, GFM tables are
+not drawn, and a list item's continuation line starts a new paragraph.
+
+**Notifications.** `/patches/{slug}/noticeboard` and
+`/patches/{slug}/noticeboard/{id}` are native destinations now; `/new` opens
+the board. A notice is pushed on its id alone, because its screen is the one
+that knows how to say it was taken down. `/patches/{slug}/settings/noticeboard`
+— where `notice.reported` sends a patch's admins — is still an exit.
+
+**Still the web's, and not stubbed here:** who may put up notices, where
+Take replies starts, and the report queue with its three resolutions.
+
+**Offline.** `PreviewData` holds two boards. Common Thread's takes notices
+from members (the fixture reader is in that room on a `--preview-member`
+launch) and has a notice of the reader's own, one with replies off and one
+kept, and one whose author's account is gone. The Repair Cafe's, where a
+plain sign-in is a member, is written by its admins. Reads and writes follow
+the server's order of refusals, 404 for anybody outside the room included,
+and the notice notification now points at a real fixture notice.
+
+**Verification.** 298 unit tests (26 new) and 28 UI tests (3 new) pass on
+the iPhone 18 Pro simulator over the fixtures: a member putting up a notice
+that tells members, replying, switching its replies off and taking it down; a
+notice opened from the bell on a board its admins write, and reported from
+there; and a follower shown no door.
+
+**Live, against a local server.** The server built from the web's
+`origin/main` (a63ef1d, 23 commits past v0.31.0), run from a copy of the
+seeded data behind the TLS proxy on `localhost:8443`, its certificate
+trusted on the iPhone 18 Pro simulator, signed in as a member of Code &
+Coffee by the emailed code read from the server log. Three notices were put
+up there by other members first. In the app: the bell's `notice.posted` row
+opened the notice natively; the profile showed the glimpse and the board
+showed "members told", "1 reply" and "replies off · 1 kept" as the server
+had them; a reply was posted and then removed through the confirmation;
+another member's reply and the notice were each reported; a notice was put
+up with Tell members, edited, had its replies switched off, and was taken
+down; and a patch the reader only follows showed no door. Read back from the
+server afterwards: the reply and the notice were gone, both reports were in
+the patch admins' queue with `node_id` set, the audit trail held
+`notice.create`, `notice.update`, `notice.replies`, `notice.delete`,
+`notice.reply` and `notice.reply_delete`, and another member's bell had the
+`notice.posted` row. Checked with curl against the same server: 404 with
+"not found" for a follower and for a quilt admin with no role, 404 with
+"notice not found" on every notice route for a signed-in outsider, 401
+signed out, 403 without `X-Patchwork-Request`; a patch admin's
+`{"replies_open"}` alone accepted on another member's notice and the same
+switch sent with a title refused whole with "only the author can edit a
+notice"; a title of 36 emoji refused as over 140; and `next_cursor` equal to
+the last row's id on a short page. Not exercised live: a notice with an
+image, a board or a thread longer than one page, and a patch admin's acts
+from inside the app.
+

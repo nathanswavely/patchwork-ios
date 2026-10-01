@@ -23,17 +23,23 @@ enum Markdown {
 
     /// Split a document into blocks. A blank line ends whatever was open;
     /// consecutive plain lines are one paragraph, the way markdown wraps.
-    static func blocks(_ source: String) -> [Block] {
+    ///
+    /// `hardBreaks` is for what a person typed into a box rather than wrote
+    /// as a document — a notice, a reply. The web renders those with
+    /// `breaks: true`, so a single return is a line of its own there, and a
+    /// three-line address must not arrive here as one run-on sentence.
+    static func blocks(_ source: String, hardBreaks: Bool = false) -> [Block] {
+        let joiner = hardBreaks ? "\n" : " "
         var blocks: [Block] = []
         var paragraph: [String] = []
         var bullets: [String] = []
         var numbers: [String] = []
         var quote: [String] = []
         func flush() {
-            if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: " "))); paragraph = [] }
+            if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: joiner))); paragraph = [] }
             if !bullets.isEmpty { blocks.append(.bullets(bullets)); bullets = [] }
             if !numbers.isEmpty { blocks.append(.numbers(numbers)); numbers = [] }
-            if !quote.isEmpty { blocks.append(.quote(quote.joined(separator: " "))); quote = [] }
+            if !quote.isEmpty { blocks.append(.quote(quote.joined(separator: joiner))); quote = [] }
         }
         for rawLine in source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
@@ -135,10 +141,12 @@ enum Markdown {
 struct MarkdownText: View {
     let source: String
     var base: URL?
+    /// A single return is a line break (see `Markdown.blocks`).
+    var hardBreaks = false
     /// Read so the document is set again when the text size changes: the
     /// emphasised runs carry fonts of their own, sized when they are made.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    private var blocks: [Markdown.Block] { Markdown.blocks(source) }
+    private var blocks: [Markdown.Block] { Markdown.blocks(source, hardBreaks: hardBreaks) }
     var body: some View {
         let _ = dynamicTypeSize
         VStack(alignment: .leading, spacing: 14) {
@@ -177,7 +185,12 @@ struct MarkdownText: View {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     marker(index).font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
-                    Text(Markdown.inline(item, base: base)).font(Font.pw.body).frame(maxWidth: .infinity, alignment: .leading)
+                    // Inside a `List` row a bullet is offered one line and
+                    // takes it, ending in an ellipsis, unless it is told its
+                    // height is its own to decide.
+                    Text(Markdown.inline(item, base: base)).font(Font.pw.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }

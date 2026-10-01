@@ -7,6 +7,9 @@ import SwiftUI
 ///
 /// The glimpses are the web's, in the web's order — About, Events, Members,
 /// Governance (ADR 042) — and each heading is itself the door into that room.
+/// The noticeboard follows them for a reader who is in the room (ADR 081):
+/// the web keeps it as a workspace tab only members are shown, and here the
+/// profile is the workspace, so its door is a glimpse nobody else sees.
 /// There is no door named for a container: no "Manage", no "Governance" pill
 /// over a section that is already called Governance. About is the one heading
 /// that names identity rather than a room, so it stays inert.
@@ -20,6 +23,8 @@ struct PatchSheet: View {
     @State private var documentsPublishedOnly = false
     @State private var proposals: [Proposal]?
     @State private var recordWithheld = false
+    /// The newest few notices, read only for a member or an admin.
+    @State private var noticeGlimpse: [Notice]?
     @State private var glimpsesAsked = false
     @State private var roomsAnswered = false
     @State private var error: String?
@@ -65,6 +70,12 @@ struct PatchSheet: View {
     private var showsGovernance: Bool {
         !isUnclaimed && !(roomsAnswered && documents == nil && proposals == nil)
     }
+    /// The noticeboard is its members' and admins' (web ADR 081). Everybody
+    /// else is shown no door rather than a locked one: the server will not
+    /// even say whether there is a board, so neither does the profile.
+    private var showsNoticeboard: Bool {
+        !isUnclaimed && session.me != nil && Noticeboard.inRoom(session.standing(for: patch.slug) ?? envelope?.standing)
+    }
     private func close() { session.docked = nil }
     var body: some View {
         NavigationStack {
@@ -98,6 +109,10 @@ struct PatchSheet: View {
         .presentationDetents([.height(rest), .large], selection: $detent)
         .presentationDragIndicator(.visible)
         .onChange(of: detent) { _, now in if now == .large && !glimpsesAsked { Task { await loadGlimpses() } } }
+        // Joining opens the room while the profile is up; leaving shuts it.
+        .onChange(of: showsNoticeboard) { _, shown in
+            if !shown { noticeGlimpse = nil } else if glimpsesAsked { Task { await loadNoticeGlimpse() } }
+        }
         .task { await load() }
     }
     /// The rest height is measured from the sheet's top edge to the foot of the
@@ -250,6 +265,7 @@ struct PatchSheet: View {
             eventsGlimpse
             if showsMembers { membersGlimpse }
             if showsGovernance { governanceGlimpse }
+            if showsNoticeboard { noticeboardGlimpse }
             VStack(alignment: .leading, spacing: 10) {
                 Divider()
                 Link(destination: api.webURL("patches/\(patch.slug)")) { Label("Visit patch website", systemImage: "safari") }.exitLink()
@@ -389,6 +405,32 @@ struct PatchSheet: View {
             }
         }
     }
+    private var noticeboardGlimpse: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            GlimpseHeading(title: "Noticeboard") {
+                PatchNoticeboard(quilt: session.quilt, patch: patch, close: close) { Task { await loadNoticeGlimpse() } }
+            }
+            if let noticeGlimpse {
+                if noticeGlimpse.isEmpty { Text("Nothing on the board yet.").foregroundStyle(Color.pwTextMuted) }
+                ForEach(noticeGlimpse.prefix(3)) { notice in
+                    NavigationLink {
+                        // A reply, the switch or a take-down from here leaves
+                        // these three rows out of date.
+                        NoticeDetailView(quilt: session.quilt, initial: notice, close: close) { Task { await loadNoticeGlimpse() } }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(notice.title).foregroundStyle(Color.pwText).multilineTextAlignment(.leading)
+                            Text("\(notice.author) · \(Noticeboard.repliesLabel(notice))")
+                                .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.accessibilityIdentifier("noticeChip")
+                }
+            } else if !roomsAnswered {
+                Text("Pull up to see what’s on the board.").foregroundStyle(Color.pwTextMuted)
+            }
+        }
+    }
     private var governanceEmptyLine: String {
         if recordWithheld { return "Proposals and decisions here are not public." }
         if documentsPublishedOnly { return "Nothing published yet." }
@@ -444,6 +486,14 @@ struct PatchSheet: View {
             proposals = proposalResult.map { $0.items ?? [] }
         }
         roomsAnswered = true
+        await loadNoticeGlimpse()
+    }
+    /// One more request, and only for a reader the board is for.
+    private func loadNoticeGlimpse() async {
+        guard showsNoticeboard else { noticeGlimpse = nil; return }
+        let page = try? await api.notices(slug: patch.slug)
+        guard !Task.isCancelled else { return }
+        noticeGlimpse = page?.items
     }
 }
 
