@@ -76,6 +76,31 @@ enum PWType {
         return UIFont(descriptor: descriptor, size: size)
     }
 
+    /// The weight strong emphasis is set in: the top of the text face's axis,
+    /// which is also what the web's `<strong>` resolves to.
+    static let strongWeight: CGFloat = 700
+
+    /// The slant of a synthesised italic. Neither face ships an italic or a
+    /// `slnt` axis, so emphasis is the upright drawn through a shear — the
+    /// same twelve degrees or so a browser fakes for the web's `<em>`.
+    private static let obliqueShear: CGFloat = 0.2
+
+    /// A font for a run inside a block: the block's own face and size, with
+    /// the weight raised for strong emphasis and the glyphs sheared for
+    /// emphasis. Asking the system to embolden or italicise a variable font
+    /// makes it give up and substitute its own face at its own size, so the
+    /// traits are spelled out as what they are here: a coordinate and a matrix.
+    static func uiFont(_ face: Face, size: CGFloat, weight: CGFloat, style: UIFont.TextStyle,
+                       strong: Bool, emphasized: Bool,
+                       compatibleWith traits: UITraitCollection? = nil) -> UIFont {
+        var base = baseFont(face, size: size, weight: strong ? max(weight, strongWeight) : weight)
+        if emphasized {
+            let shear = CGAffineTransform(a: 1, b: 0, c: obliqueShear, d: 1, tx: 0, ty: 0)
+            base = UIFont(descriptor: base.fontDescriptor.withMatrix(shear), size: size)
+        }
+        return UIFontMetrics(forTextStyle: style).scaledFont(for: base, compatibleWith: traits)
+    }
+
     /// The nearest system weight, for the fallback. It only has to be close:
     /// this path exists so a missing font reads plainly, not identically.
     private static func systemWeight(_ weight: CGFloat) -> UIFont.Weight {
@@ -119,6 +144,28 @@ enum PWType {
     }
 }
 
+/// What a font on the scale is made of, kept as values so that a run inside
+/// a block can be set in the block's own face at another weight or slant.
+struct PWTextSetting: Equatable {
+    var face: PWType.Face = .text
+    let size: CGFloat
+    let weight: CGFloat
+    let style: UIFont.TextStyle
+
+    static let title2 = PWTextSetting(size: 22, weight: 700, style: .title2)
+    static let title3 = PWTextSetting(size: 20, weight: 600, style: .title3)
+    static let headline = PWTextSetting(size: 17, weight: 600, style: .headline)
+    static let body = PWTextSetting(size: 17, weight: 400, style: .body)
+
+    var font: Font { PWType.font(face, size: size, weight: weight, style: style) }
+
+    func uiFont(strong: Bool = false, emphasized: Bool = false,
+                compatibleWith traits: UITraitCollection? = nil) -> UIFont {
+        PWType.uiFont(face, size: size, weight: weight, style: style,
+                      strong: strong, emphasized: emphasized, compatibleWith: traits)
+    }
+}
+
 /// The type scale, named after the system text styles it stands in for, so a
 /// call site reads the way `.font(.headline)` did and grows the same way.
 ///
@@ -132,10 +179,10 @@ struct PWTypeScale {
 
     var largeTitle: Font { PWType.font(.text, size: 34, weight: 700, style: .largeTitle) }
     var title: Font { PWType.font(.text, size: 28, weight: 700, style: .title1) }
-    var title2: Font { PWType.font(.text, size: 22, weight: 700, style: .title2) }
-    var title3: Font { PWType.font(.text, size: 20, weight: 600, style: .title3) }
-    var headline: Font { PWType.font(.text, size: 17, weight: 600, style: .headline) }
-    var body: Font { PWType.font(.text, size: 17, weight: 400, style: .body) }
+    var title2: Font { PWTextSetting.title2.font }
+    var title3: Font { PWTextSetting.title3.font }
+    var headline: Font { PWTextSetting.headline.font }
+    var body: Font { PWTextSetting.body.font }
     var bodyBold: Font { PWType.font(.text, size: 17, weight: 700, style: .body) }
     var callout: Font { PWType.font(.text, size: 16, weight: 400, style: .callout) }
     var subheadline: Font { PWType.font(.text, size: 15, weight: 400, style: .subheadline) }
