@@ -10,10 +10,14 @@ struct QuiltCanvas: UIViewRepresentable {
     /// a change to this view's value, which is what makes `updateUIView` run
     /// and the tiles recut; the mode is otherwise invisible to SwiftUI.
     var colorMode: ColorMode = .standard
+    /// The height of the controls floating over the canvas's foot, above the
+    /// safe area, which the names keep clear of.
+    var footer: CGFloat = 0
     let select: (Patch) -> Void
     func makeUIView(context: Context) -> CanvasView { CanvasView() }
     func updateUIView(_ view: CanvasView, context: Context) {
         QuiltTheme.colorMode = colorMode
+        view.footer = footer
         view.update(tiles: tiles, patches: patches, tagMotifs: tagMotifs, colorMode: colorMode, select: select)
     }
 }
@@ -55,6 +59,9 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     let badges = BadgeLayer()
     private var select: ((Patch) -> Void)?
     private var patchesByID: [String: Patch] = [:]
+    var footer: CGFloat = 0 {
+        didSet { if footer != oldValue { badges.chrome.bottom = footer; updateBadges() } }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -68,8 +75,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     /// The quilt runs under the bars; its names do not. The badge layer is
-    /// the safe area, so a name clips at the bar's edge rather than sitting
-    /// behind glass or the status bar.
+    /// the safe area, and a name whose tile runs under a bar is held inside
+    /// it rather than cut by the bar's edge or left behind glass.
     override func layoutSubviews() {
         super.layoutSubviews()
         scroll.frame = bounds
