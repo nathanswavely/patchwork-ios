@@ -165,7 +165,10 @@ final class PeopleSettingsFlowTests: XCTestCase {
         code.tap()
         code.typeText("123456")
         app.buttons["signInContinue"].tap()
-        XCTAssertFalse(app.textFields["signInCode"].waitForExistence(timeout: 5))
+        // Gone once the quilt has answered: waited for, not glanced at, so a
+        // slow machine is not a failed sign-in.
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: code)
+        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 20), .completed, "signed in")
         return app
     }
 
