@@ -319,6 +319,11 @@ struct NotificationsSheet: View {
                         Button(role: .destructive) { confirmingClear = true } label: { Label("Clear all", systemImage: "trash") }
                             .disabled(rows.isEmpty)
                             .accessibilityIdentifier("notificationsClearAll")
+                        // The same page Settings opens: what reaches the
+                        // reader is decided next to what reached them.
+                        Divider()
+                        Button { route.append(.preferences) } label: { Label("Notification settings", systemImage: "gearshape") }
+                            .accessibilityIdentifier("notificationsPreferences")
                     } label: { Image(systemName: "ellipsis.circle") }
                     .accessibilityLabel("Manage notifications")
                     .accessibilityIdentifier("notificationsMenu")
@@ -629,6 +634,7 @@ struct NotificationsSheet: View {
         case .notice(let notice): NoticeDetailView(quilt: session.quilt, initial: notice)
         case .event(let event): EventDetail(quilt: session.quilt, initial: event)
         case .remote(let host, let slug): RemotePatchView(host: host, slug: slug)
+        case .preferences: NotificationPreferencesView()
         }
     }
 }
@@ -645,6 +651,8 @@ enum NotificationRoute: Hashable {
     case notice(Notice)
     case event(PatchworkEvent)
     case remote(host: String, slug: String)
+    /// Not a notification's destination: the menu's door to the preferences.
+    case preferences
 }
 
 /// One row: the type's mark, what happened, and when — with the unread dot in

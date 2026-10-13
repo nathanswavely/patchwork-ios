@@ -79,6 +79,10 @@ struct Membership: Decodable, Identifiable, Hashable {
     let nodeVisibility: String?
     let membershipPolicy: String?
     let nodeStatus: String?
+    /// How many of the reader's own contact items this patch can read (web
+    /// ADR 083). Only ever about the reader's card, and only the My Patches
+    /// page reads it: "Reachable by 2".
+    let contactItemsShared: Int?
 
     var slug: String { nodeSlug ?? "" }
     var name: String { (nodeName?.isEmpty == false) ? nodeName! : slug }
