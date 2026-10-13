@@ -16,7 +16,7 @@ import SwiftUI
                 if let quilt = quilts.selected {
                     QuiltHome(quilt: quilt).id(quilt.id)
                 } else {
-                    NavigationStack { QuiltPicker() }
+                    QuiltOnboarding()
                 }
             }
             .preferredColorScheme(previewColorScheme ?? (ThemeChoice(rawValue: theme) ?? .system).scheme)

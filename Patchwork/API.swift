@@ -468,16 +468,36 @@ private struct SignUpBody: Encodable {
 @MainActor final class QuiltStore: ObservableObject {
     @Published var saved: [Quilt] = []
     @Published var selected: Quilt?
-    init() {
-        if let data = UserDefaults.standard.data(forKey: "savedQuilts"),
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        #if DEBUG
+        if Self.previewing {
+            // Preview keeps to its own fictional quilts: the device's saved
+            // list is neither read nor written. It never reopens a quilt on
+            // its own, except for a launch that resumes the previous one,
+            // which is the only way a test can see a cold launch go
+            // straight to the quilt.
+            if ProcessInfo.processInfo.arguments.contains("--preview-resume"),
+               let data = defaults.data(forKey: Self.previewKey) {
+                selected = try? JSONDecoder().decode(Quilt.self, from: data)
+            }
+            return
+        }
+        #endif
+        if let data = defaults.data(forKey: Self.savedKey),
            let quilts = try? JSONDecoder().decode([Quilt].self, from: data) {
             saved = quilts.filter { (try? QuiltAddress.parse($0.url.absoluteString)) != nil }
         }
+        // The quilt used last is where the app opens. `saved` is most recent
+        // first, so that is its head; with nothing saved, onboarding asks.
+        selected = saved.first
     }
     func connect(_ quilt: Quilt) {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--preview") {
+        if Self.previewing {
             selected = quilt
+            if let data = try? JSONEncoder().encode(quilt) { defaults.set(data, forKey: Self.previewKey) }
             return
         }
         #endif
@@ -485,7 +505,38 @@ private struct SignUpBody: Encodable {
         // want next time, so it goes to the top rather than the foot.
         saved.removeAll { $0.id == quilt.id }
         saved.insert(quilt, at: 0)
-        if let data = try? JSONEncoder().encode(saved) { UserDefaults.standard.set(data, forKey: "savedQuilts") }
+        persist()
         selected = quilt
+    }
+    /// Onboarding's answer: every quilt the reader picked is kept, in the
+    /// order they were offered, and the first of them opens.
+    func adopt(_ quilts: [Quilt]) {
+        guard let first = quilts.first else { return }
+        if !Self.previewing {
+            saved.removeAll { quilt in quilts.contains { $0.id == quilt.id } }
+            saved.insert(contentsOf: quilts, at: 0)
+            persist()
+        }
+        connect(first)
+    }
+    /// Forgets a saved quilt. Its session cookie stays the quilt's business
+    /// and is not touched; forgetting the open quilt moves to the next saved
+    /// one, or back to onboarding when none is left.
+    func forget(_ quilt: Quilt) {
+        saved.removeAll { $0.id == quilt.id }
+        persist()
+        if selected?.id == quilt.id { selected = saved.first }
+    }
+    private func persist() {
+        if let data = try? JSONEncoder().encode(saved) { defaults.set(data, forKey: Self.savedKey) }
+    }
+    private static let savedKey = "savedQuilts"
+    private static let previewKey = "preview-selected-quilt"
+    private static var previewing: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--preview")
+        #else
+        false
+        #endif
     }
 }

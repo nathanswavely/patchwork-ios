@@ -54,7 +54,8 @@ final class AccountTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--preview", "--skip-intro", "--preview-resume"]
         app.launch()
-        openSampleQuilt(app)
+        // No picker: a cold launch goes straight back to the quilt used last.
+        XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.tabBars.buttons["My Quilt"].waitForExistence(timeout: 10), "the launch honours the preference")
         XCTAssertTrue(app.buttons["quiltTile-listening-room"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["quiltTile-common-thread"].exists, "and draws My Quilt")

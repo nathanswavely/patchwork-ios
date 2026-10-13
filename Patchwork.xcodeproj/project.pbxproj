@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00EA9715E1FF63DDA8EBF107 /* QuiltOnboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E8D7BA2E9B728451A4B94B /* QuiltOnboarding.swift */; };
 		043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE5474B5736A302A83E7519 /* QuiltPicker.swift */; };
 		07EE5F832EF2E537734EA181 /* EventPostingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7EBFC8640D9F6387978700E /* EventPostingFlowTests.swift */; };
 		08B360701DD1A03A8A9C5AAA /* ShantellSans-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EC4AA9C392300C35325A88EE /* ShantellSans-Variable.ttf */; };
@@ -135,6 +136,7 @@
 		6280253991897DC2B3FDDF06 /* Motifs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motifs.swift; sourceTree = "<group>"; };
 		648BEEA637812310BB0E269B /* ProposalDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalDetail.swift; sourceTree = "<group>"; };
 		66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
+		66E8D7BA2E9B728451A4B94B /* QuiltOnboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltOnboarding.swift; sourceTree = "<group>"; };
 		6C97C54F89DB98069B689C7E /* AccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTests.swift; sourceTree = "<group>"; };
 		6F1AEA837177256C32A178DA /* PatchMembers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchMembers.swift; sourceTree = "<group>"; };
 		73236C64CF82F56019DF7AC1 /* Relationship.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Relationship.swift; sourceTree = "<group>"; };
@@ -238,6 +240,7 @@
 				BE32844B5FEA95B9FA7EBDC5 /* QuiltHome.swift */,
 				08FC2691F17B5C1A733543AD /* QuiltInfo.swift */,
 				529B45CF7173A2EF95492E0C /* QuiltLayout.swift */,
+				66E8D7BA2E9B728451A4B94B /* QuiltOnboarding.swift */,
 				2DE5474B5736A302A83E7519 /* QuiltPicker.swift */,
 				3EFC7ACE15046E1958924BFE /* QuiltSession.swift */,
 				41A7515238A35D73C8309066 /* QuiltSwitcher.swift */,
@@ -475,6 +478,7 @@
 				8C6DAF1BA26021C1E73FE388 /* QuiltHome.swift in Sources */,
 				7FFA23A5C557A1C49FD75409 /* QuiltInfo.swift in Sources */,
 				78D5163BC45D8AC695285A44 /* QuiltLayout.swift in Sources */,
+				00EA9715E1FF63DDA8EBF107 /* QuiltOnboarding.swift in Sources */,
 				043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */,
 				D5E1382ABD304BDF35699A42 /* QuiltSession.swift in Sources */,
 				BC83FCD961C536C590C9A3C2 /* QuiltSwitcher.swift in Sources */,
