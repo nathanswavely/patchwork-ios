@@ -173,12 +173,18 @@ struct SettingsIndex: View {
                     }
                 }
                 Section {
-                    row("Profile", detail: "Name, bio and links", symbol: "person.crop.circle", id: "settingsProfile") { ProfileSettings() }
+                    // The web's tabs, in the web's order — Profile,
+                    // Notifications, Security, My Patches — with the two
+                    // switches the web keeps on its Profile page beside
+                    // Profile, and the rare one last.
+                    row("Profile", detail: "Name, bio, links and contact card", symbol: "person.crop.circle", id: "settingsProfile") { ProfileSettings() }
                     row("When you open Patchwork", detail: (session.me?.startOnMyQuilt == true) ? "My Quilt" : "The whole quilt",
                         symbol: "house", id: "settingsLanding") { LandingSettings() }
                     row("Discovery", detail: (session.me?.hideAmendedLinings == true) ? "Hiding amended linings" : "Showing every patch",
                         symbol: "eye", id: "settingsDiscovery") { DiscoverySettings() }
+                    row("Notifications", detail: "What reaches you, and how", symbol: "bell", id: "settingsNotifications") { NotificationPreferencesView() }
                     row("Security", detail: "Recovery codes and devices", symbol: "lock", id: "settingsSecurity") { SecuritySettings() }
+                    row("My Patches", detail: "Visibility and who can reach you", symbol: "square.grid.2x2", id: "settingsPatches") { MyPatchesSettings(onExit: onExit) }
                     row("Your data", detail: "Download or take a copy", symbol: "square.and.arrow.down", id: "settingsData") { YourDataSettings() }
                 }
                 // Last, alone, and red: the one thing on this list that cannot
@@ -217,17 +223,17 @@ struct SettingsIndex: View {
 
 // MARK: - Parts every page uses
 
-private func settingsHeading(_ text: String) -> some View {
+func settingsHeading(_ text: String) -> some View {
     Text(text).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
 }
 
-private func settingsFootnote(_ text: String) -> some View {
+func settingsFootnote(_ text: String) -> some View {
     Text(text).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted).textCase(nil)
 }
 
 /// A refusal's sentence starts where a sentence starts: the server writes
 /// them lowercase for the web to place mid-toast.
-private func sentenceCased(_ text: String) -> String {
+func sentenceCased(_ text: String) -> String {
     guard let first = text.first else { return text }
     return first.uppercased() + text.dropFirst()
 }
@@ -241,6 +247,16 @@ struct ProfileSettings: View {
     @State private var saving = false
     @State private var failure: String?
     @State private var saved = false
+    @State private var cardCount: Int?
+
+    private var cardLine: String {
+        switch cardCount {
+        case nil: return "The ways you can be reached"
+        case 0?: return "Nothing on your card yet"
+        case 1?: return "1 item"
+        case let count?: return "\(count) items"
+        }
+    }
 
     private var changes: AccountChanges? {
         guard let draft, let me = session.me else { return nil }
@@ -310,6 +326,23 @@ struct ProfileSettings: View {
                         settingsFootnote("A link with no address is left out when you save.")
                     }
                 }
+                // Where the web keeps it: on Profile. Its items save one at a
+                // time rather than with this page's Save, so it is a door to
+                // a page of its own rather than more fields on this one.
+                Section {
+                    NavigationLink { ContactCardSettings() } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Contact card").font(Font.pw.body).foregroundStyle(Color.pwText)
+                            Text(cardLine).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .accessibilityIdentifier("profileContactCard")
+                } header: {
+                    settingsHeading("Contact card")
+                } footer: {
+                    settingsFootnote("The ways you are willing to be reached. Nothing on it is public; you give each item to a patch in My Patches.")
+                }
                 if let failure {
                     Section { Text(failure).font(Font.pw.footnote).foregroundStyle(Color.pwText) }
                 } else if saved {
@@ -336,6 +369,7 @@ struct ProfileSettings: View {
             }
         }
         .onAppear { if draft == nil, let me = session.me { draft = ProfileDraft(user: me) } }
+        .task { if let items = try? await session.api.contactItems() { cardCount = items.count } }
         .onChange(of: draft) { _, _ in saved = false; failure = nil }
     }
 

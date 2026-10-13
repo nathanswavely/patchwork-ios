@@ -245,9 +245,18 @@ struct RelationshipControl: View {
 /// patch that approves members reads it; a patch that admits everybody gets
 /// it anyway, which is the web's behaviour and costs nothing.
 struct JoinSheet: View {
-    let patch: Patch
+    /// The patch's name is all the sheet says about it, so a surface that
+    /// holds a membership row rather than a patch — My Patches — opens the
+    /// same sheet with the name the row carries.
+    let name: String
     let join: Relationship.Join
     let submit: (String) async -> Void
+    init(name: String, join: Relationship.Join, submit: @escaping (String) async -> Void) {
+        self.name = name; self.join = join; self.submit = submit
+    }
+    init(patch: Patch, join: Relationship.Join, submit: @escaping (String) async -> Void) {
+        self.init(name: patch.name, join: join, submit: submit)
+    }
     @Environment(\.dismiss) private var dismiss
     @State private var message = ""
     @State private var busy = false
@@ -257,7 +266,7 @@ struct JoinSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text(join == .request ? "Ask to join \(patch.name)" : "Join \(patch.name)")
+                    Text(join == .request ? "Ask to join \(name)" : "Join \(name)")
                         .font(Font.pw.displayTitle2)
                         .foregroundStyle(Color.pwText)
                         .fixedSize(horizontal: false, vertical: true)
