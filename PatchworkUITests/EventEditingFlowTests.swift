@@ -37,14 +37,17 @@ final class EventEditingFlowTests: XCTestCase {
         XCTAssertFalse(save.isEnabled, "nothing to save until something changes")
         capture(app, "61 The edit form")
 
+        // The location first, while no keyboard covers it; then the title,
+        // which sits above the keyboard. Each is tapped past its last word,
+        // so the caret lands at the end.
         let title = app.textFields["eventTitle"]
         XCTAssertEqual(title.value as? String, "Toaster triage", "filled from the event")
-        title.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
-        title.typeText(" and kettles")
         let location = app.textFields["eventLocation"]
         XCTAssertEqual(location.value as? String, "Repair Cafe back room")
-        location.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+        location.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         location.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30))
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        title.typeText(" and kettles")
         XCTAssertTrue(save.isEnabled)
         capture(app, "62 Edited")
         save.tap()
@@ -97,7 +100,7 @@ final class EventEditingFlowTests: XCTestCase {
         openRepairCafeCalendar(app)
         openEvent(app, "Bike tune-up clinic")
 
-        let website = app.buttons["Open on quilt website"]
+        let website = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Open on quilt website")).firstMatch
         XCTAssertTrue(scroll(app, to: website), "the foot of the page")
         XCTAssertFalse(app.buttons["eventEdit"].exists, "the source is authoritative")
         XCTAssertFalse(app.buttons["eventDelete"].exists, "and its skip-list is the feed's managers' call")
