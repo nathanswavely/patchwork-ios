@@ -8,9 +8,10 @@ import SwiftUI
 /// The web splits this into tabs; a phone reads it top to bottom as cards on
 /// the ground, with the decision within reach — the three buttons are in the
 /// vote card, and once that card has scrolled away they ride a bar at the
-/// foot, the web's sticky vote bar. Creating, withdrawing, deciding and
-/// applying a proposal, its revisions and the amendment's diff stay the
-/// website's, and nothing stands in for them here.
+/// foot, the web's sticky vote bar. Its author can withdraw an open one from
+/// the banner, as on the web. Deciding and applying a proposal, its
+/// revisions and the amendment's diff stay the website's, and nothing stands
+/// in for them here.
 ///
 /// Who sees what is the server's answer (`can_vote`) plus the reader's
 /// standing on the patch from the membership index. Nothing authenticated
@@ -18,9 +19,12 @@ import SwiftUI
 /// quilt is offered only the sign-in sheet.
 struct ProposalDetailView: View {
     @EnvironmentObject private var session: QuiltSession
+    @Environment(\.dismiss) private var dismiss
     let quilt: Quilt
     let initial: Proposal
     var close: (() -> Void)? = nil
+    /// The lists behind this screen are out of date: it was withdrawn.
+    var changed: () -> Void = {}
 
     @State private var detail: Proposal?
     @State private var error: String?
@@ -44,6 +48,9 @@ struct ProposalDetailView: View {
     /// A candidate, opened by their name on the slate.
     @State private var person: String?
     @State private var signingIn = false
+    @State private var confirmingWithdraw = false
+    @State private var withdrawBusy = false
+    @State private var withdrawFailure: String?
 
     // The discussion's own state: one composer, one inline reply or edit at
     // a time, and one comment waiting on its confirmation.
@@ -89,6 +96,8 @@ struct ProposalDetailView: View {
         return Discussion.canDiscuss(standing: standing, followerPermissions: followerPermissions, isInstanceAdmin: isInstanceAdmin)
     }
     private var canNominate: Bool { acting && EventPosting.isMemberOrAdmin(standing) }
+    /// Read off the full answer only: a list row carries no author id.
+    private var mayWithdraw: Bool { detail != nil && acting && ProposalPosting.mayWithdraw(proposal, me: meID) }
 
     // MARK: The screen
 
@@ -110,11 +119,26 @@ struct ProposalDetailView: View {
                             .font(Font.pw.body).foregroundStyle(Color.pwText)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("proposalBanner")
+                        // In the banner, where the web keeps it: an act on
+                        // where the proposal stands, not on what it says.
+                        if mayWithdraw {
+                            Button { confirmingWithdraw = true } label: {
+                                Text(withdrawBusy ? "Withdrawing…" : ProposalPosting.withdrawLabel)
+                                    .font(Font.pw.subheadlineMedium).inkAction("arrow.uturn.backward")
+                                    .frame(minHeight: 44).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(withdrawBusy)
+                            .accessibilityIdentifier("proposalWithdraw")
+                        }
+                        if let withdrawFailure { refusal(withdrawFailure, id: "withdrawFailure") }
                     }
                 }
                 header
                 if let body = proposal.body, !body.isEmpty {
-                    Section { DocumentBody(text: body) } header: { heading("Why this change") }
+                    // As the web renders it: Markdown, a single return a
+                    // line break — what the form's preview showed its author.
+                    Section { MarkdownText(source: body, base: quilt.url, hardBreaks: true) } header: { heading("Why this change") }
                 }
                 if let error {
                     Section {
@@ -149,6 +173,12 @@ struct ProposalDetailView: View {
         .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
         .safeAreaInset(edge: .bottom) { if showsBar { voteBar } }
         .animation(.easeInOut(duration: 0.2), value: showsBar)
+        .confirmationDialog(ProposalPosting.withdrawQuestion, isPresented: $confirmingWithdraw, titleVisibility: .visible) {
+            Button("Withdraw", role: .destructive) { withdraw() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(ProposalPosting.withdrawMessage)
+        }
         .confirmationDialog("Delete this comment?", isPresented: deletingBinding, titleVisibility: .visible, presenting: deleting) { comment in
             Button("Delete", role: .destructive) { remove(comment) }
             Button("Cancel", role: .cancel) {}
@@ -389,6 +419,29 @@ struct ProposalDetailView: View {
         case APIError.message(let text, _): return EventPosting.sentenceCased(text)
         case APIError.refused(let refusal, _) where !refusal.error.isEmpty: return EventPosting.sentenceCased(refusal.error)
         default: return fallback
+        }
+    }
+
+    /// Withdrawn, the proposal leaves the open list, so the screen leaves
+    /// with it; the lists behind are told to read again. The web's toast has
+    /// nowhere to stand once the screen has gone, and the list saying it is
+    /// no longer open is the answer.
+    private func withdraw() {
+        guard !withdrawBusy else { return }
+        withdrawBusy = true
+        withdrawFailure = nil
+        Task {
+            defer { withdrawBusy = false }
+            do {
+                try await api.withdraw(proposal: proposal.id)
+                changed()
+                dismiss()
+            } catch APIError.unauthenticated {
+                session.signedOut()
+            } catch {
+                withdrawFailure = Self.sentence(error, fallback: "Failed to withdraw")
+                await load()
+            }
         }
     }
 

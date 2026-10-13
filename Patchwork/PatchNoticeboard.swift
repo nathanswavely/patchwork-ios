@@ -270,7 +270,6 @@ struct NoticeFormSheet: View {
     @EnvironmentObject private var session: QuiltSession
     @Environment(\.dismiss) private var dismiss
     @State private var draft: NoticeDraft
-    @State private var previewing = false
     @State private var busy = false
     @State private var failure: String?
 
@@ -301,18 +300,9 @@ struct NoticeFormSheet: View {
                             .accessibilityIdentifier("noticeTitle")
                     }
                     field("Notice") {
-                        Picker("Notice", selection: $previewing) {
-                            Text("Write").tag(false)
-                            Text("Preview").tag(true)
-                        }
-                        .pickerStyle(.segmented)
-                        .accessibilityIdentifier("noticeWritePreview")
-                        if previewing { preview } else {
-                            TextField("Markdown is supported.", text: $draft.body, axis: .vertical)
-                                .lineLimit(6...16)
-                                .fieldStyle()
-                                .accessibilityIdentifier("noticeBody")
-                        }
+                        MarkdownComposer(text: $draft.body, title: "Notice", placeholder: "Markdown is supported.",
+                                         base: session.quilt.url, segmentsID: "noticeWritePreview",
+                                         fieldID: "noticeBody", previewID: "noticePreview")
                     }
                     field("Image address", hint: "Link a flyer or photo you already have online. Patchwork points at it and never keeps a copy.") {
                         TextField(text: $draft.imageURL, prompt: Text(verbatim: "https://…")) { Text("Image address") }
@@ -370,22 +360,6 @@ struct NoticeFormSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    @ViewBuilder private var preview: some View {
-        let text = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        Group {
-            if text.isEmpty {
-                Text("Nothing to preview").font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
-            } else {
-                MarkdownText(source: text, base: session.quilt.url, hardBreaks: true).foregroundStyle(Color.pwText)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-        .padding(12)
-        .background(Color.pwSurface, in: RoundedRectangle(cornerRadius: FieldStyle.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: FieldStyle.radius, style: .continuous).strokeBorder(Color.pwBorder, lineWidth: 1))
-        .accessibilityIdentifier("noticePreview")
     }
 
     private var switches: some View {
