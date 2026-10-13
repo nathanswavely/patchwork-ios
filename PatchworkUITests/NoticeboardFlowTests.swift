@@ -185,16 +185,20 @@ final class NoticeboardFlowTests: XCTestCase {
     }
 
     /// Pulls the docked profile up to its full height by dragging the sheet
-    /// itself. `app.swipeUp()` starts at the middle of the screen, and on a
-    /// tall phone the sheet at rest sits wholly below that, so the swipe
-    /// pans the quilt behind it and the sheet never moves. A swipe that
-    /// lands while the sheet is still settling can be lost, so it is
-    /// repeated until the sheet's top is near the top of the screen.
+    /// itself, as a finger does. `app.swipeUp()` starts at the middle of the
+    /// screen, and on a tall phone the sheet at rest sits wholly below that,
+    /// so the swipe pans the quilt behind it and the sheet never moves. A
+    /// flick on the sheet is not enough either: the sheet sometimes lets a
+    /// synthesized one go by. So the drag holds, carries the sheet's top up
+    /// near the top of the screen, and is repeated until it stays there.
     private func pullUp(_ app: XCUIApplication) {
         let profile = app.scrollViews["patchProfile"]
         XCTAssertTrue(profile.waitForExistence(timeout: 10))
         let pulled = { profile.frame.minY < app.frame.height / 4 }
-        for _ in 0..<3 where !pulled() { profile.swipeUp() }
+        for _ in 0..<3 where !pulled() {
+            profile.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+                .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)))
+        }
         XCTAssertTrue(pulled(), "the profile pulls up to its full height")
     }
 
