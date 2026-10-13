@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 import SwiftUI
-import MapKit
 
 struct QuiltBrowser: View {
     @EnvironmentObject private var session: QuiltSession
@@ -14,12 +13,14 @@ struct QuiltBrowser: View {
     /// How much of the canvas's foot the view switcher covers, padding and
     /// all, so the quilt's names can keep clear of it.
     @State private var pillHeight: CGFloat = 0
+    /// Where the map was left, so a trip to the quilt and back does not
+    /// re-frame it.
+    @State private var mapMemory = MapMemory()
     private var filtered: [Patch] { session.filtered }
     /// The list reads the quilt (docs/adr/074): by default its order *is* the
     /// placement the canvas is drawing, so the two panes can never disagree.
     private var ordered: [Patch] { sort.sort(filtered, placement: session.tiles.map(\.id)) }
     private var narrowed: Bool { session.activeFilterCount > 0 }
-    private var located: [Patch] { filtered.filter { guard let lat = $0.latitude, let lon = $0.longitude else { return false }; return (-90...90).contains(lat) && (-180...180).contains(lon) } }
     var body: some View {
         Group {
             if session.loading { ProgressView("Loading quilt…") }
@@ -78,16 +79,13 @@ struct QuiltBrowser: View {
                 QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs, colorMode: session.colorMode, footer: pillHeight) { open($0) }
                     .ignoresSafeArea()
             } else if mode == "Map" {
-                if located.isEmpty { ContentUnavailableView("No locations to show", systemImage: "map", description: Text("These patches haven’t shared map coordinates.")) }
-                else {
-                    Map {
-                        ForEach(located) { patch in
-                            Annotation(patch.name, coordinate: CLLocationCoordinate2D(latitude: patch.latitude!, longitude: patch.longitude!)) {
-                                Button { open(patch) } label: { Image(systemName: "mappin.circle.fill").font(Font.pw.title).padding(6).background(.background, in: Circle()) }.accessibilityLabel(patch.name)
-                            }
-                        }
-                    }.id(session.query + session.tags.sorted().joined(separator: ",")).ignoresSafeArea()
-                }
+                QuiltMap(patches: filtered,
+                         quiltHasLocations: session.patches.contains(where: \.isPlaced),
+                         tagMotifs: session.tagMotifs,
+                         colorMode: session.colorMode,
+                         docked: session.docked?.id,
+                         memory: mapMemory,
+                         quiltID: session.quilt.id) { open($0) }
             } else {
                 cards
             }

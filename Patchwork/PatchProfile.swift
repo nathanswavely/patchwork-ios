@@ -86,6 +86,7 @@ struct PatchSheet: View {
                 }
             }
             .background(Color.pwGround)
+            .accessibilityIdentifier("patchProfile")
             // No bar: the cover runs to the top of the sheet and says what
             // this is, and the two acts a bar would hold ride the cover
             // instead. The rooms pushed from here keep their own bars.
