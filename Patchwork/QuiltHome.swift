@@ -75,7 +75,7 @@ struct QuiltHome: View {
         .onChange(of: session.me) { _, now in if now == nil, pane == .dashboard { pane = .quilt } }
         // Hold the quilt's tab to switch lens or quilt, the way a profile tab switches accounts.
         .background(TabBarLongPress(item: 0) { session.switching = true })
-        .sheet(item: $session.docked) { patch in PatchSheet(initial: patch) }
+        .sheet(item: $session.docked, onDismiss: { session.sheetDismissed() }) { patch in PatchSheet(initial: patch) }
         .sheet(isPresented: $session.switching, onDismiss: {
             if wantsPicker { wantsPicker = false; finding = true }
         }) {
@@ -252,14 +252,14 @@ struct DiscoveryToolbar: ViewModifier {
                 }
             }
             .onChange(of: session.searching) { _, now in focused = now }
-            .sheet(isPresented: $about) { QuiltInfoSheet() }
+            .sheet(isPresented: $about, onDismiss: { session.sheetDismissed() }) { QuiltInfoSheet() }
             .sheet(isPresented: $display) { DisplaySheet() }
             .sheet(isPresented: $signIn) {
                 SignInSheet(api: session.api, quiltName: session.instance?.name ?? session.quilt.name) { user in
                     session.signedIn(user)
                 }
             }
-            .sheet(isPresented: $notifications) { NotificationsSheet() }
+            .sheet(isPresented: $notifications, onDismiss: { session.sheetDismissed() }) { NotificationsSheet() }
             .sheet(isPresented: $settings, onDismiss: leaveSettings) {
                 SettingsSheet { exit in settingsExit = exit; settings = false }
             }

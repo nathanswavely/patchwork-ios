@@ -372,9 +372,10 @@ struct RepliesSwitchBody: Encodable, Equatable {
 }
 
 /// `POST reports`, the quilt's one report endpoint, for the two kinds this
-/// room has.
+/// room has and for a person (`entity_id` is their id, never their
+/// username).
 struct ReportBody: Encodable, Equatable {
-    enum Kind: String, Encodable { case notice, reply }
+    enum Kind: String, Encodable { case notice, reply, user }
     var entityType: Kind
     var entityId: String
     var reason: String
