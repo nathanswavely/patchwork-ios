@@ -115,6 +115,12 @@ struct PatchSheet: View {
             if !shown { noticeGlimpse = nil } else if glimpsesAsked { Task { await loadNoticeGlimpse() } }
         }
         .task { await load() }
+        // An event edited or deleted from its page: the glimpse reads its
+        // three again, if it had read them at all.
+        .onChange(of: session.eventRevision) { _, _ in
+            guard glimpsesAsked else { return }
+            Task { events = (try? await api.events(slug: patch.slug, limit: 3, from: Date()))?.items ?? [] }
+        }
     }
     /// The rest height is measured from the sheet's top edge to the foot of the
     /// head, not from the head's own height, so the bar above it is counted.

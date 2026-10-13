@@ -112,7 +112,12 @@ struct SearchResults: View {
         .listStyle(.grouped)
         .groundedList()
         .scrollDismissesKeyboard(.immediately)
-        .task { events = (try? await session.api.events(limit: 100))?.items ?? [] }
+        .task { await loadEvents() }
+        .onChange(of: session.eventRevision) { _, _ in Task { await loadEvents() } }
+    }
+
+    private func loadEvents() async {
+        events = (try? await session.api.events(limit: 100))?.items ?? []
     }
 
     /// A section's name, not a screen's: Space Grotesk, never the hand.

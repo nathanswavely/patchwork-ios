@@ -73,7 +73,9 @@ final class EventPostingFlowTests: XCTestCase {
         capture(app, "53 New event in the glimpse")
         events.tap()
         XCTAssertTrue(app.navigationBars["Calendar"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Nothing coming up."].waitForExistence(timeout: 10))
+        // The reader's own night is already there (the editing tests' fixture).
+        let own = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "calendarRow", "Toaster triage")).firstMatch
+        XCTAssertTrue(own.waitForExistence(timeout: 10))
 
         let door = calendarDoor(app)
         XCTAssertTrue(door.waitForExistence(timeout: 10))

@@ -91,6 +91,8 @@ struct EventList: View {
         .task { if !loaded { await load() } }
         .onChange(of: dates) { _, _ in Task { await load() } }
         .onChange(of: session.scope) { _, _ in if slug == nil { Task { await load() } } }
+        // An event edited or deleted from its page behind this list.
+        .onChange(of: session.eventRevision) { _, _ in Task { await load() } }
         .refreshable { await load() }
     }
 
@@ -300,15 +302,37 @@ struct SubscribeMenu: View {
 
 // MARK: - Detail
 
+/// One event, and — for whoever may — the two acts over it: Edit, and
+/// Delete (or Withdraw, for a suggestion still waiting). The right to either
+/// is worked out here from the detail's `created_by` and the reader's
+/// standing (see `EventEditing`), so the acts wait for the detail rather
+/// than trust whatever a list row carried.
 struct EventDetail: View {
     @EnvironmentObject private var session: QuiltSession
+    @Environment(\.dismiss) private var dismiss
     let quilt: Quilt
     let initial: PatchworkEvent
     var close: (() -> Void)? = nil
     @State private var detail: PatchworkEvent?
     @State private var error: String?
     @State private var openingHost = false
+    @State private var editing = false
+    @State private var confirmingDelete = false
+    @State private var acting = false
+    @State private var actFailure: String?
+    /// The last act's own sentence, in place of the web's toast.
+    @State private var status: String?
     private var event: PatchworkEvent { detail ?? initial }
+    /// Only on the quilt the reader is signed in to, and only once the
+    /// detail has said who made the event.
+    private var answered: Bool { detail != nil && quilt.url == session.quilt.url }
+    private var editDoor: EventEditing.Door { answered ? session.editDoor(for: event) : .none }
+    private var mayDelete: Bool { answered && session.mayDelete(event) }
+    /// The patch's ceiling on the tier, where the quilt has said it.
+    private var followersAllowed: Bool {
+        let host = (session.patches + session.wholeQuilt).first { $0.slug == event.nodeSlug }
+        return host?.followerPermissions?.events != false
+    }
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     private var permalink: URL { api.webURL("events/\(event.id)") }
     private var coordinate: CLLocationCoordinate2D? {
@@ -321,6 +345,14 @@ struct EventDetail: View {
         List {
             // One Group so the rows take the card surface (see GroundedList).
             Group {
+            if let status {
+                Section {
+                    Label(status, systemImage: "checkmark.circle")
+                        .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("eventStatus")
+                }
+            }
             if event.awaitingReview {
                 Section {
                     Label("Awaiting review", systemImage: "clock.badge.questionmark").font(Font.pw.headline)
@@ -348,6 +380,7 @@ struct EventDetail: View {
             if let description = event.description, !description.isEmpty {
                 Section("About this event") { Text(description).textSelection(.enabled) }
             }
+            acts
             Section {
                 // Nothing to add while a submission is still in the queue:
                 // the endpoint 404s and there is no night to keep.
@@ -373,7 +406,83 @@ struct EventDetail: View {
             ToolbarItem(placement: .topBarTrailing) { ShareLink(item: permalink) }
             if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
         }
+        .confirmationDialog(EventEditing.deleteQuestion(pending: event.awaitingReview),
+                            isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button(EventEditing.deleteLabel(pending: event.awaitingReview), role: .destructive) { delete() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(EventEditing.deleteMessage(pending: event.awaitingReview))
+        }
+        .sheet(isPresented: $editing) {
+            EventFormSheet(editing: event, door: editDoor, followersAllowed: followersAllowed) { updated in
+                // Back in review says so on the form's own card, and then
+                // in the banner here; anything else is the web's toast.
+                status = updated.awaitingReview ? nil : "Event updated"
+                session.eventsChanged()
+                Task { await load() }
+            }
+        }
         .task { await load() }
+    }
+
+    // MARK: The acts
+
+    /// The house's act rows (as on a notice): ink, with a glyph, under what
+    /// they act on. Delete is worded the web's way — Withdraw while the
+    /// event is a suggestion still waiting — and confirmed before it goes.
+    @ViewBuilder private var acts: some View {
+        if editDoor != .none || mayDelete {
+            Section {
+                if editDoor != .none {
+                    act("Edit", symbol: "pencil", id: "eventEdit") { editing = true }
+                }
+                if mayDelete {
+                    act(EventEditing.deleteLabel(pending: event.awaitingReview), symbol: "trash", id: "eventDelete") {
+                        confirmingDelete = true
+                    }
+                }
+                if let actFailure {
+                    Label { Text(actFailure).font(Font.pw.footnote) } icon: {
+                        Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
+                    }
+                    .foregroundStyle(Color.pwText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("eventActFailure")
+                }
+            }
+            .disabled(acting)
+        }
+    }
+
+    private func act(_ title: String, symbol: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(Font.pw.subheadlineMedium).inkAction(symbol)
+                .frame(minHeight: 30).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
+    /// `DELETE events/{id}`, then away from a page about nothing. Every list
+    /// that drew the event is told, and VoiceOver hears the web's toast.
+    private func delete() {
+        guard !acting else { return }
+        acting = true
+        actFailure = nil
+        let line = EventEditing.deletedLine(pending: event.awaitingReview)
+        Task {
+            defer { acting = false }
+            do {
+                try await api.deleteEvent(id: event.id)
+                session.eventsChanged()
+                AccessibilityNotification.Announcement(line).post()
+                dismiss()
+            } catch APIError.unauthenticated {
+                session.signedOut()
+            } catch {
+                actFailure = ProposalDetailView.sentence(error, fallback: "Failed to delete event")
+            }
+        }
     }
 
     /// "Hosted by X" is a door, not a caption: it opens the patch's own
