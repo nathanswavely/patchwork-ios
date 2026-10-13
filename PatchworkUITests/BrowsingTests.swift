@@ -7,7 +7,7 @@ final class BrowsingTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro"]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Choose a quilt"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["Choose your quilts"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["exploreQuilt"].exists)
         let address = app.textFields["Quilt address"]
         address.tap()
@@ -68,9 +68,9 @@ final class BrowsingTests: XCTestCase {
         app.buttons["Done"].tap()
         XCTAssertTrue(tile.waitForExistence(timeout: 5))
 
-        app.segmentedControls.buttons["Map"].tap()
+        chooseView(app, "Map")
         capture(app, "02d Map")
-        app.segmentedControls.buttons["List"].tap()
+        chooseView(app, "List")
         capture(app, "02e List")
         app.buttons["patchRow"].firstMatch.tap()
         XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
@@ -89,7 +89,7 @@ final class BrowsingTests: XCTestCase {
         // The profile's depth: state worn in the head, and the two rooms the
         // glimpses open onto. Taken on the quilt's own tile, because this is
         // the fixture patch that publishes both a roster and a record.
-        app.segmentedControls.buttons["Quilt"].tap()
+        chooseView(app, "Quilt")
         XCTAssertTrue(tile.waitForExistence(timeout: 10))
         tile.tap()
         XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
@@ -276,7 +276,7 @@ final class BrowsingTests: XCTestCase {
         app.buttons["Done"].tap()
 
         // The footer strip at the end of List mode reaches the same pages.
-        app.segmentedControls.buttons["List"].tap()
+        chooseView(app, "List")
         let footer = app.buttons["footer-infoLabel"]
         var swipes = 0
         while !footer.isHittable && swipes < 10 { app.swipeUp(); swipes += 1 }
@@ -285,7 +285,7 @@ final class BrowsingTests: XCTestCase {
         footer.tap()
         XCTAssertTrue(app.staticTexts["How Sample quilt is run"].waitForExistence(timeout: 10))
         app.buttons["Done"].tap()
-        app.segmentedControls.buttons["Quilt"].tap()
+        chooseView(app, "Quilt")
 
         // Display needs no account. Muted recuts the quilt in place.
         XCTAssertTrue(app.buttons["quiltTile-common-thread"].waitForExistence(timeout: 10))
@@ -526,7 +526,7 @@ final class BrowsingTests: XCTestCase {
         app.launchArguments = ["--preview", "--skip-intro"]
         app.launch()
         openSampleQuilt(app)
-        app.segmentedControls.buttons["List"].tap()
+        chooseView(app, "List")
 
         let heart = app.buttons["followChip-common-thread"]
         XCTAssertTrue(heart.waitForExistence(timeout: 10), "a card offers the heart whether or not anyone is signed in")
@@ -548,7 +548,7 @@ final class BrowsingTests: XCTestCase {
         openSampleQuilt(app)
         signIn(app)
 
-        app.segmentedControls.buttons["List"].tap()
+        chooseView(app, "List")
         let heart = app.buttons["followChip-common-thread"]
         XCTAssertTrue(heart.waitForExistence(timeout: 10))
         heart.tap()
@@ -722,6 +722,14 @@ final class BrowsingTests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch
     }
 
+    /// The view switcher is one button that unfolds into Quilt · Map · List.
+    private func chooseView(_ app: XCUIApplication, _ view: String) {
+        app.buttons["viewSwitcher"].tap()
+        let option = app.buttons["view\(view)"]
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        option.tap()
+    }
+
     private func openSampleQuilt(_ app: XCUIApplication) {
         app.buttons["quiltChoice"].firstMatch.tap()
         let explore = app.buttons["exploreQuilt"]
@@ -734,7 +742,7 @@ final class BrowsingTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL", "--dark-preview"]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Choose a quilt"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["Choose your quilts"].waitForExistence(timeout: 10))
         capture(app, "06 Large text quilt selection")
         app.swipeUp()
         app.buttons["quiltChoice"].firstMatch.tap()
@@ -744,7 +752,7 @@ final class BrowsingTests: XCTestCase {
         explore.tap()
         XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
         capture(app, "08 Large text quilt")
-        app.segmentedControls.buttons["List"].tap()
+        chooseView(app, "List")
         app.buttons["patchRow"].firstMatch.tap()
         XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
         capture(app, "09 Large text patch")
