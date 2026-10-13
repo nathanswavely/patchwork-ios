@@ -37,7 +37,29 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(event.eventUrl, "https://example.org/event")
         XCTAssertNotNil(event.date)
     }
-    @MainActor func testNoQuiltIsSelectedOnLaunch() {
-        XCTAssertNil(QuiltStore().selected)
+    /// A first launch has nothing saved and asks; every later launch opens
+    /// the quilt used last.
+    @MainActor func testLaunchOpensTheQuiltUsedLast() {
+        let defaults = UserDefaults(suiteName: "QuiltStoreTests")!
+        defer { defaults.removePersistentDomain(forName: "QuiltStoreTests") }
+        defaults.removePersistentDomain(forName: "QuiltStoreTests")
+        XCTAssertNil(QuiltStore(defaults: defaults).selected, "nothing saved, so onboarding asks")
+
+        let one = Quilt(url: URL(string: "https://one.example.org")!, name: "One")
+        let two = Quilt(url: URL(string: "https://two.example.org")!, name: "Two")
+        let first = QuiltStore(defaults: defaults)
+        first.adopt([one, two])
+        XCTAssertEqual(first.selected, one, "onboarding opens the first quilt picked")
+        XCTAssertEqual(first.saved, [one, two], "and keeps every one, in the order offered")
+
+        first.connect(two)
+        XCTAssertEqual(QuiltStore(defaults: defaults).selected, two, "the next launch opens the quilt used last")
+
+        let third = QuiltStore(defaults: defaults)
+        third.forget(two)
+        XCTAssertEqual(third.selected, one, "forgetting the open quilt moves to the next saved one")
+        third.forget(one)
+        XCTAssertNil(third.selected, "and forgetting the last goes back to onboarding")
+        XCTAssertNil(QuiltStore(defaults: defaults).selected)
     }
 }

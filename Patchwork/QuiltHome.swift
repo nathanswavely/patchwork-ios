@@ -89,7 +89,9 @@ struct QuiltHome: View {
         .task { await session.load() }
         .onAppear {
             session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard)
-            if !IntroState.seen(session.quilt) { intro = true }
+            // Shown is seen: the card stays up for this visit until it is
+            // answered, but no later launch brings it back.
+            if !IntroState.seen(session.quilt) { intro = true; IntroState.markSeen(session.quilt) }
         }
         .onChange(of: colors) { _, now in session.apply(colorMode: ColorMode(rawValue: now) ?? .standard) }
         // Coming back to the app reads the count again and restarts the
@@ -321,17 +323,13 @@ private struct FieldChrome: ViewModifier {
     }
 }
 
-/// Liquid glass where the system has it, the same glass the bar's own
-/// buttons wear so the field and its neighbours are one family; material
-/// with a hairline where it does not. The glass carries a tint of the app's
-/// surface, because the quilt under it is dense and unpredictable and a
-/// control that carries text needs some floor of its own.
-private struct GlassCapsule: ViewModifier {
+/// Liquid glass where the system has it, the same untinted glass the bar's
+/// own buttons wear so the field and its neighbours are one family with the
+/// rest of iOS; material with a hairline where it does not.
+struct GlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
-            // The same glass the bar's buttons wear, tinted with the app's
-            // surface so a placeholder still reads over dense cloth.
-            content.glassEffect(.regular.tint(Color.pwSurface.opacity(0.72)).interactive(), in: Capsule())
+            content.glassEffect(.regular.interactive(), in: Capsule())
         } else {
             content.background(.thickMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
         }

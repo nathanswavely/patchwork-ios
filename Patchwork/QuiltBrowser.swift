@@ -93,7 +93,7 @@ struct QuiltBrowser: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottom) { if !session.loading && session.error == nil && !session.patches.isEmpty && !session.searching { pill } }
+        .overlay(alignment: .bottomTrailing) { if !session.loading && session.error == nil && !session.patches.isEmpty && !session.searching { pill } }
         .navigationTitle(session.quilt.name).navigationBarTitleDisplayMode(.inline)
         // Over the canvas the bar paints nothing; the controls carry their own glass.
         .toolbarBackground(mode == "List" || session.searching ? .automatic : .hidden, for: .navigationBar)
@@ -184,19 +184,84 @@ struct QuiltBrowser: View {
             .accessibilityIdentifier("showWholeQuilt")
     }
 
-    /// The view switcher rides the foot of the canvas, in thumb reach.
+    /// The view switcher waits in the bottom-right corner, just over the tab
+    /// bar and in thumb reach, as one button wearing the current view.
     private var pill: some View {
-        Picker("View", selection: $mode) {
-            Text("Quilt").tag("Quilt")
-            if session.mapEnabled { Text("Map").tag("Map") }
-            Text("List").tag("List")
+        ViewSwitcher(mode: $mode, showsMap: session.mapEnabled) { pillHeight = $0 + 12 }
+            .padding(.trailing, 16)
+            .padding(.bottom, 12)
+    }
+}
+
+/// Quilt · Map · List folded into one glass button. A tap unfolds the three
+/// views upward in the same capsule; choosing one (or tapping anywhere
+/// else) folds it back down to the chosen view's glyph.
+private struct ViewSwitcher: View {
+    @Binding var mode: String
+    let showsMap: Bool
+    /// The folded button's height, which is what the canvas keeps its names
+    /// clear of. Opening is momentary, so the names do not move for it.
+    var foldedHeight: (CGFloat) -> Void = { _ in }
+    @State private var open = false
+    private var views: [String] { showsMap ? ["Quilt", "Map", "List"] : ["Quilt", "List"] }
+    private func glyph(_ view: String, filled: Bool) -> String {
+        switch view {
+        case "Map": filled ? "map.fill" : "map"
+        case "List": "list.bullet"
+        default: filled ? "square.grid.2x2.fill" : "square.grid.2x2"
         }
-        .pickerStyle(.segmented).frame(width: session.mapEnabled ? 240 : 170)
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .padding(4).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+    var body: some View {
+        VStack(spacing: 4) {
+            if open {
+                ForEach(views, id: \.self) { view in
+                    let chosen = mode == view
+                    Button {
+                        mode = view
+                        open = false
+                    } label: {
+                        Image(systemName: glyph(view, filled: chosen))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(chosen ? Color.white : Color.pwText)
+                            .frame(width: 44, height: 44)
+                            .background { if chosen { Circle().fill(Color.accentColor) } }
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(view)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
+                    .accessibilityIdentifier("view\(view)")
+                    .transition(.opacity.combined(with: .scale(scale: 0.6, anchor: .bottom)))
+                }
+            } else {
+                Button { open = true } label: {
+                    Image(systemName: glyph(mode, filled: true))
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.pwText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("View: \(mode)")
+                .accessibilityHint("Shows Quilt, Map and List")
+                .accessibilityIdentifier("viewSwitcher")
+            }
+        }
+        .padding(4)
+        .modifier(GlassCapsule())
         .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
-        .padding(.bottom, 12)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillHeight = $0 }
+        .animation(.snappy(duration: 0.25), value: open)
+        // While it is open, a tap anywhere else folds it without acting.
+        .background(alignment: .bottomTrailing) {
+            if open {
+                Color.clear.contentShape(Rectangle())
+                    .frame(width: 4000, height: 4000)
+                    .onTapGesture { open = false }
+                    .accessibilityHidden(true)
+            }
+        }
+        .onChange(of: mode) { open = false }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if !open { foldedHeight($0) } }
     }
 }
 

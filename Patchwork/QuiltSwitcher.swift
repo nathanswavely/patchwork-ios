@@ -55,6 +55,11 @@ struct QuiltSwitcher: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("switchQuilt")
+                                // Saved is the reader's own list; a quilt they
+                                // are done with can leave it.
+                                .swipeActions {
+                                    Button("Remove", role: .destructive) { store.forget(quilt) }
+                                }
                             }
                         } header: { heading("Other quilts") }
                     }
