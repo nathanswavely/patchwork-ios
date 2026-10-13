@@ -11,6 +11,9 @@ struct QuiltBrowser: View {
     @State private var sort = PatchOrder.quilt
     @State private var filtering = false
     @State private var pending: Patch?
+    /// How much of the canvas's foot the view switcher covers, padding and
+    /// all, so the quilt's names can keep clear of it.
+    @State private var pillHeight: CGFloat = 0
     private var filtered: [Patch] { session.filtered }
     /// The list reads the quilt (docs/adr/074): by default its order *is* the
     /// placement the canvas is drawing, so the two panes can never disagree.
@@ -72,7 +75,7 @@ struct QuiltBrowser: View {
                 }
                 .background(Color.pwGround.ignoresSafeArea())
             } else if mode == "Quilt" {
-                QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs, colorMode: session.colorMode) { open($0) }
+                QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs, colorMode: session.colorMode, footer: pillHeight) { open($0) }
                     .ignoresSafeArea()
             } else if mode == "Map" {
                 if located.isEmpty { ContentUnavailableView("No locations to show", systemImage: "map", description: Text("These patches haven’t shared map coordinates.")) }
@@ -193,6 +196,7 @@ struct QuiltBrowser: View {
         .padding(4).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
         .padding(.bottom, 12)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillHeight = $0 }
     }
 }
 
