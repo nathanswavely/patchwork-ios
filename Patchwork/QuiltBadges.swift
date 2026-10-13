@@ -23,6 +23,9 @@ enum QuiltBadges {
     static let gap: CGFloat = 32
     static let keepGap: CGFloat = 26
     static let roomyPx: CGFloat = 80
+    /// The clear space a pinned badge keeps from the viewport's edge, so a
+    /// name held at the bar's edge does not sit flush against the glass.
+    static let edgeInset: CGFloat = 6
 
     struct Shape: Hashable {
         let textWidth: CGFloat
@@ -134,8 +137,10 @@ enum QuiltBadges {
     /// first and keep their spot for as long as they can hold a badge at all;
     /// then larger tiles, so the bigger name wins a collision. A pill that
     /// does not fit stacks onto another line and asks again, and only a name
-    /// that fits at no depth gives up its badge.
-    static func plan(_ candidates: [Candidate], held: Set<String>, viewport: CGSize, type: Typeface,
+    /// that fits at no depth gives up its badge. A badge is never cut by the
+    /// viewport's edge: it rides the visible part of its tile (see `pin`), and
+    /// where too little of the tile is left to hold it, it waits.
+    static func plan(_ candidates: [Candidate], held: Set<String>, viewport: CGRect, type: Typeface,
                      shapes: (String) -> [Shape]) -> [Placement] {
         let sorted = candidates.enumerated().sorted { a, b in
             let ha = held.contains(a.element.id), hb = held.contains(b.element.id)
@@ -149,8 +154,7 @@ enum QuiltBadges {
             let screenPx = candidate.rect.width
             let incumbent = held.contains(candidate.id)
             if screenPx < (incumbent ? keepPx : minPx) { continue }
-            let x = candidate.rect.midX, y = candidate.rect.midY
-            if x < -150 || x > viewport.width + 150 || y < -50 || y > viewport.height + 50 { continue }
+            if !candidate.rect.intersects(viewport) { continue }
             // What this badge owes its neighbours: the full gap to move in; to
             // stay, a gap that slides toward keepGap as its tile grows past the
             // floor — leniency only while there is a tile under it worth reading.
@@ -159,7 +163,7 @@ enum QuiltBadges {
             for shape in shapes(candidate.name) {
                 let w = shape.textWidth + type.chromeX
                 let h = type.chromeY + CGFloat(shape.lines) * type.lineHeight
-                let box = CGRect(x: x - w / 2, y: y - h / 2, width: w, height: h)
+                guard let box = pin(CGSize(width: w, height: h), on: candidate.rect, in: viewport) else { continue }
                 let grown = box.insetBy(dx: -owed, dy: -owed)
                 if placed.contains(where: { grown.intersects($0) }) { continue }
                 placed.append(box)
@@ -169,13 +173,34 @@ enum QuiltBadges {
         }
         return out
     }
+
+    /// Where a pill sits on its tile: centred, then pulled inside the viewport
+    /// for as long as it can stay on the tile, the way a section header
+    /// sticks. A pill wider than its tile stays centred on it. Nil when the
+    /// visible part of the tile cannot hold the whole pill.
+    static func pin(_ size: CGSize, on tile: CGRect, in viewport: CGRect) -> CGRect? {
+        func centre(_ length: CGFloat, tile: ClosedRange<CGFloat>, view: ClosedRange<CGFloat>) -> CGFloat? {
+            let half = min(length, tile.upperBound - tile.lowerBound) / 2
+            let low = max(tile.lowerBound + half, view.lowerBound + edgeInset + length / 2)
+            let high = min(tile.upperBound - half, view.upperBound - edgeInset - length / 2)
+            guard low <= high else { return nil }
+            return min(max((tile.lowerBound + tile.upperBound) / 2, low), high)
+        }
+        guard let x = centre(size.width, tile: tile.minX...tile.maxX, view: viewport.minX...viewport.maxX),
+              let y = centre(size.height, tile: tile.minY...tile.maxY, view: viewport.minY...viewport.maxY) else { return nil }
+        return CGRect(x: x - size.width / 2, y: y - size.height / 2, width: size.width, height: size.height)
+    }
 }
 
 /// The non-scrolling layer badges live in: screen space, above the canvas,
-/// clipped at the viewport so a badge at the edge clips rather than reshapes.
-/// It takes no touches itself; the canvas hands a touch on a badge to the
-/// badge's patch.
+/// the size of the safe area. Badges are placed inside it, less whatever
+/// floats over its edges (`chrome`), so none is cut off by a bar or hidden
+/// under a control. It takes no touches itself; the canvas hands a touch on a
+/// badge to the badge's patch.
 final class BadgeLayer: UIView {
+    /// Controls floating over the canvas inside the safe area — the
+    /// Quilt/Map/List switch — that a badge must also keep clear of.
+    var chrome = UIEdgeInsets.zero
     private var views: [String: BadgeView] = [:]
     private var held = Set<String>()
     private var type = QuiltBadges.Typeface.current()
@@ -194,7 +219,7 @@ final class BadgeLayer: UIView {
     }
 
     func apply(_ candidates: [QuiltBadges.Candidate]) {
-        let placements = QuiltBadges.plan(candidates, held: held, viewport: bounds.size, type: type, shapes: measurer.shapes)
+        let placements = QuiltBadges.plan(candidates, held: held, viewport: bounds.inset(by: chrome), type: type, shapes: measurer.shapes)
         held = Set(placements.map(\.id))
         for placement in placements {
             let view = views[placement.id] ?? {
