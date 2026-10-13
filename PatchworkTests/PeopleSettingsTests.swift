@@ -28,7 +28,7 @@ final class PeopleSettingsTests: XCTestCase {
         let items = try decode(ContactItemList.self, json).items
         XCTAssertEqual(items.map(\.id), ["c1", "c2", "c3"])
         XCTAssertEqual(items[0].sharingLine, "Shared with 2 patches")
-        XCTAssertEqual(items[1].label, nil, "an empty label is omitted by the server")
+        XCTAssertEqual(items[1].label, "", "an empty label is omitted by the server, and read as empty")
         XCTAssertEqual(items[1].sharingLine, "Not shared with any patch", "shared_with is omitted at zero")
         XCTAssertEqual(items[0].word, "Phone")
         XCTAssertEqual(items[2].word, "fax", "an unknown kind falls back to its own name")

@@ -27,8 +27,17 @@ struct PatchMemberList: View {
             if loaded && !roster.withheld {
                 Section {
                     ForEach(roster.members) { member in
-                        PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+                        // Somebody with a username opens their profile; a
+                        // row without one stays a name.
+                        if let handle = People.door(member.username) {
+                            NavigationLink { PersonProfile(quilt: quilt, username: handle, close: close) } label: {
+                                PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+                            }
                             .accessibilityIdentifier("memberRow")
+                        } else {
+                            PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+                                .accessibilityIdentifier("memberRow")
+                        }
                     }
                 } header: {
                     VStack(alignment: .leading, spacing: 3) {

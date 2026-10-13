@@ -69,23 +69,47 @@ enum ContactKind: String, CaseIterable, Identifiable {
     }
 }
 
-/// One item on the card. The same shape answers three reads: the owner's
-/// own list (`shared_with`, the number of patches it is shared into, absent
-/// when none), a patch's sharing view (`shared`, whether *this* patch reads
-/// it), and the items others share with a viewer (neither).
+/// One way to reach somebody (web ADR 083, `model.ContactItem`), and one item
+/// on the card. The same shape answers four reads: the owner's own list
+/// (`shared_with`, the number of patches it is shared into, absent when
+/// none), a patch's sharing view (`shared`, whether *this* patch reads it),
+/// and the items a profile shows a viewer who shares a patch with its owner
+/// (neither). Nothing here ever names the patch an item was shared through:
+/// that membership may be private or hidden, and naming it would put on the
+/// profile what ADR 006 keeps off it.
 struct ContactItem: Decodable, Identifiable, Hashable {
     let id: String
-    let kind: String
-    let value: String
-    /// The person's own word for it — "work", "Signal only". Omitted when empty.
-    let label: String?
-    let position: Int?
-    let sharedWith: Int?
-    let shared: Bool?
+    var kind: String = ""
+    var value: String = ""
+    /// The person's own word for it — "work", "Signal only". Absent on the
+    /// wire when empty, and empty here.
+    var label: String = ""
+    var position: Int = 0
+    var sharedWith: Int? = nil
+    var shared: Bool? = nil
+
+    init(id: String, kind: String, value: String, label: String = "", position: Int = 0) {
+        self.id = id; self.kind = kind; self.value = value; self.label = label; self.position = position
+    }
+    private enum CodingKeys: String, CodingKey { case id, kind, value, label, position, sharedWith, shared }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func text(_ key: CodingKeys) -> String { ((try? c.decodeIfPresent(String.self, forKey: key)) ?? nil) ?? "" }
+        id = try c.decode(String.self, forKey: .id)
+        kind = text(.kind); value = text(.value); label = text(.label)
+        position = ((try? c.decodeIfPresent(Int.self, forKey: .position)) ?? nil) ?? 0
+        sharedWith = (try? c.decodeIfPresent(Int.self, forKey: .sharedWith)) ?? nil
+        shared = (try? c.decodeIfPresent(Bool.self, forKey: .shared)) ?? nil
+    }
 
     var contactKind: ContactKind? { ContactKind(rawValue: kind) }
-    /// An unknown kind falls back to its own name, as the web's does.
+    /// The kind as a word, which leads the row: a bare string of digits
+    /// reads as nothing until it is called a phone. A kind this client does
+    /// not know is shown as the server spelled it, as the web's is.
     var word: String { contactKind?.word ?? kind }
+    /// The kind's mark, beside the word rather than instead of it. None for
+    /// a kind this client does not know.
+    var symbol: String? { contactKind?.symbol }
     var patchesSharedWith: Int { sharedWith ?? 0 }
 
     /// "Shared with 2 patches", worded as the web words it.
@@ -94,6 +118,26 @@ struct ContactItem: Decodable, Identifiable, Hashable {
         case 0: return "Not shared with any patch"
         case 1: return "Shared with 1 patch"
         default: return "Shared with \(patchesSharedWith) patches"
+        }
+    }
+
+    /// What the value dials or writes to, or nothing (web `contactHref`). A
+    /// phone is stripped to its digits and a leading plus, because the value
+    /// is the person's own prose — "+1 717 555 0100, Signal only" is how
+    /// people fill in a phone field — and a `tel:` address cannot carry the
+    /// prose. A handle and a note have no scheme to open and stay text.
+    var link: URL? {
+        switch kind {
+        case "phone":
+            let digits = value.filter { $0 == "+" || ("0"..."9").contains($0) }
+            return digits.isEmpty ? nil : URL(string: "tel:" + digits)
+        case "email":
+            let address = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !address.isEmpty,
+                  let escaped = address.addingPercentEncoding(withAllowedCharacters: People.mailtoAllowed) else { return nil }
+            return URL(string: "mailto:" + escaped)
+        default:
+            return nil
         }
     }
 }
@@ -157,7 +201,7 @@ struct ContactDraft: Equatable {
     init(item: ContactItem) {
         kind = item.contactKind ?? .note
         value = item.value
-        label = item.label ?? ""
+        label = item.label
     }
 
     var body: ContactItemBody {
@@ -169,7 +213,7 @@ struct ContactDraft: Equatable {
     var hasValue: Bool { !body.value.isEmpty }
     /// Whether an edit says anything the item does not already.
     func differs(from item: ContactItem) -> Bool {
-        body != ContactItemBody(kind: item.kind, value: item.value, label: item.label ?? "")
+        body != ContactItemBody(kind: item.kind, value: item.value, label: item.label)
     }
     /// A field stops at its limit, the way the web's `maxlength` does.
     static func clamp(_ text: String, to limit: Int) -> String {
@@ -229,7 +273,7 @@ struct ContactItemLine: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.word).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 (Text(verbatim: item.value).foregroundStyle(Color.pwText)
-                 + Text(verbatim: (item.label?.isEmpty == false) ? " · \(item.label!)" : "").foregroundStyle(Color.pwTextMuted))
+                 + Text(verbatim: item.label.isEmpty ? "" : " · \(item.label)").foregroundStyle(Color.pwTextMuted))
                     .font(Font.pw.body)
                     .fixedSize(horizontal: false, vertical: true)
             }

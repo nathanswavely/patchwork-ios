@@ -1293,3 +1293,195 @@ the last row's id on a short page. Not exercised live: a notice with an
 image, a board or a thread longer than one page, and a patch admin's acts
 from inside the app.
 
+## People — 2026-10-13
+
+**What it is.** The web's `/users/{username}` (`UserProfile.svelte`): a
+person as the quilt publishes them. The same page for every reader — signed
+out, signed in, and the person themselves — except for one part, the contact
+card (web ADR 083), which the server fills only for somebody who is an active
+member or admin of a patch the person gave those items to. There is no
+special view of yourself: a membership you hid (ADR 006) is hidden from your
+own profile too, and the web says so to you under its empty state.
+
+**The screen** (`PersonProfile.swift`, values in `People.swift`). The web's
+order, as cards on the ground: the head — avatar or initial, the name
+(`display_name || username`), "@handle · here since {Month YYYY}" with the
+web's long month, the bio — then "This person has moved to {host}." as a
+link out where `moved_to` parses to a host (and, for a forwarding address of
+the patch shape, the remote patch view, which `MovedNotice` also offers);
+then the one act; then "Reach {name}" with the web's two explanation
+sentences, self and other; then Links (the label, or the host without
+`www.`); then Runs and Member of. The empty state is the web's: no
+memberships, no bio and no links reads "Nothing here yet.", and the person
+themselves is also told hidden memberships do not appear and are managed in
+Settings — plain text here, since that page is Settings' own. A 404 is
+"Person not found" over the server's sentence; the web's "Back to Quilt" is
+the stack's own back button.
+
+**The contact card.** Each item leads with its kind, as a word and a mark
+(Phone, Email, Handle, Note; an unknown kind as the server spelled it, with
+no mark), then the value — a `tel:` link for a phone, stripped to its digits
+and a leading `+` because the value is the person's own prose, a `mailto:`
+for an email, plain selectable text for a handle or a note — then
+"· {label}" muted. The section is absent rather than empty where there are no
+items, because an empty heading would tell the reader a card exists. Nothing
+on it names the patch an item was shared through. Editing the card and
+choosing what each patch can see are Settings' (the next section).
+
+**The acts.** Your own profile has Edit profile, which pushes Settings'
+existing Profile page onto the same stack. Anybody else's has Report while
+you are signed in to that quilt. Reporting reuses the noticeboard's sheet:
+`ReportBody.Kind` gained `user`, `ReportTarget` gained the heading "Report
+this person" and a `destination` — "Reports go to the instance admins, who
+review them against the community lining." for a person, the patch's admins
+for a notice or a reply — and the sheet reads "{destination} You’re
+reporting {name}." `entity_id` is the profile's `id`; the server checks it
+against any user row, and a user report has no patch, so it lands in the
+quilt's own queue and rings no bell. The web's success toast is the sheet's
+existing "Report submitted / An admin will review it."
+
+**The doors.** `People.door(_:)` is the one test: a username that is not
+blank. A deleted account ("Deleted account"), a hidden member's ballot
+("Hidden member") and a withheld council chair all arrive with a blank one —
+the server blanks it because it is what a profile link is built from — so
+none of them is a door, whatever its name says. Where the name is a list row
+(the members room, the governance overview's admins, a held council seat, a
+voter) the row is a `NavigationLink` and wears the platform's chevron; where
+it is a word inside a row that already does something else (a candidate
+beside the ballot tick, a notice's byline, a reply's author) it is a
+`PersonName` — ink with the chevron hugging it — pushed through one
+`navigationDestination(item:)` on the screen, because a destination inside a
+lazy row is ignored. The Members glimpse's rows and the Label's steward
+cards are links styled as they were, the steward card gaining a chevron. A
+notice row is already the notice's door, so its author is offered from a
+press on the row ("View {name}’s profile") rather than as a second door
+inside it. Proposal authors, comments, revisions and the record carry a name
+and no username, so they stay text.
+
+**Opening a person's patch.** A patch docks over the quilt, the way every
+patch opens. Inside a docked profile's own rooms, another patch simply takes
+the sheet's place; the same patch cannot be handed to the sheet twice, so
+`QuiltSession.openFromProfile` lets the sheet go and docks it afresh once it
+has gone, which returns the reader to its profile from however deep they
+were. A screen presented in a sheet of its own — the notifications sheet,
+the quilt's information stack — sets `patchDoor` in the environment: the
+patch is noted with `dock(afterSheet:)`, the sheet closes, and its
+presenter's `onDismiss` docks it, because a sheet cannot be presented while
+another is still leaving. Settings does the same: its "View public profile"
+opens this screen, and its `patchDoor` is `SettingsExit.dock`.
+
+**Notifications.** `NotificationLink.route` reads `/users/{username}` as
+`.person`, pushed inside the sheet. The server sends no such link today (the
+admin report queue's `target_link` is the only `weblink.User`), so this is
+there for when it does rather than for anything in the bell now.
+
+**Fixtures.** `users/{username}` answers for everybody the other fixtures
+name: Rowan runs the studio and is a member of the Repair Cafe, with links
+and a four-item card shared into both, so a plain sign-in (which is in the
+Repair Cafe) sees it; Imani's card is shared only into the studio, so it
+waits for `--preview-member`; Theo has hidden his membership and shows
+"Nothing here yet."; Sam has moved; Mara, Dee Ramos and Ade, the Repair
+Cafe's Dee Marsh (whose fixture username became `deemarsh`, since it
+collided with Dee Ramos's `dee`) and Kofi, and the Label's Sample Steward all
+resolve. Wren is a new row in the studio's members room whose account is
+suspended, and answers 404. The reader's own profile is built from the
+account and the membership set the writes mutate, so a follow never appears
+on it. `POST reports` takes `user` for any fixture person.
+
+## Contact card, My Patches and notification preferences — 2026-10-13
+
+Settings has the three web surfaces it used to leave to the website.
+Reference: the web's `AccountSettings.svelte` (its contact card section),
+`UserSettingsPatches.svelte`, `NotificationPreferences.svelte` and
+`UserSettingsShell.svelte`; the handlers behind them (`contact_items.go`,
+`users.go`'s `UpdateMyMembership`, `memberships.go`'s `ListMyMemberships`,
+`claims.go`'s `MyClaims`, `notifications.go`); and web ADRs 006, 034, 039,
+042, 076, 083 and 088.
+
+- **Where each one lives.** The web's tabs are Profile · Notifications ·
+  Security · My Patches, and the index keeps that order, with the two
+  switches the web keeps on its Profile page beside Profile: Profile · When
+  you open Patchwork · Discovery · Notifications · Security · My Patches ·
+  Your data. The contact card is where the web keeps it, on Profile — as a
+  door to a page of its own rather than more fields there, because its items
+  save one at a time and Profile's fields wait for Save; two kinds of saving
+  on one page would leave a reader guessing which button saves what.
+- **The card.** One row per item: the kind's symbol and word, the value, the
+  person's label after a middle dot, and "Shared with n patches" — the web's
+  words. Adding and editing share a sheet: a segmented picker of the four
+  kinds, a value field whose keyboard and placeholder follow the kind, a
+  label. Fields stop at the server's byte limits (60/254/100/200 by kind, 40
+  for a label) rather than have the quilt refuse them, and Email carries the
+  web's line that it is not the sign-in address. Remove and Stop sharing
+  everywhere are on the swipe, the long press and the edit sheet, and neither
+  asks first, because the web does not: removing is undone by typing it
+  again, and stopping can only reduce exposure. Twelve items is a full card;
+  the add row becomes the web's sentence. Every write reads the card back,
+  and the membership index too, so each "Reachable by" count drops with it.
+- **My Patches.** The membership index the Dashboard already groups
+  (`DashboardGrouping`), plus `me/nodes?status=archived` and
+  `users/me/claims`, each best effort — a section that cannot be read is not
+  drawn. Claiming rows wear their state ("Ready to set up" / "Claim under
+  review") and the web's dates, with a door to the website's setup or claim
+  page, since the app has no claim flow. Archived rows carry their address
+  and no door — every route refuses an archived patch. Managing and Member of
+  rows are doors to the patch's own page and say its two settings on their
+  second line ("Public · Reachable by 2"). Requested rows Withdraw; Following
+  rows carry the member rung where it can succeed ("Become a member" / "Send
+  request", this page's words — never on an unclaimed or invite-only patch,
+  whose reason is worn instead as a dashed pill with its sentence) and
+  Unfollow. Join opens the existing `JoinSheet` (which now takes a name, so a
+  membership row can open it); join, leave, withdraw and unfollow are
+  `QuiltSession`'s own acts, each behind a confirmation as on the web, and
+  each reported in the web's words ("Left patch", "Unfollowed patch",
+  "Request withdrawn").
+- **One patch's page.** Open {patch} docks it (`SettingsExit.dock`). Public
+  is a switch saved the moment it moves and put back on a refusal; its footer
+  is the web's tooltip for the state it is in, so off says the patch's admins
+  and members still see you. "Reachable by n" / "Not reachable" opens a sheet
+  of checkmarks over the card, and nothing changes until Save, which sends the
+  whole set — a tap that discloses a phone number to a room is a decision, not
+  a side effect, which is why the web has a picker with Save too. With an
+  empty card the control is disabled, its footer says why, and a row opens the
+  card. A member gets Leave (confirmed, saying the shares go with it —
+  `DropContactSharesFor`); an admin does not, as on the web. `Membership`
+  gained `contactItemsShared`.
+- **Notification preferences.** One section per category (label as header,
+  description as footer), one row per type: a single switch where the quilt
+  offers one channel, the type's name over a switch per channel where it
+  offers more — only the channels `channels` lists, "In-app" and "Email".
+  Saving is the one deliberate departure from the web: only the pairs that
+  changed are sent (`NotificationPreferences.changes(from:to:)`), after the
+  web's 500 ms wait, and leaving the page sends anything still waiting. A
+  refused save puts each pair back unless it has been moved again since, and
+  says the web's "Failed to save preferences". The channel map is decoded as
+  it comes and re-keyed against the channel list under either spelling,
+  because `convertFromSnakeCase` rewrites dictionary keys. The bell's ⋯ menu
+  gained "Notification settings", which pushes the same page inside the bell's
+  sheet.
+- **Fixtures.** `--preview` answers every new path statefully: the card
+  starts empty; shares are held per patch, dropped on leave and counted into
+  `me/nodes`; hidden memberships read back `visible:false`; preference rows
+  are stored as sent and turn `decided`; one approved claim on the unclaimed
+  River Walkers and one archived duplicate of the Repair Cafe
+  (`/repair-cafe-2`). Every refusal is the server's own sentence.
+- **Tests.** `PeopleSettingsTests` (14): the card, the share view, a
+  membership row's count, claims and the preferences matrix decoded with the
+  snake-case decoder (and a plain one); the item body and edit rule; the byte
+  clamp; the follower rung and its notes; the changed-pairs diff (never the
+  bulletin unless it moved) and the revert rule; the sentences.
+  `PeopleSettingsFlowTests` (3): hide a membership and show it again; add a
+  phone number, give it to the Repair Cafe, read "Reachable by 1"; switch
+  email on for new proposals, leave, come back to it on, then reach the same
+  page from the bell.
+- **Left to the website.** Claiming and setting up a patch (the Claiming row
+  says so), and withdrawing a pending claim (`POST claims/{id}/withdraw`) —
+  the web's My Patches does not offer that either; it lives on the claim page.
+
+**One type for a contact item.** The profile and the card were built side
+by side and each first drew its own `ContactItem`; they are one type now, in
+`ContactCard.swift`, decoded leniently (an absent label is an empty one) and
+carrying both the card's sharing counts and the profile's `tel:` / `mailto:`
+links. The reader's own fixture profile reads the card: a hidden membership
+is off it, and its contact section is the items the reader has given to a
+patch.

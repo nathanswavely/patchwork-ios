@@ -48,6 +48,8 @@ struct PatchNoticeboard: View {
     @State private var opened: Opened?
     /// Something on the board changed while a notice was open.
     @State private var stale = false
+    /// A notice's author, opened from the row's menu.
+    @State private var person: String?
 
     private struct Opened: Hashable {
         let notice: Notice
@@ -76,6 +78,17 @@ struct PatchNoticeboard: View {
                                 NoticeDetailView(quilt: quilt, initial: notice, close: close) { stale = true; changed() }
                             } label: { NoticeRow(notice: notice) }
                             .accessibilityIdentifier("noticeRow")
+                            // The row is the notice's door, so its author
+                            // cannot be a second one inside it: they are a
+                            // press away instead, where there is somebody.
+                            .contextMenu {
+                                if let handle = People.door(notice.authorUsername) {
+                                    Button { person = handle } label: {
+                                        Label("View \(notice.author)’s profile", systemImage: "person.crop.circle")
+                                    }
+                                    .accessibilityIdentifier("noticeAuthorProfile")
+                                }
+                            }
                         }
                         if !cursor.isEmpty {
                             Button { Task { await loadMore() } } label: {
@@ -139,6 +152,7 @@ struct PatchNoticeboard: View {
         .navigationDestination(item: $opened) { opened in
             NoticeDetailView(quilt: quilt, initial: opened.notice, note: opened.line, close: close) { stale = true; changed() }
         }
+        .personDestination($person, quilt: quilt, close: close)
         .sheet(isPresented: $composing, onDismiss: {
             if let putUp {
                 opened = Opened(notice: putUp.notice, line: putUp.line)

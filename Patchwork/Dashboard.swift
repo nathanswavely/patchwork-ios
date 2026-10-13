@@ -63,7 +63,7 @@ struct Dashboard: View {
         .background(Color.pwGround.ignoresSafeArea())
         .navigationTitle("Dashboard").navigationBarTitleDisplayMode(.inline)
         .modifier(DiscoveryToolbar())
-        .sheet(isPresented: $notifications) { NotificationsSheet() }
+        .sheet(isPresented: $notifications, onDismiss: { session.sheetDismissed() }) { NotificationsSheet() }
         .refreshable { await load() }
         .task { await load() }
     }

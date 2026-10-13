@@ -151,6 +151,9 @@ struct SettingsSheet: View {
         // Signed out from anywhere — a 401 on any page — there are no
         // settings left to show.
         .onChange(of: session.me == nil) { _, gone in if gone { dismiss() } }
+        // A patch named on a profile pushed in here (your own, from View
+        // public profile) docks on the quilt once the sheet has gone.
+        .environment(\.patchDoor) { onExit(.dock($0)) }
     }
 }
 
@@ -272,10 +275,13 @@ struct ProfileSettings: View {
                             Text(me.handle).font(Font.pw.body).foregroundStyle(Color.pwText)
                             Spacer(minLength: 0)
                         }
-                        Link(destination: session.api.webURL("users/\(me.username)")) {
+                        // The profile as anybody else on this quilt reads it,
+                        // natively: what Save just changed is what it shows.
+                        NavigationLink {
+                            PersonProfile(quilt: session.quilt, username: me.username)
+                        } label: {
                             Text("View public profile").font(Font.pw.body)
                         }
-                        .exitLink()
                         .accessibilityIdentifier("profilePublicLink")
                     } header: {
                         settingsHeading("Username")
@@ -326,6 +332,16 @@ struct ProfileSettings: View {
                         settingsFootnote("A link with no address is left out when you save.")
                     }
                 }
+                // What Save did, under the fields it saved rather than below
+                // the card, which Save does not touch.
+                if let failure {
+                    Section { Text(failure).font(Font.pw.footnote).foregroundStyle(Color.pwText) }
+                } else if saved {
+                    Section {
+                        Label("Saved", systemImage: "checkmark").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                            .accessibilityIdentifier("profileSaved")
+                    }
+                }
                 // Where the web keeps it: on Profile. Its items save one at a
                 // time rather than with this page's Save, so it is a door to
                 // a page of its own rather than more fields on this one.
@@ -342,14 +358,6 @@ struct ProfileSettings: View {
                     settingsHeading("Contact card")
                 } footer: {
                     settingsFootnote("The ways you are willing to be reached. Nothing on it is public; you give each item to a patch in My Patches.")
-                }
-                if let failure {
-                    Section { Text(failure).font(Font.pw.footnote).foregroundStyle(Color.pwText) }
-                } else if saved {
-                    Section {
-                        Label("Saved", systemImage: "checkmark").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
-                            .accessibilityIdentifier("profileSaved")
-                    }
                 }
             }
             .listRows()

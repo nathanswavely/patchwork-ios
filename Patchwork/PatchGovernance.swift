@@ -80,10 +80,16 @@ struct PatchGovernanceHome: View {
                             .foregroundStyle(Color.pwTextMuted)
                     } else if let admins = overview.admins, !admins.isEmpty {
                         ForEach(admins) { admin in
-                            PersonRow(
+                            let row = PersonRow(
                                 name: admin.name, initial: admin.initial, avatar: admin.avatar,
                                 detail: ProfileDate.monthYear(admin.joinedAt).map { "Member since \($0)" }
                             )
+                            if let handle = People.door(admin.username) {
+                                NavigationLink { PersonProfile(quilt: quilt, username: handle, close: close) } label: { row }
+                                    .accessibilityIdentifier("governanceAdmin")
+                            } else {
+                                row
+                            }
                         }
                     } else {
                         Text("Nobody holds the admin role here yet.").foregroundStyle(Color.pwTextMuted)
@@ -151,11 +157,20 @@ struct PatchGovernanceHome: View {
             } else {
                 Text(seatSummary(seats)).fixedSize(horizontal: false, vertical: true)
                 ForEach(seats) { seat in
-                    VStack(alignment: .leading, spacing: 3) {
+                    let chair = VStack(alignment: .leading, spacing: 3) {
                         Text(seat.holder).foregroundStyle(seat.isVacant ? Color.pwTextMuted : Color.pwText)
                         Text(seat.fate).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }.padding(.vertical, 2)
+                    // A held chair opens its holder. A vacant one has nobody
+                    // in it, and a withheld one is held by somebody this
+                    // reader is not shown — so neither is a door.
+                    if !seat.isVacant, seat.holderWithheld != true, let handle = People.door(seat.username) {
+                        NavigationLink { PersonProfile(quilt: quilt, username: handle, close: close) } label: { chair }
+                            .accessibilityIdentifier("councilSeat")
+                    } else {
+                        chair
+                    }
                 }
             }
         } header: { Text("The council") } footer: {

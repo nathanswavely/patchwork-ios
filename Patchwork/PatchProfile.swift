@@ -356,8 +356,16 @@ struct PatchSheet: View {
                     Text(roster.emptyMessage).foregroundStyle(Color.pwTextMuted)
                 } else {
                     ForEach(roster.members.prefix(4)) { member in
-                        PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+                        if let handle = People.door(member.username) {
+                            NavigationLink { PersonProfile(quilt: session.quilt, username: handle, close: close) } label: {
+                                PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+                                    .foregroundStyle(Color.pwText)
+                            }
                             .accessibilityIdentifier("memberChip")
+                        } else {
+                            PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+                                .accessibilityIdentifier("memberChip")
+                        }
                     }
                 }
             } else { Text("Pull up to see who’s here.").foregroundStyle(Color.pwTextMuted) }

@@ -8,11 +8,18 @@ import SwiftUI
 /// of it. Everything in it is public and readable signed out, which is the
 /// whole point — its reader is usually deciding whether to join.
 struct QuiltInfoSheet: View {
+    @EnvironmentObject private var session: QuiltSession
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
             QuiltInfoList()
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        // A patch on a steward's profile docks over the quilt, which this
+        // sheet is covering: it goes first.
+        .environment(\.patchDoor) { slug in
+            session.dock(afterSheet: slug)
+            dismiss()
         }
     }
 }
