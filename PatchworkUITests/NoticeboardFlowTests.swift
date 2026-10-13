@@ -142,7 +142,7 @@ final class NoticeboardFlowTests: XCTestCase {
         XCTAssertTrue(cafe.waitForExistence(timeout: 10))
         cafe.tap()
         XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
-        app.swipeUp()
+        pullUp(app)
         let door = app.buttons["glimpseDoor-Noticeboard"]
         XCTAssertTrue(scroll(app, to: door))
         door.tap()
@@ -181,7 +181,21 @@ final class NoticeboardFlowTests: XCTestCase {
         XCTAssertTrue(patch.waitForExistence(timeout: 10))
         patch.tap()
         XCTAssertTrue(app.buttons["closePatch"].waitForExistence(timeout: 10))
-        app.swipeUp()
+        pullUp(app)
+    }
+
+    /// Pulls the docked profile up to its full height by dragging the sheet
+    /// itself. `app.swipeUp()` starts at the middle of the screen, and on a
+    /// tall phone the sheet at rest sits wholly below that, so the swipe
+    /// pans the quilt behind it and the sheet never moves. A swipe that
+    /// lands while the sheet is still settling can be lost, so it is
+    /// repeated until the sheet's top is near the top of the screen.
+    private func pullUp(_ app: XCUIApplication) {
+        let profile = app.scrollViews["patchProfile"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 10))
+        let pulled = { profile.frame.minY < app.frame.height / 4 }
+        for _ in 0..<3 where !pulled() { profile.swipeUp() }
+        XCTAssertTrue(pulled(), "the profile pulls up to its full height")
     }
 
     private func scroll(_ app: XCUIApplication, to element: XCUIElement, up: Bool = false, swipes: Int = 8) -> Bool {
