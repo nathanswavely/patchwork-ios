@@ -129,6 +129,9 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: Self, _: UITraitCollection) in
+            view.applyTheme()
+        }
         delegate = self
         minimumZoomScale = 0.3
         maximumZoomScale = 6
@@ -179,10 +182,8 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
         seams.strokeColor = QuiltInk.seam.resolvedColor(with: traitCollection).cgColor
         binding.strokeColor = QuiltInk.seam.resolvedColor(with: traitCollection).cgColor
     }
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        applyTheme()
-    }
+    // The seam ink is a dynamic colour resolved by hand, so a change of
+    // appearance resolves it again (registered in `init`).
 
     /// The tiles as the badge layer sees them: screen frames, fillers left out.
     func badgeCandidates(in view: UIView) -> [QuiltBadges.Candidate] {
@@ -249,9 +250,9 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
                 if let patch {
                     view.configure(patch: patch, tagMotifs: tagMotifs, colorMode: colorMode)
                     view.removeAction(identifiedBy: UIAction.Identifier("open"), for: .touchUpInside)
-                    view.addAction(UIAction(identifier: UIAction.Identifier("open")) { [weak self] _ in
-                        guard let self, self.canSelect else { return }
-                        select(patch)
+                    view.addAction(UIAction(identifier: UIAction.Identifier("open")) { [weak canvas = self] _ in
+                        guard let canvas, canvas.canSelect else { return }
+                        canvas.select(patch)
                     }, for: .touchUpInside)
                 } else {
                     view.configure(filler: Int(tile.id.dropFirst("filler-".count)) ?? 0, colorMode: colorMode)
