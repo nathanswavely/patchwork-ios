@@ -66,6 +66,8 @@ struct Dashboard: View {
         .sheet(isPresented: $notifications, onDismiss: { session.sheetDismissed() }) { NotificationsSheet() }
         .refreshable { await load() }
         .task { await load() }
+        // An event edited or deleted from a page pushed over this one.
+        .onChange(of: session.eventRevision) { _, _ in Task { await load() } }
     }
 
     // MARK: What is unread

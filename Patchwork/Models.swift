@@ -297,6 +297,12 @@ struct PatchworkEvent: Decodable, Identifiable, Hashable {
     let sourceId: String?
     let links: [EventLink]?
     let mentions: [EventMention]?
+    /// Who posted it, which with the reader's standing is what decides
+    /// whether they may edit it — the server sends no `may_edit` here.
+    let createdBy: String?
+    /// The detail's answer to whether the reader holds trusted-contributor
+    /// standing for this patch (quilt-wide or scoped to it).
+    let viewerTrusted: Bool?
 
     var date: Date? { Self.parseDate(startsAt) }
     var endDate: Date? { endsAt.flatMap(Self.parseDate) }
@@ -364,6 +370,9 @@ struct PatchworkEvent: Decodable, Identifiable, Hashable {
     /// from their patch.
     var communitySubmitted: Bool { nodeStatus == "unclaimed" }
     var awaitingReview: Bool { status == "pending_review" }
+    /// From a calendar feed the patch attached (web ADR 031): the source is
+    /// authoritative, so nobody edits it here.
+    var imported: Bool { sourceId?.isEmpty == false }
     /// The word an organizer stored, told the truth: nothing expands a
     /// recurrence, so this page is one date of whatever they meant.
     var recurrenceNote: String? {

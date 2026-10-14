@@ -130,6 +130,13 @@ struct LaunchLens: Equatable {
     /// Set when the reader has just deleted their account, so the quilt they
     /// are left on can say so once the Settings sheet has gone.
     @Published var farewell = false
+    /// Moves whenever an event is edited or deleted from this app. An event
+    /// is drawn on half a dozen lists — the Events tab, a patch's calendar
+    /// and glimpse, the Dashboard — each holding its own copy, so the one
+    /// screen that changed it says so here and every list that is watching
+    /// reads its page again rather than keep showing what is gone.
+    @Published private(set) var eventRevision = 0
+    func eventsChanged() { eventRevision += 1 }
     init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
     func apply(colorMode next: ColorMode) {
         QuiltTheme.colorMode = next

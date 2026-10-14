@@ -150,6 +150,14 @@ struct PatchCalendar: View {
         // Signing in through the door changes who is asking: the envelope's
         // trust and standing are read again for the new reader.
         .onChange(of: session.me?.id) { _, _ in Task { await loadNode() } }
+        // An event edited or deleted from its page: both halves read again,
+        // the earlier one only if the reader had asked for it.
+        .onChange(of: session.eventRevision) { _, _ in
+            Task {
+                await loadUpcoming()
+                if askedForEarlier { await loadEarlier() }
+            }
+        }
         .refreshable { await loadUpcoming() }
     }
     private func loadNode() async {

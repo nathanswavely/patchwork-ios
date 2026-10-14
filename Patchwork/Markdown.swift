@@ -196,3 +196,55 @@ struct MarkdownText: View {
         }
     }
 }
+
+/// A Markdown field with the web's Write / Preview segments: the notice
+/// form's and the proposal form's, one control. The preview is drawn the way
+/// the finished thing will be, so it reads the same `hardBreaks` its screen
+/// does; empty, it says so in the web's words rather than showing a blank.
+struct MarkdownComposer: View {
+    @Binding var text: String
+    /// The field's own name, for the segments' VoiceOver label.
+    let title: String
+    let placeholder: String
+    var base: URL?
+    var hardBreaks = true
+    var lines: ClosedRange<Int> = 6...16
+    /// Identifiers: the segments, the field and the preview.
+    let segmentsID: String
+    let fieldID: String
+    let previewID: String
+    @State private var previewing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker(title, selection: $previewing) {
+                Text("Write").tag(false)
+                Text("Preview").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier(segmentsID)
+            if previewing { preview } else {
+                TextField(placeholder, text: $text, axis: .vertical)
+                    .lineLimit(lines)
+                    .fieldStyle()
+                    .accessibilityIdentifier(fieldID)
+            }
+        }
+    }
+
+    @ViewBuilder private var preview: some View {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        Group {
+            if trimmed.isEmpty {
+                Text("Nothing to preview").font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+            } else {
+                MarkdownText(source: trimmed, base: base, hardBreaks: hardBreaks).foregroundStyle(Color.pwText)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .padding(12)
+        .background(Color.pwSurface, in: RoundedRectangle(cornerRadius: FieldStyle.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: FieldStyle.radius, style: .continuous).strokeBorder(Color.pwBorder, lineWidth: 1))
+        .accessibilityIdentifier(previewID)
+    }
+}

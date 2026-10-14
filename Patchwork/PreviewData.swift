@@ -36,7 +36,22 @@ enum PreviewData {
         return max(18, calendar.component(.hour, from: Date()) + 1)
     }
 
+    /// The feed: every event that is published, as the last edit left it.
     private static var events: [(id: String, json: String)] {
+        everyEvent.filter { $0.json.contains("\"status\":\"active\"") }
+    }
+
+    /// Every event the fixtures hold — the fixed ones, then whatever `POST
+    /// events` made this launch, pending ones included — with this launch's
+    /// edits laid over them and its deletions gone.
+    ///
+    /// Two of them are the sample reader's own, on the Repair Cafe where
+    /// they are a member: one they posted, which they may edit and delete,
+    /// and one that arrived from the patch's calendar feed (`source_id`),
+    /// which nobody edits here. The feed's event names the reader as its
+    /// creator too, so the source is the only thing keeping Edit away —
+    /// which is the rule the fixture is for.
+    private static var everyEvent: [(id: String, json: String)] {
         let tonight = """
         {"id":"demo-event","node_id":"demo-patch","title":"Saturday open studio",\
         "description":"Bring something you’re working on, or try something new. There will be fabric, paper, and a pot of coffee. Everyone is welcome; no experience needed.",\
@@ -65,13 +80,47 @@ enum PreviewData {
         "recurrence":"","visibility":"members","status":"active","image_url":"","image_alt":"","event_url":"",\
         "node_name":"The Listening Room","node_slug":"listening-room","node_status":"unclaimed"}
         """
-        return [("demo-event", tonight), ("demo-event-2", soon), ("demo-event-3", later)]
-            + postedEvents.filter(\.active).map { (id: $0.id, json: $0.json) }
+        let mine = """
+        {"id":"demo-event-mine","node_id":"extra-6","created_by":"demo-user","title":"Toaster triage",\
+        "description":"Bring the toaster. We will look at it together.","location":"Repair Cafe back room",\
+        "starts_at":"\(instant(daysFromToday: 4))","ends_at":"\(instant(daysFromToday: 4, hour: 20))",\
+        "timezone":"America/New_York","recurrence":"monthly","visibility":"public","status":"active",\
+        "image_url":"","image_alt":"","event_url":"",\
+        "node_name":"Repair Cafe","node_slug":"extra-6","node_status":"active"}
+        """
+        let imported = """
+        {"id":"demo-event-imported","node_id":"extra-6","created_by":"demo-user","source_id":"demo-source",\
+        "title":"Bike tune-up clinic","description":"From the Repair Cafe's shared calendar.","location":"Repair Cafe yard",\
+        "starts_at":"\(instant(daysFromToday: 6))","timezone":"America/New_York","recurrence":"","visibility":"public",\
+        "status":"active","image_url":"","image_alt":"","event_url":"",\
+        "node_name":"Repair Cafe","node_slug":"extra-6","node_status":"active"}
+        """
+        let fixed = [("demo-event", tonight), ("demo-event-2", soon), ("demo-event-mine", mine),
+                     ("demo-event-imported", imported), ("demo-event-3", later)]
+        return (fixed + postedEvents.map { ($0.id, $0.json) })
+            .filter { !deletedEvents.contains($0.0) }
+            .map { (id: $0.0, json: edited($0.1, eventEdits[$0.0])) }
     }
 
     /// What `POST events` has made this launch. An active one joins the
     /// feed; a pending one is only ever answered by id, to its submitter.
-    private static var postedEvents: [(id: String, json: String, active: Bool)] = []
+    private static var postedEvents: [(id: String, json: String)] = []
+    /// What `PATCH events/{id}` has written this launch, field by field
+    /// (`NSNull` for a cleared one), and what `DELETE` has taken away.
+    private static var eventEdits: [String: [String: Any]] = [:]
+    private static var deletedEvents = Set<String>()
+
+    /// An event's JSON with an edit laid over it. A null or empty zone, and
+    /// a null end, are the server's clears: the key goes.
+    private static func edited(_ json: String, _ edits: [String: Any]?) -> String {
+        guard let edits, !edits.isEmpty,
+              var object = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] else { return json }
+        for (key, value) in edits {
+            if value is NSNull || (key == "timezone" && (value as? String)?.isEmpty == true) { object[key] = nil }
+            else { object[key] = value }
+        }
+        return serialize(object)
+    }
     private static let extraMovedTo = "https://neighbor.example.org/patches/pottery-circle"
 
     /// `starts_at` as the feed compares it: text.
@@ -194,6 +243,7 @@ enum PreviewData {
         ("listening-room", "demo-patch-2", "The Listening Room",
          "Independent music in good company.", "public", "open"),
         (memberSlug, memberSlug, extraNames[6], "", "public", "open"),
+        (adminSlug, adminSlug, extraNames[7], "", "public", "open"),
     ]
 
     /// The membership set the writes mutate and `me/nodes`, `nodes/{slug}` and
@@ -211,8 +261,12 @@ enum PreviewData {
             memberSlug: (role: "member", status: "active"),
         ]
         if governanceMember { rows["common-thread"] = (role: "member", status: "active") }
+        if governanceAdmin { rows[adminSlug] = (role: "admin", status: "active") }
         return rows
     }
+    /// The extra a `--preview-admin` launch makes the reader an admin of: the
+    /// Film Club, whose admins decide its proposals.
+    static let adminSlug = "extra-7"
     /// The extra the fixture reader is a member of: the Repair Cafe.
     static let memberSlug = "extra-6"
     /// The quilt's other ten patches, by name; `extra-N` is the Nth.
@@ -679,8 +733,87 @@ enum PreviewData {
         event["node_name"] = target.name
         event["node_slug"] = target.slug
         event["node_status"] = target.unclaimed ? "unclaimed" : "active"
-        postedEvents.append((id: id, json: serialize(event), active: status == "active"))
+        postedEvents.append((id: id, json: serialize(event)))
         return answer
+    }
+
+    // MARK: Editing and deleting an event
+
+    /// `PATCH events/{id}` and `DELETE events/{id}`, decided by the server's
+    /// `UpdateEvent` and `DeleteEvent` in their order and in their words —
+    /// worked out again here rather than borrowed from the app's own rule,
+    /// so a disagreement between the two shows up as a refusal offline.
+    /// The fixture reader is trusted nowhere, so trust never opens the
+    /// direct door.
+    private static func eventWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count == 2, parts[0] == "events", method == "PATCH" || method == "DELETE" else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+        let id = parts[1]
+        guard let found = everyEvent.first(where: { $0.id == id }),
+              let event = (try? JSONSerialization.jsonObject(with: Data(found.json.utf8))) as? [String: Any] else {
+            throw APIError.message("event not found", status: 404)
+        }
+        let slug = (event["node_slug"] as? String) ?? ""
+        let nodeStatus = (event["node_status"] as? String) ?? "active"
+        let isCreator = (event["created_by"] as? String) == ((accountFields["id"] as? String) ?? me)
+        let isInstanceAdmin = (accountFields["role"] as? String) == "admin"
+
+        if method == "DELETE" {
+            guard isInstanceAdmin || role(slug) == "admin" || isCreator else {
+                throw APIError.message("insufficient permissions", status: 403)
+            }
+            deletedEvents.insert(id)
+            return #"{"status":"ok"}"#
+        }
+
+        if (event["source_id"] as? String)?.isEmpty == false {
+            throw APIError.message("this event comes from an event source. Edit it in the source calendar, or detach it first", status: 403)
+        }
+        let direct = isInstanceAdmin
+            || (nodeStatus == "active" && role(slug) == "admin")
+            || (nodeStatus == "active" && isCreator && role(slug) == "member")
+        var reReview = false
+        if direct {
+        } else if isCreator && (event["status"] as? String) == "pending_review" {
+        } else if isCreator && nodeStatus == "unclaimed" {
+            reReview = true
+        } else {
+            throw APIError.message("insufficient permissions", status: 403)
+        }
+        let text = { (key: String) in (fields[key] as? String) ?? "" }
+        if fields["recurrence"] != nil && !text("recurrence").trimmingCharacters(in: .whitespaces).isEmpty {
+            throw APIError.message("this quilt does not expand recurring events — add each date as its own event, or attach the calendar as an event source in the patch's settings", status: 400)
+        }
+        if fields["visibility"] != nil {
+            guard ["public", "followers", "members"].contains(text("visibility")) else {
+                throw APIError.message("visibility must be public, followers, or members", status: 400)
+            }
+            if !direct && text("visibility") != "public" {
+                throw APIError.message("a suggested event is public; the patch chooses its tier once it is approved", status: 403)
+            }
+        }
+        // The image pair, judged against whichever half is already stored.
+        if fields["image_url"] != nil || fields["image_alt"] != nil {
+            let url = (fields["image_url"] as? String) ?? (event["image_url"] as? String) ?? ""
+            let alt = (fields["image_alt"] as? String) ?? (event["image_alt"] as? String) ?? ""
+            if let problem = EventPosting.imageProblem(url: url, alt: alt) { throw APIError.message(problem, status: 400) }
+        }
+        if fields["event_url"] != nil, let problem = EventPosting.linkProblem(text("event_url")) {
+            throw APIError.message(problem, status: 400)
+        }
+        let allowed = ["title", "description", "location", "latitude", "longitude", "starts_at", "ends_at", "timezone",
+                       "recurrence", "visibility", "image_url", "image_alt", "event_url"]
+        var edits = eventEdits[id] ?? [:]
+        let sent = allowed.filter { fields.keys.contains($0) }
+        guard !sent.isEmpty else { throw APIError.message("no valid fields to update", status: 400) }
+        for key in sent { edits[key] = key == "event_url" ? text(key).trimmingCharacters(in: .whitespaces) : fields[key] }
+        if reReview { edits["status"] = "pending_review" }
+        eventEdits[id] = edits
+        // The 200 is the bare event: no patch name, slug, status or links.
+        var answer = (try? JSONSerialization.jsonObject(with: Data(edited(found.json, edits).utf8))) as? [String: Any] ?? [:]
+        for key in ["node_name", "node_slug", "node_status", "links", "mentions"] { answer[key] = nil }
+        return serialize(answer)
     }
 
     private static func serialize(_ object: [String: Any]) -> String {
@@ -696,6 +829,45 @@ enum PreviewData {
     /// switch rather than the default because the follow, join and My Quilt
     /// tests read the studio as a patch the reader is not in.
     private static let governanceMember = ProcessInfo.processInfo.arguments.contains("--preview-member")
+    /// `--preview-admin` holds an admin row on the Film Club, where the
+    /// admins decide: the one place offline a change is applied directly.
+    private static let governanceAdmin = ProcessInfo.processInfo.arguments.contains("--preview-admin")
+
+    /// How each patch with rules decides, as its governance config states it
+    /// — the three setups a new proposal can meet. Common Thread and the
+    /// Listening Room vote by majority; the Bike Kitchen and the Film Club
+    /// are decided by their admins; the Repair Cafe decides at meetings, so
+    /// a proposal there opens for discussion with no ballot and no clock.
+    private struct FixtureRules {
+        var method = "majority"
+        var venue = "patchwork"
+        var quorum = 0
+        var hours = 0
+        var eligible = 5
+    }
+    private static let fixtureRules: [String: FixtureRules] = [
+        "common-thread": FixtureRules(quorum: 20, hours: 336, eligible: 12),
+        "listening-room": FixtureRules(hours: 168),
+        "extra-1": FixtureRules(method: "admin"),
+        memberSlug: FixtureRules(venue: "elsewhere", hours: 168, eligible: 6),
+        adminSlug: FixtureRules(method: "admin", hours: 48, eligible: 4),
+    ]
+
+    /// The overview of a patch whose rules are only the table's.
+    private static func plainOverview(_ slug: String) -> String? {
+        guard let rules = fixtureRules[slug] else { return nil }
+        let object: [String: Any] = [
+            "rules": ["decision_method": rules.method, "quorum_percent": rules.quorum,
+                      "default_vote_duration_hours": rules.hours, "leadership_model": "maintainer",
+                      "leadership_venue": "patchwork", "proposal_venue": rules.venue] as [String: Any],
+            "admins": [] as [Any], "admins_withheld": true, "proposals_withheld": false, "election": NSNull(),
+            "seats": [] as [Any], "next_term_end": "", "next_contest_opens": "", "membership_policy": "open",
+            "member_count": rules.eligible, "document_count": 0, "open_proposals": 0, "passed_proposals": 0,
+            "rejected_proposals": 0, "needs_vote": 0,
+        ]
+        return overviewJSON(slug, base: serialize(object))
+    }
+    private static var proposalSerial = 0
     private static let me = "demo-user"
     private static var myName: String { (accountFields["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Sample Reader" }
 
@@ -742,6 +914,8 @@ enum PreviewData {
         var nominationsCloseInMinutes: Int?
         var candidates: [FixtureCandidate] = []
         var abstainers: Set<String> = []
+        /// An admin of an admin-decides patch asked the members first.
+        var advisory = false
         var isElection: Bool { seats > 0 }
     }
 
@@ -901,8 +1075,8 @@ enum PreviewData {
         ] as [String: Any]
         fields["tenure_days"] = 0
         fields["vote_eligible_at"] = ""
-        fields["applied_at"] = p.state == "in_effect" ? stamp(minutesAgo: p.createdMinutesAgo - day) : ""
-        fields["advisory"] = false
+        fields["applied_at"] = p.state == "in_effect" ? stamp(minutesAgo: max(0, p.createdMinutesAgo - day)) : ""
+        fields["advisory"] = p.advisory
         fields["can_decide"] = false
         fields["declined_by"] = ""
         return fields
@@ -1013,12 +1187,26 @@ enum PreviewData {
     /// "not one of these".
     private static func governanceWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
         let parts = path.split(separator: "/").map(String.init)
+        if method == "POST", parts.count == 3, parts[0] == "nodes", parts[2] == "proposals" {
+            return try propose(slug: parts[1], fields: fields)
+        }
         guard parts.count >= 2, parts[0] == "proposals" || parts[0] == "comments" else { return nil }
         guard signedIn else { throw APIError.unauthenticated }
         if parts[0] == "proposals" {
             let index = try proposalIndex(parts[1])
             var p = proposals[index]
             switch (method, Array(parts.dropFirst(2))) {
+            case ("DELETE", []):
+                // `WithdrawProposal`, in its order.
+                guard p.status == "open" else { throw APIError.message("can only withdraw open proposals", status: 400) }
+                guard !p.isElection else {
+                    throw APIError.message("an election cannot be withdrawn: the calendar opens it and the electorate closes it (docs/adr/051)", status: 409)
+                }
+                guard p.authorId == me || role(p.slug) == "admin" else { throw APIError.message("insufficient permissions", status: 403) }
+                p.status = "withdrawn"
+                p.state = "withdrawn"
+                proposals[index] = p
+                return #"{"status":"withdrawn"}"#
             case ("POST", ["vote"]):
                 guard p.status == "open" else { throw APIError.message("proposal is not open for voting", status: 400) }
                 guard inRoom(p.slug) else { throw APIError.message("must be member of node to vote", status: 403) }
@@ -1138,6 +1326,52 @@ enum PreviewData {
         default:
             throw APIError.status(405)
         }
+    }
+
+    /// `POST nodes/{slug}/proposals`: the server's refusals in its order and
+    /// words, then its switch for the state a proposal is born in. Answered
+    /// with the bare proposal, as the server answers.
+    private static func propose(slug: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        let known = ["common-thread", "listening-room"] + extraNames.indices.map { "extra-\($0)" }
+        guard known.contains(slug) else { throw APIError.message("node not found", status: 404) }
+        guard inRoom(slug) else { throw APIError.message("must be member of node", status: 403) }
+        let title = (fields["title"] as? String) ?? ""
+        guard !title.isEmpty else { throw APIError.message("title is required", status: 400) }
+        var type = (fields["proposal_type"] as? String) ?? ""
+        if type.isEmpty { type = "other" }
+        guard ["amendment", "membership", "action", "other"].contains(type) else { throw APIError.message("invalid proposal_type", status: 400) }
+        let target = (fields["target_user_id"] as? String) ?? ""
+        if !target.isEmpty && type != "membership" {
+            throw APIError.message("a proposal about a person must be of type membership", status: 400)
+        }
+        if type == "membership" && target.isEmpty {
+            throw APIError.message("a membership proposal has to name the person it is about", status: 400)
+        }
+        let rules = fixtureRules[slug] ?? FixtureRules()
+        var hours = (fields["duration_hours"] as? Int) ?? 0
+        if hours <= 0 { hours = rules.hours > 0 ? rules.hours : 72 }
+        let isAdmin = role(slug) == "admin"
+        let putToVote = (fields["put_to_vote"] as? Bool) ?? false
+        let adminDecides = rules.method == "admin"
+        var (status, state) = ("open", "voting")
+        if adminDecides && isAdmin && !putToVote { (status, state) = ("approved", "in_effect") }
+        else if rules.venue == "elsewhere" { state = "elsewhere" }
+        else if adminDecides && !isAdmin { state = "awaiting_admin" }
+        proposalSerial += 1
+        let nodeId = slug == "common-thread" ? "demo-patch" : (slug == "listening-room" ? "demo-patch-2" : slug)
+        let p = FixtureProposal(
+            id: "new-proposal-\(proposalSerial)", slug: slug, nodeId: nodeId, title: title,
+            body: (fields["body"] as? String) ?? "", type: type, author: myName, authorId: me,
+            status: status, state: state, createdMinutesAgo: 0,
+            endsInMinutes: state == "voting" ? hours * 60 : nil,
+            eligible: rules.eligible, quorum: rules.quorum, method: rules.method,
+            advisory: adminDecides && isAdmin && putToVote)
+        proposals.append(p)
+        var answer = listFields(p)
+        answer["duration_hours"] = hours
+        answer.removeValue(forKey: "author_name")
+        return serialize(answer)
     }
 
     /// The governance reads that are not fixed text.
@@ -1795,6 +2029,7 @@ enum PreviewData {
     /// and everything else is still a `POST`.
     static func write(_ method: String, _ path: String, body: Data?) throws -> String {
         let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
+        if let answer = try eventWrite(method, path, fields: fields) { return answer }
         if let answer = try peopleWrite(method, path, fields: fields) { return answer }
         if let answer = try notificationWrite(method, path) { return answer }
         if let answer = try governanceWrite(method, path, fields: fields) { return answer }
@@ -1931,6 +2166,8 @@ enum PreviewData {
         case "nodes/common-thread/governance/overview": json = overviewJSON("common-thread", base: overview)
         case "nodes/listening-room/governance/overview": json = overviewJSON("listening-room", base: listeningOverview)
         case "nodes/extra-1/governance/overview": json = withheldOverview
+        case "nodes/\(memberSlug)/governance/overview", "nodes/\(adminSlug)/governance/overview":
+            json = plainOverview(String(path.split(separator: "/")[1])) ?? "{}"
         case "nodes/extra-1/governance": json = #"{"items":[],"published_only":true}"#
         case "nodes/extra-1/governance/record": json = #"{"items":[],"public_governance_record":"nobody"}"#
         case "nodes/extra-1/proposals": json = #"{"items":[],"next_cursor":"","public_governance_record":"nobody"}"#
@@ -1942,7 +2179,7 @@ enum PreviewData {
             if let event = events.first(where: { "events/\($0.id)" == path }) { json = event.json }
             // A pending suggestion is readable by its submitter and nobody
             // else, and it is on no list (the server's `GetEvent` rule).
-            else if let event = postedEvents.first(where: { "events/\($0.id)" == path }), signedIn { json = event.json }
+            else if let event = everyEvent.first(where: { "events/\($0.id)" == path }), signedIn { json = event.json }
             else if let index = Int(path.replacingOccurrences(of: "nodes/extra-", with: "")), extras.indices.contains(index) {
                 json = "{\"node\":\(node(extras[index], slug: "extra-\(index)")),\"is_unclaimed\":\(index == 3),\"viewer_trusted\":false}"
             }
