@@ -1663,3 +1663,47 @@ web's one line.
 
 Not verified: against a live server, VoiceOver, and Dynamic Type at the
 accessibility sizes on the form.
+
+## Passkeys and TestFlight readiness — 2026-10-13
+
+Reference: the server's `internal/auth/webauthn.go`, `internal/handler/webauthn*.go`,
+`native_apps.go`, the web's `webauthn.js` and `SecuritySettings.svelte`, and web
+ADRs 017, 099 and 2026-09-20 ("An instance vouches for an app").
+
+- **Where.** `PasskeyDomains.all` — today `lancasterpatchwork.org` — is the one
+  list the app consults, a copy of the `webcredentials:` entries in
+  `Patchwork.entitlements`, which iOS gives an app no way to read; a unit test
+  parses the file and keeps the two equal. Off that list nothing about
+  passkeys is drawn: a button that cannot work would be a promise the app
+  cannot keep, and the quilt has not vouched for this app anyway.
+- **Sign-in.** "Sign in with a passkey" sits under Send code on the address
+  step. The server's login is discoverable, so there is no username to ask
+  for: the system offers whatever passkey the device holds for the domain and
+  the server finds the person by the user handle. A closed prompt says
+  nothing; any other failure says the web's sentence with "an email link
+  below" made the sheet's own email and recovery-code ways in.
+- **Confirm.** For an account whose `auth/step-up` says `has_passkey` on an
+  associated quilt, the Confirm sheet leads with "Confirm with your passkey"
+  (`step-up/begin` lists the account's own credentials as `allowCredentials`)
+  and offers a recovery code beneath it, because a passkey may live on
+  another device.
+- **Security.** The account's passkeys, oldest first, each renamed or removed
+  from a swipe or a press; Add a passkey names the new one for the device
+  (`UIDevice.model`), as the web guesses from the browser. Removing says that
+  every other device signed in here is signed out, because the server does
+  that.
+- **The wire.** The begin answers decode with a plain decoder and the finish
+  bodies are encoded with a plain encoder through `postJSON`, because the
+  snake-case strategy every other call uses would rename `rawId` and
+  `clientDataJSON` into fields the server's parser refuses. Every binary
+  field is base64url without padding; `id` byte-equals `rawId`.
+- **Not proved live.** Lancaster does not list the app yet (its association
+  file answers 404), so the ceremonies are checked by unit tests of every
+  shape the server parses rather than against the server. The first live
+  proof is a signed Debug build on a phone once the admin has listed
+  `H886Z8M8DG.com.swavelycreative.patchwork` and Apple's CDN has the file.
+- **TestFlight.** The bundle identifier became `com.swavelycreative.patchwork`
+  (a fresh app container: saved quilts and cookies from the prototype
+  identifier do not carry over on a test device), version 0.1.0 build 1, a
+  generated icon, every orientation on iPad, and a privacy manifest declaring
+  nothing collected and `UserDefaults` for the app's own settings (CA92.1).

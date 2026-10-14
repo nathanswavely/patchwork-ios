@@ -46,6 +46,10 @@ struct SignInFlow: Equatable {
         case useEmailInstead
         /// `auth/recovery` accepted the pair and named the user.
         case recovered(User)
+        /// A passkey signed the person in, from the address step.
+        case passkeyAccepted(User)
+        /// The passkey prompt was closed: nothing to say, nothing to change.
+        case passkeyDismissed
     }
 
     private(set) var step: Step = .email
@@ -117,6 +121,12 @@ struct SignInFlow: Equatable {
             error = nil
             recoveryCode = ""
             step = .done(user)
+        case .passkeyAccepted(let user):
+            guard step == .email else { return }
+            error = nil
+            step = .done(user)
+        case .passkeyDismissed:
+            break
         }
         busy = false
     }
@@ -173,6 +183,22 @@ struct SignInFlow: Equatable {
     init(api: PatchworkAPI) { self.api = api }
 
     var step: SignInFlow.Step { flow.step }
+
+    /// Passkeys are offered only on a quilt this app is associated with;
+    /// everywhere else the button is not drawn at all (web ADR 2026-09-20).
+    var offersPasskey: Bool { PasskeyDomains.supports(api.base) }
+
+    func signInWithPasskey() async {
+        guard flow.step == .email, offersPasskey, !flow.busy else { return }
+        flow.busy = true
+        flow.clearError()
+        do {
+            flow.apply(.passkeyAccepted(try await api.signInWithPasskey()))
+        } catch {
+            if let sentence = Passkeys.sentence(error, for: .signIn) { flow.apply(.rejected(sentence)) }
+            else { flow.apply(.passkeyDismissed) }
+        }
+    }
 
     func sendCode() async {
         let email = flow.email.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -336,6 +362,19 @@ struct SignInSheet: View {
                 .accessibilityIdentifier("signInEmail")
             inlineError
             primary("Send code", identifier: "signInSendCode", enabled: model.flow.canSendCode, action: send)
+            // Only where this app and the quilt vouch for each other; a
+            // passkey button that cannot work is not drawn anywhere else.
+            if model.offersPasskey {
+                Button { Task { await model.signInWithPasskey() } } label: {
+                    Label("Sign in with a passkey", systemImage: "person.badge.key")
+                        .font(Font.pw.headline)
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(model.flow.busy)
+                .accessibilityIdentifier("signInPasskey")
+            }
             // Quiet and secondary: most people have their email, and the
             // code path is for the ones who do not, or who kept a code.
             Button { model.flow.apply(.useRecoveryCode) } label: {
