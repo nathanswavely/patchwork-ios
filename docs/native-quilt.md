@@ -1707,3 +1707,127 @@ ADRs 017, 099 and 2026-09-20 ("An instance vouches for an app").
   identifier do not carry over on a test device), version 0.1.0 build 1, a
   generated icon, every orientation on iPad, and a privacy manifest declaring
   nothing collected and `UserDefaults` for the app's own settings (CA92.1).
+
+## Patch admin basics — 2026-10-13
+
+An admin of a patch can answer what is waiting on them from the phone.
+Reference: the web's `PatchSettingsMembers.svelte`, `PatchEvents.svelte`
+("Suggested events"), `Dashboard.svelte` and `ConfirmAction.svelte`; the
+server's `ListMembers`, `UpdateMember`, `InviteMember`,
+`RescindInvitation`, `ListNodeEventSubmissions`, `ReviewEventSubmission`
+and `ListProposals` (origin/main 2d937e3); and web ADRs 026, 040, 081, 093
+and 098.
+
+- **Who is shown it.** An active admin of the patch, read off the membership
+  index (`PatchAdmin.runs`). Not `is_admin`, and not the quilt's admin: the
+  members listing answers anybody else's `status=pending` with the active
+  list rather than a refusal, so a client that trusted the server to refuse
+  would draw members as requests; and the invitation routes answer a quilt
+  admin with no role here 404. Suggestions are the one exception, as on the
+  web: the quilt's admin reviews them too (`canReview`). Every screen checks
+  the gate again, so a notification or a stale door cannot open a queue for
+  somebody who has since stepped down.
+- **Attention needed.** The Dashboard used to list the next three events
+  under "Attention needed", which made every concert read like a task. It is
+  now the web's summary of what is asked of the reader, drawn only when
+  something is: pending member requests and suggested events on each patch
+  they run, and proposals waiting on their vote (the list's
+  `awaiting_your_vote`, the count the governance room's "needs your vote"
+  states) — one row per patch and kind, each a door to the queue or the
+  governance room. The web Dashboard does not count suggestions; it is one
+  unpaged read per patch run, and somebody is waiting on the answer. The
+  events are their own section under it, "Upcoming events on your patches"
+  (the web's phrase), with the same rows and See all. The "to approve"
+  badge that sat inside a Managing card is gone, since the same count is now
+  a door above; the "{n} open" proposals badge stays, because it is a fact
+  about the patch rather than an ask.
+- **Pending requests.** Oldest first, paged by the server's cursor, under
+  the server's count of the whole queue. A row is the person (a door to
+  their profile), "Asked 2d ago" (`joined_at` on a pending row is the
+  request), the join sheet's note in curly quotes and italics, and
+  **Approve** and **Reject**. Both ask first, because the web's
+  `ConfirmAction` does: "Are you sure?", the act's own word, and a line
+  saying what it does — an approval is told to the person; a rejection is
+  not, and they can ask again. The `membership.request` notification
+  (`/patches/{slug}/members?status=pending`) now opens this queue for an
+  admin — the one query `NotificationLink.route` reads — and the roster for
+  anybody else, where it used to open the roster for everyone (the web's own
+  link lands on the public members page, which has no queue).
+- **Suggested events.** At the head of the patch's calendar for a reader who
+  reviews them, where the web keeps them on the events tab, and on a screen
+  of their own from the Dashboard. A card per suggestion: the title as a door
+  to the event, "Sun, Oct 18 · 7:00 PM · Library basement" in the patch's own
+  zone (the list's `timezone` arrives blank, and the event is handed to its
+  page carrying the patch's), the description, and "Suggested by {name}".
+  **Approve** acts at once, as on the web, and the footer says the one thing
+  it cannot: an approved suggestion is public, and keeping it to followers or
+  members is an edit afterwards (the review takes no tier). **Decline** is a
+  sheet that is also the confirmation: it says the suggestion is deleted from
+  the quilt and that the submitter is told, with the optional "Note to the
+  submitter", which travels as the notification's body. After either, every
+  event list reads again (`eventRevision`), so an approved night is on the
+  calendar under the queue it left.
+- **The Members room.** An admin's room opens with three doors: Pending
+  requests, Invite a member (with how many invitations are out) and, once
+  anybody has been removed, Removed members. Each member's row but the
+  reader's own carries **Remove** on the swipe and the long press — not in
+  a destructive role, which would animate the row away before the question
+  was answered. The web draws Remove on the admin's own row and the server
+  refuses it ("cannot ban yourself"); here it is not drawn. Remove is a ban,
+  as on the web: the confirmation says the person is told and cannot rejoin
+  until reinstated, and "cannot ban the last admin" is shown in the server's
+  words. Reinstating says it lets them ask again and does not make them a
+  member. The foot of an admin's room says role changes are the website's:
+  the server refuses most promotions with a sentence about how the patch
+  makes its admins, and the web's council note carries context a phone row
+  cannot.
+- **Inviting.** A username field and **Invite**, with the web's "They're
+  notified and join only if they accept."; the name is sent as typed and
+  trimmed, and the server's refusals ("no account with that username",
+  "already in this patch", "they have already asked to join: approve their
+  request instead", "already invited", "removed from this patch: reinstate
+  them first") are shown as they come. The Invited list rides on the members
+  listing's `invited` key and is read again after each invitation; Rescind
+  asks first and says the person is not told.
+- **Optimistic, with the server's sentence.** Every act is drawn as done the
+  moment it is confirmed — the row leaves its list, the count drops — and is
+  put back where it was if the quilt refuses, with the refusal in a line at
+  the head of the screen in place of the web's toast ("Member approved",
+  "Request rejected", "Event approved", "Suggestion declined", "Invitation
+  sent", "Invitation rescinded", "Member removed", "Member reinstated", and
+  the web's failure words where the server says nothing). VoiceOver hears
+  the same line. `QuiltSession.adminRevision` moves after each, and the
+  Dashboard, the Members room and the calendar read again.
+- **A roster that was never withheld from its own room.** `MemberRoster`
+  treated a patch whose `public_member_list` is `nobody` as withheld for
+  every reader, but the server lists everyone to a member or admin. A reader
+  in the room is now shown the list (and the profile's Members glimpse),
+  which an admin of such a patch needs to reach the doors above.
+- **Fixtures.** A `--preview-admin` launch (which already made the reader
+  an admin of the Film Club) now finds the club's membership stateful: two
+  members and a second admin, three requests (two with notes), one
+  invitation, one removed member, a follower, and two suggested events; and
+  two notifications, a `membership.request` and an `event.suggested`. The
+  members listing, `PATCH members/{userId}`, the invitation routes,
+  `event-submissions` and `events/{id}/review` follow the server's rules in
+  its order and its words; an approved suggestion joins the feed and a
+  declined one is deleted. The proposals list states `awaiting_your_vote`
+  from the same count as the overview's `needs_vote`.
+- **Left to the website:** role changes (promote, demote, follower), the
+  Followers list and removing a follower, the two disclosure switches, the
+  patch's settings pages (Info, Appearance, Sources, Notifications,
+  Noticeboard and its report queue, Verification, Danger), succession and
+  attestations, and the quilt admin's queues.
+
+**Verification.** The 18 new unit tests (`PatchAdminTests`) and the updated
+notification-link test are listed in the README's verification sentence.
+The four UI tests (`PatchAdminFlowTests`): approve a request and reject
+another from the Dashboard's ask, see it drop from three to one, and reach
+the queue again from the request's notification; decline a suggestion with a
+note and approve the other on the Film Club's calendar, where it then
+appears; invite by username, refused and then sent, and rescind; remove a
+member from the swipe — the reader's own row offers nothing — and reinstate
+them from the removed list.
+
+Not verified: against a live server, VoiceOver, and Dynamic Type at the
+accessibility sizes.
