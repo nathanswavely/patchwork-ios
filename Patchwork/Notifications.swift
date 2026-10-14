@@ -193,6 +193,10 @@ enum NotificationLink {
         /// A person's profile. No notification the server sends today
         /// points at one, but a link that did would open it here.
         case person(username: String)
+        /// A claim on a listing nobody runs, and its setup once approved
+        /// (`claim.approved` links to `/setup`): both open the claim's page,
+        /// which carries the setup inside it.
+        case claim(slug: String)
         /// Not a native surface. The path travels whole, query and all.
         case website(path: String)
     }
@@ -212,6 +216,7 @@ enum NotificationLink {
                 case "members": return query(raw, "status") == "pending" ? .joinRequests(slug: slug) : .members(slug: slug)
                 case "governance": return .governance(slug: slug)
                 case "noticeboard": return .noticeboard(slug: slug)
+                case "claim", "setup": return .claim(slug: slug)
                 default: break
                 }
             case 4 where parts[2] == "noticeboard":
@@ -523,6 +528,9 @@ struct NotificationsSheet: View {
         opening = row.id
         defer { opening = nil }
         if row.isUnread { await markRead(row) }
+        // An invitation can arrive after the list of them was last read, and
+        // the profile this row docks reads that list to offer its answers.
+        if row.type == "membership.invited" { await session.refreshInvitations() }
         guard !row.target.isEmpty else { return }
         await go(NotificationLink.route(row.target))
     }
@@ -628,6 +636,8 @@ struct NotificationsSheet: View {
             // The profile reads itself, and is the one that knows how to say
             // there is nobody by that name.
             route.append(.person(username))
+        case .claim(let slug):
+            if let patch = await patch(slug) { route.append(.claim(patch)) }
         case .website(let path):
             // Not a surface this client has built. It is an exit, and it is
             // drawn as one: the reader leaves for the website rather than
@@ -666,6 +676,12 @@ struct NotificationsSheet: View {
         case .remote(let host, let slug): RemotePatchView(host: host, slug: slug)
         case .preferences: NotificationPreferencesView()
         case .person(let username): PersonProfile(quilt: session.quilt, username: username)
+        case .claim(let patch):
+            // Set up, the patch is live: the sheet goes and it docks.
+            ClaimPatchView(slug: patch.slug, name: patch.name) { slug in
+                session.dock(afterSheet: slug)
+                dismiss()
+            }
         }
     }
 }
@@ -686,6 +702,7 @@ enum NotificationRoute: Hashable {
     /// Not a notification's destination: the menu's door to the preferences.
     case preferences
     case person(String)
+    case claim(Patch)
 }
 
 /// One row: the type's mark, what happened, and when — with the unread dot in

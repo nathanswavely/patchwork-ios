@@ -491,6 +491,7 @@ struct SignInSheet: View {
             primary("Create account", identifier: "signInCreate", enabled: model.flow.canCreateAccount) {
                 Task { await model.createAccount() }
             }
+            AgreementLine()
         }
     }
 

@@ -1831,3 +1831,112 @@ them from the removed list.
 
 Not verified: against a live server, VoiceOver, and Dynamic Type at the
 accessibility sizes.
+
+## Getting in — 2026-10-14
+
+Everything a person did on the website to get onto a quilt, or into a patch
+nobody had let them into yet, is native now. Reference: the web's
+`PatchRelationship.svelte`, `PatchForm.svelte`, `SubmitPatch.svelte`,
+`ClaimPatch.svelte`, `PatchSetup.svelte`, `SignupComplete.svelte`,
+`Welcome.svelte` and `InviteLanding.svelte`; the server's `invitations.go`,
+`nodes.go` (`CreateNode`), `unclaimed.go` (`SubmitPatch`), `claims.go` and
+`auth.go` (origin/main 2d937e3); web ADRs 001, 030, 039, 041, 062, 071, 082,
+098 and 114.
+
+- **An invitation is answered where it names.** The "You're invited to join
+  X" notification already docked the patch, and the profile had nothing to
+  answer with. `users/me/invitations` is read beside the membership index
+  (and again when that notification is opened) and never merged into it —
+  an invited row is not membership anywhere, and the server keeps the two
+  apart for that reason. `Relationship.resolve` gained `.invited`, after any
+  standing and after the moved and banned guards; the head shows the web's
+  "You've been invited to join" in the requester's muted register with
+  Accept (filled) and Decline beside it in the open, because the wait is on
+  the reader. Accept says "You are now a member", Decline "Invitation
+  declined". A card offers no heart to an invited reader. The web lists
+  invitations nowhere else, and neither does this.
+- **Add a patch asks first.** From the account menu (the web's New menu) and
+  a card on the Dashboard: "Is this your patch to run?" — I run this patch,
+  or Someone else runs it. The create form is the step pattern with the act
+  at the foot. The membership policy is preselected Invite only and always
+  sent; the template is Minimal and never moves the policy at creation. The
+  address and the point stay separate acts (ADR 082): leaving the field asks
+  the quilt's gazetteer, which may propose a point; the map opens on it with
+  "Suggested from the address" and the web's "This is a guess, not a
+  placement" sentence, and nothing is placed until "Use this spot". The pin
+  is fixed and the map moves under it — the native way to place a point with
+  a thumb — and the coordinates are read out under it. No address goes to
+  Apple's geocoder: the quilt's own gazetteer, or the reader's own pan.
+  Appearance is folded and optional: a live `TileMiniature` of exactly what
+  the quilt will draw, Rotate, the twenty-six palettes as fabric stripes,
+  the twelve blocks drawn in the chosen palette, and the motifs, a second
+  press letting one go. The fabric wall and the block drafter stay in Patch
+  Settings on the website, as the web's own hint says. Created, the index
+  and the quilt are read again and the patch docks with "Patch created." in
+  the head (any `tag_warning` after it) and the Admin mark.
+- **Suggesting is native wherever the website link was.** The fork's second
+  card, search's empty result (carrying the typed name) and an empty list,
+  behind the sign-in sheet for a reader without an account. The web's fields
+  in its order, curated tags only, and the review note worded by
+  `trusted_contributor`. A 409 is "A patch with a similar name already
+  exists." with "Open the patch that already exists" under it — tried before
+  the sheet goes, because a listing still waiting for review cannot be read,
+  and then it says so.
+- **Claiming.** The head's state notice ends in its door, as the web's does:
+  "If it's yours, claim it", "Your claim is in progress", or Review claims
+  (the website's) for a quilt admin. The claim page offers the methods
+  `claims/mine` says this listing takes, with the web's reasons for the ones
+  it does not ("Requires a verified domain on this listing", "This quilt
+  can't send email"), nothing preselected. DNS, meta and did claims show
+  their records in monospaced blocks with Copy and Verify Now (a pending
+  answer is the server's sentence); an email claim says plainly that the
+  link opens in the browser, not here, and the page — and My Patches —
+  reads the claim again whenever the app comes back to the front; every
+  open claim can be withdrawn. Approved, "Set up your patch" opens the
+  create form in setup mode: the existing address, "Approval expires", the
+  listing's fields and tile, and the policy seeded from the template ("Set
+  by the Minimal template…") until it is answered. The claim's setup, then
+  `PATCH nodes/{slug}`; a 410 is the server's sentence and a 409 the web's
+  "This patch is no longer claimable.", after which the act becomes Done.
+  Set up, the listing's sheet is let go and the live patch docks: "This
+  patch is yours". `claim.approved` notifications and My Patches' Claiming
+  rows open the same page.
+- **A first account.** The username step ends with the web's agreement
+  line, the two names opening the quilt's own documents over the sheet. A
+  sign-in that lands on a reader with no memberships — an account made a
+  moment ago — brings the web's Welcome, over the whole app: the quilt's
+  name, What is Patchwork?, the Label's panel, What's expected here with its
+  four points and the lining, then Build your quilt (to Discover) or I'll
+  explore on my own. Either answer is remembered per account per quilt, the
+  web's keying, so it is shown once.
+- **Account invite links.** Signed out, the account menu's "Have an invite
+  link?" takes a pasted `/invite/{token}` link (or the token): a link for
+  another quilt is named and refused, a dead one gets the web's "This invite
+  didn't work", a live one the web's form — and the agreement line — with
+  the email required where the quilt sends mail and recovery codes kept
+  before leaving where it does not. Signed in, there is no door, and the
+  sheet says why if a session appears under it: the web's page would make a
+  second account and replace the session.
+
+**Offline.** `--preview-invited` has the Food Share (invite only) ask the
+reader in, with its notification. `POST nodes` and `POST submissions` keep
+what they make (the tree, `nodes/{slug}` and the index read it back) and use
+the server's slug rule, so "Common Thread" collides with the studio. The
+gazetteer knows "12 Example Street". The Evening Choir is now unclaimed with
+a vetted domain; leaving the app approves a pending email claim (the
+browser's stand-in), and setup activates the listing and makes the reader
+its admin. The River Walkers' approved claim is unchanged. A new account
+(`654321`) belongs nowhere and has no notifications. Invite tokens:
+`demo-invite` is live, `used-invite` used up.
+
+**Verification.** Unit tests in `GettingInTests`; UI flows in
+`GettingInFlowTests`: accept an invitation from its notification, decline
+one, create a patch with a confirmed point and land on it as admin, suggest
+a patch and meet the one that exists, claim by email and set it up, a new
+account's agreement line and once-only Welcome, and an invite link.
+`BrowsingTests.testNewAccountChoosesAUsername` now answers the Welcome.
+
+Not verified: a live server, VoiceOver on the map picker (it cannot be
+panned by VoiceOver; a suggested point can still be confirmed), Dynamic Type
+at the accessibility sizes on the form, and the recovery-code ending of an
+invite on a quilt without mail (the fixture quilt sends mail).

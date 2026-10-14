@@ -59,6 +59,20 @@ struct QuiltHome: View {
                 }
             }
         }
+        // The first account's Welcome, over the whole app the way the web's
+        // stands in its threshold shell; Build your quilt hands on to Discover.
+        .overlay {
+            if session.welcoming {
+                WelcomeView(quiltName: session.instance?.name ?? session.quilt.name) {
+                    session.dismissWelcome()
+                    pane = .discover
+                } exploreOnMyOwn: {
+                    session.dismissWelcome()
+                }
+                .transition(.opacity)
+                .accessibilityAddTraits(.isModal)
+            }
+        }
         .onChange(of: pane) { was, now in
             // Search is a place: choosing it keeps the pill selected while the
             // field is live rather than bouncing the selection back, which
@@ -160,6 +174,10 @@ struct DiscoveryToolbar: ViewModifier {
     @State private var signIn = false
     @State private var notifications = false
     @State private var settings = false
+    /// "Add a patch", the web's New → New patch.
+    @State private var adding = false
+    /// Pasting an account invite link (web `/invite/:token`).
+    @State private var inviting = false
     /// How the reader left Settings, acted on once the sheet has gone.
     @State private var settingsExit: SettingsExit?
     @FocusState private var focused: Bool
@@ -219,11 +237,19 @@ struct DiscoveryToolbar: ViewModifier {
                                 // the account hears and letting go of it.
                                 Button { settings = true } label: { Label("Settings", systemImage: "gearshape") }
                                     .accessibilityIdentifier("accountSettings")
+                                // The web's New menu: making something is the
+                                // account's act, so it lives with the account.
+                                Button { adding = true } label: { Label("Add a patch", systemImage: "plus.square") }
+                                    .accessibilityIdentifier("accountAddPatch")
                                 Button { Task { await session.signOut() } } label: {
                                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                                 }
                             } else {
                                 Button { signIn = true } label: { Label("Sign in", systemImage: "person.badge.key") }
+                                // Offered only signed out: a link makes a new
+                                // account, never a second one beside a session.
+                                Button { inviting = true } label: { Label("Have an invite link?", systemImage: "envelope.open") }
+                                    .accessibilityIdentifier("accountInvite")
                             }
                             Divider()
                             Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
@@ -260,6 +286,8 @@ struct DiscoveryToolbar: ViewModifier {
                 }
             }
             .sheet(isPresented: $notifications, onDismiss: { session.sheetDismissed() }) { NotificationsSheet() }
+            .sheet(isPresented: $adding, onDismiss: { session.sheetDismissed() }) { NewPatchSheet() }
+            .sheet(isPresented: $inviting) { InviteSheet() }
             .sheet(isPresented: $settings, onDismiss: leaveSettings) {
                 SettingsSheet { exit in settingsExit = exit; settings = false }
             }

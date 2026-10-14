@@ -63,6 +63,7 @@ struct Dashboard: View {
                 if session.unread > 0 { unreadRow }
                 if !asks.isEmpty { attention }
                 if !events.isEmpty { upcoming }
+                AddPatchDoor()
                 if sections.isEmpty {
                     if loaded { empty } else { ProgressView().frame(maxWidth: .infinity).padding(.top, 24) }
                 } else {

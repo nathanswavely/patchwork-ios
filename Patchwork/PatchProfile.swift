@@ -41,6 +41,8 @@ struct PatchSheet: View {
     @State private var signingIn = false
     @State private var posted: PatchworkEvent?
     @State private var opened: PatchworkEvent?
+    /// The reader holds an open claim on this listing (`claims/mine`).
+    @State private var claimInProgress = false
     /// How much of the first glimpse shows under the head at rest: enough for
     /// its rule, its title and a line of it, cut off. The cut is the invitation.
     private let peek: CGFloat = 96
@@ -115,6 +117,14 @@ struct PatchSheet: View {
             if !shown { noticeGlimpse = nil } else if glimpsesAsked { Task { await loadNoticeGlimpse() } }
         }
         .task { await load() }
+        // Arriving from a sheet that made or set up this patch: what that
+        // sheet would have said is said here, where the reader has landed.
+        .onAppear {
+            if let arrival = session.arrival, arrival.slug == initial.slug {
+                feedback = RelationshipFeedback(text: arrival.text, refused: false)
+                session.arrival = nil
+            }
+        }
         // An event edited or deleted from its page: the glimpse reads its
         // three again, if it had read them at all.
         .onChange(of: session.eventRevision) { _, _ in
@@ -232,8 +242,8 @@ struct PatchSheet: View {
         .accessibilityIdentifier("profileOverflow")
     }
     /// State is worn in the head, never disguised as an action. Each of these
-    /// is a fact about the patch, and none of them is a button this client
-    /// could honour: claiming a patch happens on the website.
+    /// is a fact about the patch; the one door among them is claiming a
+    /// listing nobody runs, which follows the fact it answers.
     @ViewBuilder private var notices: some View {
         if let moved {
             VStack(alignment: .leading, spacing: 6) {
@@ -251,10 +261,16 @@ struct PatchSheet: View {
                 .font(Font.pw.subheadline)
         }
         if isUnclaimed {
-            Text("No one runs this patch yet. The community added it; if it’s yours, you can claim it on this quilt’s website.")
-                .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("unclaimedNotice")
+            // The fact first, then the one door it implies — worn in the
+            // head, as the web's state notice is, never as a button standing
+            // in for the state.
+            VStack(alignment: .leading, spacing: 6) {
+                Text("No one runs this patch yet. The community added it.")
+                    .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("unclaimedNotice")
+                claimDoor
+            }
         } else if liningDiverged {
             // Public by design (web ADR 037): this patch amended the shared
             // baseline, and the divergence is worn, not whispered.
@@ -264,6 +280,33 @@ struct PatchSheet: View {
                 .background(Color(.secondarySystemFill), in: Capsule())
                 .accessibilityIdentifier("amendedLining")
                 .accessibilityHint("This patch changed the shared community standards every patch starts with. Its version is in Governance.")
+        }
+    }
+    /// Where a claim starts: the quilt's own admins review claims on the
+    /// website; anybody else claims here, or picks up the claim they hold;
+    /// signed out, the same words open the sign-in sheet.
+    @ViewBuilder private var claimDoor: some View {
+        if session.me?.role == "admin" {
+            Link(destination: api.webURL("admin/review/claims")) { Text("Review claims").font(Font.pw.subheadline) }
+                .exitLink(fills: false)
+        } else if session.me != nil {
+            NavigationLink {
+                ClaimPatchView(slug: patch.slug, name: patch.name) { slug in
+                    // Set up: the listing is a live patch now, and this sheet
+                    // is still the listing. It is let go and the patch docked
+                    // afresh, which is where the reader lands.
+                    Task { await session.openFromProfile(slug: slug) }
+                }
+            } label: {
+                Text(claimInProgress ? "Your claim is in progress" : "If it's yours, claim it").font(Font.pw.subheadline).inkRow(fills: false)
+            }
+            .accessibilityIdentifier("claimDoor")
+        } else {
+            Button { signingIn = true } label: {
+                Text("If it's yours, claim it").font(Font.pw.subheadline).inkRow(fills: false)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("claimDoor")
         }
     }
     private var glimpses: some View {
@@ -475,6 +518,11 @@ struct PatchSheet: View {
         error = nil
         do { envelope = try await api.get("nodes/\(initial.slug)") }
         catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        // Best effort, and only where there is a listing and an account:
+        // whether the door says "claim it" or "your claim is in progress".
+        if isUnclaimed, session.me != nil, let state = try? await api.claimState(slug: initial.slug) {
+            claimInProgress = state.claim != nil
+        }
     }
     /// What the pull costs: one request per room, and none for About. The
     /// events one carries `from=now`, so a section headed Upcoming can only

@@ -45,6 +45,12 @@ enum APIError: LocalizedError, Equatable {
         if case .refused(let refusal, _) = self { return refusal.movedTo }
         return nil
     }
+    /// The patch a suggestion collided with (`POST submissions`' 409), which
+    /// the refusal names so a client can offer it as a door.
+    var existingSlug: String? {
+        if case .refused(let refusal, _) = self { return refusal.existingSlug }
+        return nil
+    }
     /// The HTTP status behind a refusal, where there was one.
     var httpStatus: Int? {
         switch self {
@@ -57,7 +63,7 @@ enum APIError: LocalizedError, Equatable {
     static func from(status: Int, data: Data) -> APIError {
         if status == 401 { return .unauthenticated }
         if let refusal = try? JSONDecoder().decode(Refusal.self, from: data),
-           !(refusal.code ?? "").isEmpty || !(refusal.movedTo ?? "").isEmpty {
+           !(refusal.code ?? "").isEmpty || !(refusal.movedTo ?? "").isEmpty || !(refusal.existingSlug ?? "").isEmpty {
             return .refused(refusal, status: status)
         }
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -88,10 +94,12 @@ struct Refusal: Decodable, Equatable {
     let code: String?
     let patches: [PatchRef]?
     let movedTo: String?
-    init(error: String, code: String?, patches: [PatchRef]? = nil, movedTo: String? = nil) {
-        self.error = error; self.code = code; self.patches = patches; self.movedTo = movedTo
+    /// A suggestion's 409 names the patch it collided with: `existing_slug`.
+    let existingSlug: String?
+    init(error: String, code: String?, patches: [PatchRef]? = nil, movedTo: String? = nil, existingSlug: String? = nil) {
+        self.error = error; self.code = code; self.patches = patches; self.movedTo = movedTo; self.existingSlug = existingSlug
     }
-    private enum CodingKeys: String, CodingKey { case error, code, patches, movedTo = "moved_to" }
+    private enum CodingKeys: String, CodingKey { case error, code, patches, movedTo = "moved_to", existingSlug = "existing_slug" }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         error = ((try? container.decodeIfPresent(String.self, forKey: .error)) ?? nil)?
@@ -99,6 +107,8 @@ struct Refusal: Decodable, Equatable {
         code = (try? container.decodeIfPresent(String.self, forKey: .code)) ?? nil
         patches = (try? container.decodeIfPresent([PatchRef].self, forKey: .patches)) ?? nil
         movedTo = ((try? container.decodeIfPresent(String.self, forKey: .movedTo)) ?? nil)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        existingSlug = ((try? container.decodeIfPresent(String.self, forKey: .existingSlug)) ?? nil)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

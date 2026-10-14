@@ -117,6 +117,7 @@ struct MyPatchesSettings: View {
     @State private var busy: String?
     @State private var joining: Membership?
     @State private var confirming: Membership?
+    @Environment(\.scenePhase) private var scenePhase
 
     private var sections: DashboardGrouping.Sections { DashboardGrouping.group(session.memberships) }
     private var cardEmpty: Bool { card?.isEmpty == true }
@@ -170,6 +171,11 @@ struct MyPatchesSettings: View {
         .overlay { if !loaded { ProgressView() } }
         .task { await load() }
         .refreshable { await load() }
+        // A claim confirmed from its emailed link was confirmed in the
+        // browser; coming back is when its approval can be read.
+        .onChange(of: scenePhase) { _, now in
+            if now == .active { Task { claims = (try? await session.api.claims()) ?? claims } }
+        }
         .sheet(item: $joining) { row in
             JoinSheet(name: row.name, join: MyPatchesRules.rung(row) ?? .now) { message in
                 await perform(row) {
@@ -210,12 +216,14 @@ struct MyPatchesSettings: View {
                             Text(line).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                         }
                     }
-                    // Claiming and setting up are the website's: the app has
-                    // no claim flow, so the one act here is a door to it.
-                    Link(destination: session.api.webURL("patches/\(claim.slug)/\(claim.ready ? "setup" : "claim")")) {
-                        Text(claim.ready ? "Set up patch" : "View claim").font(Font.pw.subheadline)
+                    // The claim's own page: its proof, its answer, and the
+                    // setup once it is approved. Setting up lands on the
+                    // patch, which closes Settings to dock it.
+                    NavigationLink {
+                        ClaimPatchView(slug: claim.slug, name: claim.name) { onExit(.dock($0)) }
+                    } label: {
+                        Text(claim.ready ? "Set up patch" : "View claim").font(Font.pw.subheadline).inkRow(fills: false)
                     }
-                    .exitLink()
                     .accessibilityIdentifier("myPatchesClaim-\(claim.slug)")
                 }
                 .padding(.vertical, 2)
@@ -223,7 +231,7 @@ struct MyPatchesSettings: View {
         } header: {
             settingsHeading("Claiming")
         } footer: {
-            settingsFootnote("Claiming a patch and setting it up happen on this quilt’s website. Until setup is done, the patch still reads as unclaimed to everyone else.")
+            settingsFootnote("Until setup is done, the patch still reads as unclaimed to everyone else. An approval you confirm from an emailed link shows here when you come back to the app.")
         }
     }
 

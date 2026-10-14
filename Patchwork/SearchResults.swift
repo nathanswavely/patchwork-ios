@@ -8,7 +8,7 @@ import SwiftUI
 /// mode — the quilt's own tile beside its name, not a bare line of text — so
 /// a reader who taps a search result and a reader who taps a card can see
 /// they touched the same thing. The rows that are not patches are ink: the
-/// one act that narrows the quilt, and the exit to the website's suggest form.
+/// one act that narrows the quilt, and the door to suggesting what is missing.
 struct SearchResults: View {
     @EnvironmentObject private var session: QuiltSession
     @State private var events: [PatchworkEvent] = []
@@ -85,23 +85,23 @@ struct SearchResults: View {
                     footnote("Narrowing the quilt is this one step; typing alone never does it.")
                 }
                 // Nothing found is the one moment a reader has a thing this
-                // quilt is missing. Suggesting it needs an account, so this is
-                // a link to the website rather than a form that cannot submit,
-                // and only where the quilt says it takes suggestions at all.
-                // It carries the name they typed, the way the web's own
-                // suggest row does — arriving at an empty form would make them
-                // type it a second time to say the same thing.
+                // quilt is missing, and only where the quilt says it takes
+                // suggestions at all. The form arrives carrying the name they
+                // typed, the way the web's own suggest row does; signed out,
+                // the same row is the sign-in sheet, because suggesting needs
+                // an account.
                 if patches.isEmpty, matchingEvents.isEmpty, session.instance?.submissionsEnabled == true {
                     Section {
-                        Link(destination: session.api.suggestURL(name: trimmed)) {
+                        SuggestPatchDoor(name: trimmed) {
                             Text("Suggest \u{201C}\(trimmed)\u{201D} as a patch")
                                 .font(Font.pw.subheadlineMedium)
                         }
+                        .buttonStyle(.plain)
+                        .inkAction("plus.circle")
                         .accessibilityIdentifier("suggestPatch")
-                        .exitLink()
                         .plainRow()
                     } footer: {
-                        footnote("Nothing here matches \u{201C}\(trimmed)\u{201D}. Suggesting a patch happens on this quilt\u{2019}s website.")
+                        footnote("Nothing here matches \u{201C}\(trimmed)\u{201D}. The people who run it can claim it once it is on the quilt.")
                     }
                 }
             }
