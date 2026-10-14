@@ -57,4 +57,201 @@ final class GettingInTests: XCTestCase {
         XCTAssertEqual(RelationshipControl.sentence(for: "declined"), "Invitation declined")
         XCTAssertEqual(Relationship.invitedLabel, "You've been invited to join")
     }
+
+    // MARK: - Creating a patch
+
+    private func json(_ body: some Encodable) throws -> [String: Any] {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(body)) as? [String: Any])
+    }
+
+    private var draft: PatchDraft { PatchDraft(palette: "anthem", block: "ohioStar", rotation: 90) }
+
+    func testANewDraftStartsClosedAndMinimal() {
+        XCTAssertEqual(draft.policy, .inviteOnly, "preselected to the closed option, as the web does")
+        XCTAssertEqual(draft.template, .minimal)
+        var generator = SystemRandomNumberGenerator()
+        let seeded = PatchDraft.seeded(using: &generator)
+        XCTAssertNotNil(QuiltTheme.byKey[seeded.palette], "a seeded tile is a real palette")
+        XCTAssertTrue(QuiltBlocks.keys.contains(seeded.block))
+        XCTAssertTrue([0, 90, 180, 270].contains(seeded.rotation))
+    }
+
+    func testTheCreateBodyAlwaysCarriesTheMembershipPolicy() throws {
+        var bare = draft
+        bare.name = "  Night Market  "
+        let body = try json(bare.createBody)
+        XCTAssertEqual(body["membership_policy"] as? String, "invite_only",
+                       "the server defaults a missing policy to open, so it is never left out")
+        XCTAssertEqual(body["name"] as? String, "Night Market", "trimmed, as the web sends it")
+        XCTAssertEqual(body["visibility"] as? String, "public")
+        XCTAssertEqual(body["template"] as? String, "minimal")
+        for absent in ["description", "address", "website", "latitude", "longitude", "tags", "suggest_tags"] {
+            XCTAssertNil(body[absent], "\(absent) is left out while blank")
+        }
+        let appearance = try XCTUnwrap(body["appearance"] as? [String: Any])
+        XCTAssertEqual(appearance["palette"] as? String, "anthem")
+        XCTAssertEqual(appearance["block"] as? String, "ohioStar")
+        XCTAssertEqual(appearance["rotation"] as? Int, 90)
+        XCTAssertNil(appearance["icon"], "an unset motif follows the first tag")
+
+        var open = bare
+        open.answer(.open)
+        XCTAssertEqual(try json(open.createBody)["membership_policy"] as? String, "open")
+    }
+
+    func testOnlyAConfirmedPointTravels() throws {
+        var filled = draft
+        filled.name = "Night Market"
+        filled.address = "12 Example Street"
+        XCTAssertNil(try json(filled.createBody)["latitude"], "an address implies no point")
+        filled.point = MapPoint(latitude: 40.0379, longitude: -76.3055)
+        let body = try json(filled.createBody)
+        XCTAssertEqual(body["latitude"] as? Double, 40.0379)
+        XCTAssertEqual(body["longitude"] as? Double, -76.3055)
+        XCTAssertEqual(body["address"] as? String, "12 Example Street")
+    }
+
+    func testTagsAndSuggestedWordsTravelApart() throws {
+        var filled = draft
+        filled.name = "N"
+        filled.tags = ["music", "venue"]
+        filled.suggestTags = ["zines"]
+        filled.toggleMotif("vinyl")
+        let body = try json(filled.createBody)
+        XCTAssertEqual(body["tags"] as? [String], ["music", "venue"], "in priority order")
+        XCTAssertEqual(body["suggest_tags"] as? [String], ["zines"])
+        XCTAssertEqual((body["appearance"] as? [String: Any])?["icon"] as? String, "vinyl")
+        filled.toggleMotif("vinyl")
+        XCTAssertEqual(filled.motif, "", "pressed again, a motif is let go of")
+    }
+
+    func testANameIsTheOneThingTheFormChecks() {
+        XCTAssertEqual(draft.problem(), "Name is required")
+        var named = draft
+        named.name = "   "
+        XCTAssertEqual(named.problem(), "Name is required")
+        named.name = "Night Market"
+        XCTAssertNil(named.problem())
+    }
+
+    func testCreationNeverLetsTheTemplateMoveThePolicy() {
+        var creating = draft
+        creating.choose(.casual, setup: false)
+        XCTAssertEqual(creating.template, .casual)
+        XCTAssertEqual(creating.policy, .inviteOnly)
+    }
+
+    func testSetupSeedsThePolicyFromTheTemplateUntilItIsAnswered() throws {
+        let listing = try patch(#"{"id":"extra-9","name":"Evening Choir","slug":"extra-9","description":"We sing.","address":"1 Hall Lane","latitude":40.1,"longitude":-76.2,"tags":["music"],"appearance":{"palette":"anthem","icon":"micStage"}}"#)
+        var setup = PatchDraft(setup: listing)
+        XCTAssertEqual(setup.name, "Evening Choir")
+        XCTAssertEqual(setup.address, "1 Hall Lane")
+        XCTAssertEqual(setup.point, MapPoint(latitude: 40.1, longitude: -76.2), "the listing's own point is already the listing's")
+        XCTAssertEqual(setup.tags, ["music"])
+        XCTAssertEqual(setup.palette, "anthem", "the tile it already wears, not a reroll")
+        XCTAssertEqual(setup.motif, "micStage")
+        XCTAssertEqual(setup.policy, .inviteOnly, "Minimal's own answer")
+        setup.choose(.casual, setup: true)
+        XCTAssertEqual(setup.policy, .open, "follows the template")
+        setup.choose(.collaborative, setup: true)
+        XCTAssertEqual(setup.policy, .approvalRequired)
+        setup.answer(.inviteOnly)
+        setup.choose(.casual, setup: true)
+        XCTAssertEqual(setup.policy, .inviteOnly, "once answered, nothing moves it")
+        let body = try json(setup.setupBody)
+        XCTAssertEqual(body["template"] as? String, "casual")
+        XCTAssertEqual(body["membership_policy"] as? String, "invite_only")
+        let update = try json(setup.updateBody)
+        XCTAssertNil(update["membership_policy"], "PATCH nodes takes no policy: governance moves through the rules")
+        XCTAssertEqual(update["visibility"] as? String, "public")
+    }
+
+    func testTheTemplatesAreTheWebs() {
+        XCTAssertEqual(GovernanceTemplate.allCases.map(\.name), ["Minimal", "Casual", "Collaborative", "Formal"])
+        XCTAssertEqual(GovernanceTemplate.minimal.detail, "No overhead. You're the only one running it.")
+        XCTAssertEqual(GovernanceTemplate.formal.leadership, "Elected Council")
+        XCTAssertEqual(GovernanceTemplate.allCases.map(\.membershipPolicy), [.inviteOnly, .open, .approvalRequired, .approvalRequired])
+        XCTAssertEqual(MembershipPolicyChoice.allCases.map(\.name), ["Invite only", "Approval required", "Open"])
+    }
+
+    func testATagIsNormalisedTheWayTheServerSavesIt() {
+        XCTAssertEqual(TagSuggestion.normalize("  Zine Fair! "), "zine-fair")
+        XCTAssertEqual(TagSuggestion.normalize("open__mic -- night"), "open-mic-night")
+        XCTAssertEqual(TagSuggestion.normalize("Café"), "café")
+        XCTAssertEqual(TagSuggestion.normalize(String(repeating: "a", count: 40)).count, 32)
+        XCTAssertEqual(TagSuggestion.add("Music", vocabulary: ["music"], picked: [], suggested: []), .picked("music"),
+                       "a curated word is picked, never queued")
+        XCTAssertEqual(TagSuggestion.add("zines", vocabulary: ["music"], picked: [], suggested: []), .suggested("zines"))
+        XCTAssertEqual(TagSuggestion.add("zines", vocabulary: [], picked: [], suggested: ["zines"]), .refused("zines is already waiting for review."))
+        XCTAssertEqual(TagSuggestion.add("!!", vocabulary: [], picked: [], suggested: []), .refused("Enter a word to suggest."))
+    }
+
+    func testAPlaceIsOnlyASuggestionWhenTheGazetteerFoundOne() throws {
+        let found = try decode(PlaceSuggestion.self, #"{"found":true,"available":true,"place":{"latitude":40.0379,"longitude":-76.3055},"label":"12 Example Street"}"#)
+        XCTAssertEqual(found.point, MapPoint(latitude: 40.0379, longitude: -76.3055))
+        XCTAssertNil(try decode(PlaceSuggestion.self, #"{"found":false,"available":false}"#).point)
+        XCTAssertNil(try decode(PlaceSuggestion.self, #"{"found":true,"place":{"latitude":120,"longitude":0}}"#).point)
+        XCTAssertFalse(PlaceSuggestion.worthLookingUp(" ab "))
+        XCTAssertTrue(PlaceSuggestion.worthLookingUp("Pub"))
+    }
+
+    func testTheCreatedNodeAndItsWarningDecode() throws {
+        let created = try decode(CreatedPatch.self, #"{"id":"n1","name":"Night Market","slug":"night-market","tag_warning":"zines was declined"}"#)
+        XCTAssertEqual(created.node.slug, "night-market")
+        XCTAssertEqual(created.tagWarning, "zines was declined")
+        XCTAssertNil(try decode(CreatedPatch.self, #"{"id":"n1","name":"N","slug":"n"}"#).tagWarning)
+    }
+
+    func testTheMiniatureIsTheDraftsTile() throws {
+        var filled = draft
+        filled.tags = ["music"]
+        let preview = try XCTUnwrap(filled.preview(id: "new-patch"))
+        XCTAssertEqual(QuiltTheme.palette(for: preview).key, "anthem")
+        XCTAssertEqual(QuiltBlocks.rotation(id: preview.id, appearance: preview.appearance), 90)
+        XCTAssertEqual(Motifs.key(for: preview, tagMotifs: ["music": "musicNotes"]), "musicNotes", "unset, it follows the first tag")
+        XCTAssertEqual(Motifs.name("musicNotes"), "Music notes")
+    }
+
+    // MARK: - Suggesting a patch
+
+    func testASuggestionSendsWhatTheWebSends() throws {
+        var suggestion = SuggestionDraft()
+        suggestion.name = " Gallery Row "
+        suggestion.links = [.init(url: " https://galleryrow.example.org ", label: ""), .init(url: "", label: "orphan")]
+        suggestion.tags = ["craft"]
+        let body = try json(suggestion.body)
+        XCTAssertEqual(body["name"] as? String, "Gallery Row")
+        XCTAssertEqual(body["description"] as? String, "", "always sent; the server takes an empty one")
+        let links = try XCTUnwrap(body["links"] as? [[String: Any]])
+        XCTAssertEqual(links.count, 1, "a link with no address is dropped")
+        XCTAssertEqual(links[0]["url"] as? String, "https://galleryrow.example.org")
+        XCTAssertNil(links[0]["label"])
+        XCTAssertEqual(body["tags"] as? [String], ["craft"])
+        for absent in ["website", "address", "feed_url"] { XCTAssertNil(body[absent]) }
+        suggestion.feedURL = "https://galleryrow.example.org/calendar.ics"
+        XCTAssertEqual(try json(suggestion.body)["feed_url"] as? String, "https://galleryrow.example.org/calendar.ics")
+        XCTAssertEqual(SuggestionDraft().problem(), "Name is required")
+    }
+
+    func testASuggestionsTwoEndings() throws {
+        let published = try decode(SubmissionAnswer.self, #"{"status":"unclaimed","node":{"id":"n1","slug":"gallery-row","name":"Gallery Row"}}"#)
+        XCTAssertTrue(published.published)
+        XCTAssertEqual(published.node?.slug, "gallery-row")
+        let waiting = try decode(SubmissionAnswer.self, #"{"status":"pending_review","message":"Submission sent for review","id":"s1"}"#)
+        XCTAssertFalse(waiting.published)
+        XCTAssertEqual(SuggestionRules.reviewNote(trusted: true), "As a trusted contributor, your suggestion joins the quilt at once.")
+        XCTAssertTrue(SuggestionRules.reviewNote(trusted: false).hasPrefix("An instance admin reviews suggestions."))
+    }
+
+    func testACollisionNamesThePatchItHit() {
+        let error = APIError.from(status: 409, data: Data(#"{"error":"a patch with a similar name already exists","existing_slug":"common-thread"}"#.utf8))
+        XCTAssertEqual(error.existingSlug, "common-thread")
+        XCTAssertEqual(error.httpStatus, 409)
+        XCTAssertEqual(SuggestionRules.sentence(error), "A patch with a similar name already exists.")
+        let other = APIError.from(status: 400, data: Data(#"{"error":"could not read a calendar at that address"}"#.utf8))
+        XCTAssertNil(other.existingSlug)
+        XCTAssertEqual(SuggestionRules.sentence(other), "Could not read a calendar at that address")
+    }
 }

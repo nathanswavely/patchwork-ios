@@ -28,7 +28,16 @@ struct Instance: Decodable {
     /// exit this browsing client offers to the website's submission form; it
     /// never stands in for a native form, which needs sign-in.
     let submissionsEnabled: Bool?
-    struct Geography: Decodable { let timezone: String? }
+    /// The quilt's zone, and the point its map starts from — which is where
+    /// the patch form's map opens when the address suggests nowhere.
+    struct Geography: Decodable {
+        let timezone: String?
+        var latitude: Double? = nil
+        var longitude: Double? = nil
+    }
+    /// Whether this quilt can send email. An account invite link asks for an
+    /// address only where it can (web ADR 071).
+    var emailEnabled: Bool? = nil
     struct Neighbor: Decodable { let name: String; let url: String }
     struct Stats: Decodable { let nodeCount: Int?; let eventCount: Int?; let memberCount: Int? }
 }
@@ -919,6 +928,10 @@ struct User: Decodable, Hashable, Identifiable {
     /// discovery surfaces. The server applies it to the tree; the client only
     /// saves it and asks again.
     var hideAmendedLinings: Bool? = nil
+    /// The quilt-wide trusted-contributor grant (web ADR 2026-09-18): a
+    /// suggestion from somebody holding it joins the quilt at once rather
+    /// than waiting for an admin.
+    var trustedContributor: Bool? = nil
     /// The name to print, the way a steward's is printed: what they filled in,
     /// or the handle with its at sign so a bare word is never mistaken for a
     /// display name nobody chose.

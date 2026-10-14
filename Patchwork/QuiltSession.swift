@@ -454,6 +454,8 @@ struct LaunchLens: Equatable {
     /// cannot be presented while another is still leaving.
     func dock(afterSheet slug: String) { waitingToDock = slug }
     private var waitingToDock: String?
+    /// Whether a sheet that is leaving has left a patch to dock behind it.
+    var patchWaiting: Bool { waitingToDock != nil }
     /// A sheet has gone (its presenter's `onDismiss`), and a patch may be
     /// waiting for the quilt underneath.
     func sheetDismissed() {

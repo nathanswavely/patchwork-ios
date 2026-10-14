@@ -160,6 +160,8 @@ struct DiscoveryToolbar: ViewModifier {
     @State private var signIn = false
     @State private var notifications = false
     @State private var settings = false
+    /// "Add a patch", the web's New → New patch.
+    @State private var adding = false
     /// How the reader left Settings, acted on once the sheet has gone.
     @State private var settingsExit: SettingsExit?
     @FocusState private var focused: Bool
@@ -219,6 +221,10 @@ struct DiscoveryToolbar: ViewModifier {
                                 // the account hears and letting go of it.
                                 Button { settings = true } label: { Label("Settings", systemImage: "gearshape") }
                                     .accessibilityIdentifier("accountSettings")
+                                // The web's New menu: making something is the
+                                // account's act, so it lives with the account.
+                                Button { adding = true } label: { Label("Add a patch", systemImage: "plus.square") }
+                                    .accessibilityIdentifier("accountAddPatch")
                                 Button { Task { await session.signOut() } } label: {
                                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                                 }
@@ -260,6 +266,7 @@ struct DiscoveryToolbar: ViewModifier {
                 }
             }
             .sheet(isPresented: $notifications, onDismiss: { session.sheetDismissed() }) { NotificationsSheet() }
+            .sheet(isPresented: $adding, onDismiss: { session.sheetDismissed() }) { NewPatchSheet() }
             .sheet(isPresented: $settings, onDismiss: leaveSettings) {
                 SettingsSheet { exit in settingsExit = exit; settings = false }
             }

@@ -165,13 +165,12 @@ struct QuiltBrowser: View {
         narrowed ? "\(filtered.count) of \(session.patches.count)" : "\(filtered.count) results"
     }
 
-    /// Where the quilt says it takes suggestions, an empty list offers the one
-    /// link to the website's form. There is no native form: suggesting a patch
-    /// needs an account.
+    /// Where the quilt says it takes suggestions, an empty list offers the
+    /// form — behind the sign-in sheet for a reader without an account,
+    /// because suggesting needs one.
     @ViewBuilder private var suggestLink: some View {
         if session.instance?.submissionsEnabled == true {
-            Link("Suggest a patch", destination: session.api.webURL("submit"))
-                .exitLink(fills: false)
+            SuggestPatchDoor { Text("Suggest a patch") }
                 .accessibilityIdentifier("suggestPatch")
         }
     }

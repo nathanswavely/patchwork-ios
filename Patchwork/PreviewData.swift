@@ -237,7 +237,12 @@ enum PreviewData {
     /// relationship rules read: whether it is public, and how it takes
     /// members. Common Thread approves; the Listening Room and the Repair
     /// Cafe admit anyone.
-    private static let holdable: [(slug: String, id: String, name: String, blurb: String, visibility: String, policy: String)] = [
+    private static var holdable: [(slug: String, id: String, name: String, blurb: String, visibility: String, policy: String)] {
+        fixedHoldable
+            + madePatches.filter { $0.status == "active" }.map { ($0.slug, $0.id, $0.name, $0.description, "public", $0.policy) }
+            + activated.keys.sorted().map { slug in (slug, slug, patchName(slug), "", "public", activated[slug] ?? "invite_only") }
+    }
+    private static let fixedHoldable: [(slug: String, id: String, name: String, blurb: String, visibility: String, policy: String)] = [
         ("common-thread", "demo-patch", "Common Thread Studio",
          "A place to make things and meet your neighbors.", "public", "approval_required"),
         ("listening-room", "demo-patch-2", "The Listening Room",
@@ -281,6 +286,10 @@ enum PreviewData {
     /// `me/nodes` does not serve it.
     private static var invited: Set<String> = []
     private static var freshInvited: Set<String> { invitedLaunch ? [invitingSlug] : [] }
+    private static func patchName(_ slug: String) -> String {
+        guard let index = Int(slug.dropFirst("extra-".count)), extraNames.indices.contains(index) else { return slug }
+        return (nodeEdits[slug]?["name"] as? String) ?? extraNames[index]
+    }
     /// The quilt's other ten patches, by name; `extra-N` is the Nth.
     private static let extraNames = ["Community Garden", "Bike Kitchen", "Neighborhood Books", "River Walkers", "Pottery Circle", "Market Friends", "Repair Cafe", "Film Club", "Food Share", "Evening Choir"]
 
@@ -297,6 +306,7 @@ enum PreviewData {
         signedIn = true
         held = freshHeld
         invited = freshInvited
+        claims = freshClaims
         notifications = Self.freshNotifications
         sessionRows = freshSessionRows
         // A new sign-in is younger than whatever batch the account already
@@ -681,6 +691,367 @@ enum PreviewData {
         }
     }
 
+    // MARK: Making and suggesting patches
+
+    /// A patch made this launch: created (`POST nodes`, active, the reader
+    /// its admin) or suggested (`POST submissions`, unclaimed or waiting
+    /// for review). Held as fields so the tree, `nodes/{slug}` and the
+    /// index all read the same one.
+    private struct MadePatch {
+        let id: String
+        let slug: String
+        var name: String
+        var description: String
+        var address: String
+        var latitude: Double?
+        var longitude: Double?
+        var website: String
+        var tags: [String]
+        var policy: String
+        var appearance: [String: Any]
+        /// `active`, `unclaimed` or `pending_review`.
+        var status: String
+    }
+    private static var madePatches: [MadePatch] = []
+    /// The quilt's curated vocabulary, as `tags` serves it.
+    private static let vocabulary = ["craft", "music", "venue", "community", "archive"]
+
+    /// The server's `generateSlug`: lowercase, every run of anything that is
+    /// not a letter or a digit becomes one hyphen, hyphens trimmed, at most
+    /// sixty characters, and "node" for nothing at all.
+    static func slug(for name: String) -> String {
+        var text = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        text = text.replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        if text.count > 60 { text = String(text.prefix(60)) }
+        return text.isEmpty ? "node" : text
+    }
+    /// Every slug the quilt holds, whatever its state.
+    private static var knownSlugs: Set<String> {
+        Set(["common-thread", "listening-room"] + extraNames.indices.map { "extra-\($0)" } + madePatches.map(\.slug))
+    }
+    /// `uniqueSlug`: the base, or the base with a suffix until it is free.
+    private static func uniqueSlug(_ base: String) -> String {
+        var candidate = base
+        var serial = 0
+        while knownSlugs.contains(candidate) {
+            serial += 1
+            candidate = String(format: "%@-%04x", base, serial)
+        }
+        return candidate
+    }
+
+    private static func madeJSON(_ p: MadePatch) -> String {
+        var object: [String: Any] = [
+            "name": p.name, "slug": p.slug, "description": p.description, "tags": p.tags,
+            "member_count": p.status == "active" ? 1 : 0, "follower_count": 0, "upcoming_event_count": 0,
+            "address": p.address, "website": p.website, "visibility": "public",
+            "public_member_list": "nobody", "public_governance_record": "nobody",
+            "timezone": "America/New_York", "accept_event_suggestions": false,
+        ]
+        if !p.appearance.isEmpty { object["appearance"] = p.appearance }
+        if let latitude = p.latitude, let longitude = p.longitude { object["latitude"] = latitude; object["longitude"] = longitude }
+        if p.status == "unclaimed" { object["is_unclaimed"] = true; object["status"] = "unclaimed" }
+        // The id leads, as every fixture node's does: the tree's `scope=my`
+        // narrowing finds a patch by the start of its JSON.
+        return "{\"id\":\"\(p.id)\"," + serialize(object).dropFirst()
+    }
+
+    /// The node's JSON for the tree or the envelope: a made patch, or an
+    /// extra with whatever a claim's setup has written over it.
+    private static func treeMade() -> [String] {
+        madePatches.filter { $0.status != "pending_review" }.map(madeJSON)
+    }
+
+    /// `POST nodes`, in `CreateNode`'s order and words. An omitted
+    /// membership policy is the server's `open` — the default the form is
+    /// built to avoid, kept here so a client that forgot would be seen to.
+    private static func createNode(_ fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        let name = (fields["name"] as? String) ?? ""
+        guard !name.isEmpty else { throw APIError.message("name is required", status: 400) }
+        let visibility = (fields["visibility"] as? String) ?? "public"
+        guard ["public", "private", "unlisted"].contains(visibility) else {
+            throw APIError.message("visibility must be one of public, private, unlisted", status: 400)
+        }
+        let policy = (fields["membership_policy"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "open"
+        guard ["open", "approval_required", "invite_only"].contains(policy) else {
+            throw APIError.message("membership_policy must be one of open, approval_required, invite_only", status: 400)
+        }
+        if let latitude = fields["latitude"] as? Double, !(-90...90).contains(latitude) {
+            throw APIError.message("latitude must be between -90 and 90", status: 400)
+        }
+        if let longitude = fields["longitude"] as? Double, !(-180...180).contains(longitude) {
+            throw APIError.message("longitude must be between -180 and 180", status: 400)
+        }
+        let appearance = (fields["appearance"] as? [String: Any]) ?? [:]
+        if let rotation = appearance["rotation"] as? Int, ![0, 90, 180, 270].contains(rotation) {
+            throw APIError.message("appearance.rotation must be one of 0, 90, 180, 270", status: 400)
+        }
+        let tags = (fields["tags"] as? [String]) ?? []
+        if let unknown = tags.first(where: { !vocabulary.contains($0) }) { throw APIError.message("unknown tag: \(unknown)", status: 400) }
+        let slug = uniqueSlug(slug(for: name))
+        let made = MadePatch(id: "made-\(madePatches.count + 1)", slug: slug, name: name,
+                             description: (fields["description"] as? String) ?? "", address: (fields["address"] as? String) ?? "",
+                             latitude: fields["latitude"] as? Double, longitude: fields["longitude"] as? Double,
+                             website: (fields["website"] as? String) ?? "", tags: tags, policy: policy,
+                             appearance: appearance, status: "active")
+        madePatches.append(made)
+        held[slug] = (role: "admin", status: "active")
+        return madeJSON(made)
+    }
+
+    /// `POST submissions`, in `SubmitPatch`'s order and words: the name, the
+    /// tags, then the collision with a patch already on the quilt — named in
+    /// `existing_slug` — and then published at once only for a quilt-wide
+    /// trusted contributor.
+    private static func submit(_ fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        let name = (fields["name"] as? String) ?? ""
+        guard !name.isEmpty else { throw APIError.message("name is required", status: 400) }
+        let tags = (fields["tags"] as? [String]) ?? []
+        if let unknown = tags.first(where: { !vocabulary.contains($0) }) { throw APIError.message("unknown tag: \(unknown)", status: 400) }
+        let base = slug(for: name)
+        if knownSlugs.contains(base) {
+            throw refuse(409, "a patch with a similar name already exists", extra: ",\"existing_slug\":\"\(base)\"")
+        }
+        if let feed = fields["feed_url"] as? String, !feed.isEmpty {
+            guard feed.hasPrefix("http://") || feed.hasPrefix("https://") else { throw APIError.message("feed url must be http(s)", status: 400) }
+            guard feed.contains("calendar") || feed.hasSuffix(".ics") else {
+                throw APIError.message("could not read a calendar at that address", status: 400)
+            }
+        }
+        let trusted = accountFields["trusted_contributor"] as? Bool == true
+        let made = MadePatch(id: "suggested-\(madePatches.count + 1)", slug: base, name: name,
+                             description: (fields["description"] as? String) ?? "", address: (fields["address"] as? String) ?? "",
+                             latitude: nil, longitude: nil, website: (fields["website"] as? String) ?? "", tags: tags,
+                             policy: "invite_only", appearance: [:], status: trusted ? "unclaimed" : "pending_review")
+        madePatches.append(made)
+        if trusted {
+            return serialize(["status": "unclaimed", "node": ["id": made.id, "slug": made.slug, "name": made.name]])
+        }
+        return serialize(["status": "pending_review", "message": "Submission sent for review", "id": made.id])
+    }
+
+    /// `GET gazetteer/suggest`: the fixtures' one street is known, and
+    /// anything else is the polite miss.
+    private static func gazetteer(_ query: [URLQueryItem]) -> String {
+        let q = (query.first { $0.name == "q" }?.value ?? "").lowercased()
+        guard q.contains("example street") else { return #"{"found":false,"available":true}"# }
+        return #"{"found":true,"available":true,"place":{"latitude":40.0379,"longitude":-76.3055},"label":"12 Example Street, Sample Town"}"#
+    }
+
+    // MARK: Claiming
+
+    /// One claim as the fixtures hold it (claims.go). Kept across a sign-in,
+    /// because a claim is the account's, and started afresh with a session
+    /// the way the rest of the reader's rows are.
+    private struct FixtureClaim {
+        let id: String
+        let slug: String
+        let method: String
+        var status: String
+        var email = ""
+        var evidence = ""
+        let createdMinutesAgo: Int
+        /// Minutes from now until the setup window closes, once approved.
+        var setupExpiresIn: Int?
+        var sends = 1
+    }
+    /// The River Walkers' claim is approved and waiting to be set up; the
+    /// Evening Choir is unclaimed with a vetted domain, so every method is
+    /// open on it.
+    private static var freshClaims: [FixtureClaim] {
+        [FixtureClaim(id: "claim-river-walkers", slug: "extra-3", method: "email", status: "approved",
+                      email: "walk@riverwalkers.example.org", createdMinutesAgo: 5 * day, setupExpiresIn: 9 * day)]
+    }
+    private static var claims: [FixtureClaim] = signedIn ? freshClaims : []
+    /// The vetted domain each unclaimed listing carries, or none.
+    private static let verificationDomains = ["extra-9": "eveningchoir.example.org"]
+    /// The extras nobody runs: the River Walkers and the Evening Choir.
+    private static let unclaimedExtras: Set<Int> = [3, 9]
+    /// Listings a claim's setup has activated this launch, with the policy
+    /// the claimant chose, and what `PATCH nodes/{slug}` wrote over them.
+    private static var activated: [String: String] = [:]
+    private static var nodeEdits: [String: [String: Any]] = [:]
+    private static func isUnclaimedExtra(_ index: Int) -> Bool {
+        unclaimedExtras.contains(index) && activated["extra-\(index)"] == nil
+    }
+
+    private static func claimInstructions(_ c: FixtureClaim, domain: String) -> [String: Any] {
+        switch c.method {
+        case "dns":
+            return ["instructions": "Add a TXT record on \(domain) with the value: patchwork-verify=token-\(c.id)",
+                    "record_value": "patchwork-verify=token-\(c.id)"]
+        case "meta_tag":
+            return ["instructions": "Add this tag to the <head> of https://\(domain): <meta name=\"patchwork-verify\" content=\"token-\(c.id)\">",
+                    "meta_content": "token-\(c.id)"]
+        case "did":
+            return ["instructions": "Point the atproto handle \(domain) at a did:web identity, and have that DID document list at://\(domain) in alsoKnownAs."]
+        case "email":
+            return ["instructions": "We sent a verification link to \(c.email). It expires in 24 hours."]
+        default:
+            return ["instructions": "Your claim has been submitted for admin review. You'll be notified when it's resolved."]
+        }
+    }
+
+    private static func claimJSON(_ c: FixtureClaim) -> [String: Any] {
+        var fields: [String: Any] = ["id": c.id, "method": c.method, "evidence": c.evidence, "status": c.status,
+                                     "email": c.email, "created_at": stamp(minutesAgo: c.createdMinutesAgo)]
+        if let left = c.setupExpiresIn { fields["setup_expires_at"] = stamp(minutesAgo: -left) }
+        for (key, value) in claimInstructions(c, domain: verificationDomains[c.slug] ?? "") { fields[key] = value }
+        return fields
+    }
+
+    private static func claimableIndex(_ slug: String) -> Int? {
+        guard slug.hasPrefix("extra-"), let index = Int(slug.dropFirst("extra-".count)), extraNames.indices.contains(index) else { return nil }
+        return index
+    }
+
+    /// Leaving the app stands in for opening the emailed link: the browser
+    /// is where that link goes, and coming back is when the app looks again.
+    private static let browserStandIn: Void = {
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+            for i in claims.indices where claims[i].method == "email" && claims[i].status == "pending" {
+                claims[i].status = "approved"
+                claims[i].setupExpiresIn = 14 * day
+            }
+        }
+    }()
+
+    private static func claimRead(_ path: String) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count == 4, parts[0] == "nodes", parts[2] == "claims", parts[3] == "mine" else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+        let slug = parts[1]
+        let index = claimableIndex(slug)
+        guard index != nil || holdable.contains(where: { $0.slug == slug }) || ["common-thread", "listening-room"].contains(slug) else {
+            throw APIError.message("node not found", status: 404)
+        }
+        let domain = verificationDomains[slug] ?? ""
+        let mine = claims.last { $0.slug == slug && ["pending", "approved"].contains($0.status) }
+        return serialize([
+            "claim": mine.map { claimJSON($0) as Any } ?? NSNull(),
+            "methods": ["dns": !domain.isEmpty, "meta_tag": !domain.isEmpty, "did": !domain.isEmpty, "email": !domain.isEmpty, "admin": true],
+            "verification_domain": domain,
+            "node_status": index.map { isUnclaimedExtra($0) } == true ? "unclaimed" : "active",
+        ])
+    }
+
+    /// The claim writes, in claims.go's order and words. Nil means "not one
+    /// of these".
+    private static func claimWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        let isRequest = parts.count == 3 && parts[0] == "nodes" && parts[2] == "claim"
+        let isAct = parts.count == 3 && parts[0] == "claims"
+        let isEdit = method == "PATCH" && parts.count == 2 && parts[0] == "nodes"
+        guard isRequest || isAct || isEdit else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+
+        if isEdit {
+            let slug = parts[1]
+            guard role(slug) == "admin" else { throw APIError.message("insufficient permissions", status: 403) }
+            var edits = nodeEdits[slug] ?? [:]
+            for key in ["name", "description", "address", "website", "latitude", "longitude", "appearance", "tags"] {
+                if let value = fields[key] { edits[key] = value }
+            }
+            nodeEdits[slug] = edits
+            return #"{"status":"ok"}"#
+        }
+
+        if isRequest {
+            _ = browserStandIn
+            let slug = parts[1]
+            guard let index = claimableIndex(slug) else { throw APIError.message("node not found", status: 404) }
+            guard isUnclaimedExtra(index) else { throw APIError.message("this patch is not available for claiming", status: 400) }
+            if claims.contains(where: { $0.slug == slug && $0.status == "approved" }) {
+                throw APIError.message("this patch has an approved claim awaiting setup", status: 409)
+            }
+            if claims.contains(where: { $0.slug == slug && $0.status == "pending" }) {
+                throw APIError.message("you already have an open claim for this patch", status: 409)
+            }
+            let kind = (fields["method"] as? String) ?? ""
+            guard ["dns", "meta_tag", "did", "email", "admin"].contains(kind) else {
+                throw APIError.message("method must be dns, meta_tag, did, email, or admin", status: 400)
+            }
+            let domain = verificationDomains[slug] ?? ""
+            if kind != "admin" && domain.isEmpty {
+                throw APIError.message("this patch has no verified domain. Choose admin review", status: 400)
+            }
+            var email = ""
+            if kind == "email" {
+                email = ((fields["email"] as? String) ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+                let pieces = email.split(separator: "@", omittingEmptySubsequences: false)
+                guard pieces.count == 2, !pieces[0].isEmpty, pieces[1].contains(".") else {
+                    throw APIError.message("a valid email address is required for email verification", status: 400)
+                }
+                guard pieces[1] == domain else { throw APIError.message("the email must be at @\(domain)", status: 400) }
+            }
+            let claim = FixtureClaim(id: "claim-\(claims.count + 1)", slug: slug, method: kind, status: "pending",
+                                     email: email, evidence: (fields["evidence"] as? String) ?? "", createdMinutesAgo: 0)
+            claims.append(claim)
+            var answer: [String: Any] = ["id": claim.id, "method": kind, "status": "pending"]
+            for (key, value) in claimInstructions(claim, domain: domain) { answer[key] = value }
+            return serialize(answer)
+        }
+
+        guard method == "POST", let index = claims.firstIndex(where: { $0.id == parts[1] }) else {
+            throw APIError.message("claim not found", status: 404)
+        }
+        var claim = claims[index]
+        switch parts[2] {
+        case "verify":
+            guard claim.status == "pending" else { throw APIError.message("claim is already \(claim.status)", status: 400) }
+            let sentence: String
+            switch claim.method {
+            case "dns": sentence = "TXT record not found — it may take a few minutes to propagate"
+            case "meta_tag": sentence = "verification tag not found on the site"
+            case "did": sentence = "the handle does not resolve to a did:web identity on this domain"
+            case "email": sentence = "check your inbox — email claims are completed via the emailed link"
+            default: sentence = "admin claims are reviewed manually — you'll be notified"
+            }
+            return serialize(["status": "pending", "verified": false, "error": sentence])
+        case "resend-email":
+            guard claim.method == "email", claim.status == "pending" else {
+                throw APIError.message("this claim has no email verification to resend", status: 400)
+            }
+            guard claim.sends < 3 else { throw APIError.message("resend limit reached", status: 429) }
+            claim.sends += 1
+            claims[index] = claim
+            return #"{"status":"sent"}"#
+        case "withdraw":
+            guard claim.status == "pending" else { throw APIError.message("claim is already \(claim.status)", status: 400) }
+            claim.status = "withdrawn"
+            claims[index] = claim
+            return #"{"status":"withdrawn"}"#
+        case "setup":
+            let policy = (fields["membership_policy"] as? String) ?? ""
+            if !policy.isEmpty && !["open", "approval_required", "invite_only"].contains(policy) {
+                throw APIError.message("membership_policy must be one of open, approval_required, invite_only", status: 400)
+            }
+            let template = (fields["template"] as? String) ?? ""
+            if !template.isEmpty && !["minimal", "casual", "collaborative", "formal"].contains(template) {
+                throw APIError.message("unknown governance template", status: 400)
+            }
+            guard claim.status == "approved" else { throw APIError.message("claim is \(claim.status), not approved", status: 400) }
+            if let left = claim.setupExpiresIn, left < 0 {
+                claim.status = "expired"
+                claims[index] = claim
+                throw APIError.message("this claim's setup window has expired. The patch is claimable again", status: 410)
+            }
+            guard let extra = claimableIndex(claim.slug), isUnclaimedExtra(extra) else {
+                throw APIError.message("this patch is no longer unclaimed", status: 409)
+            }
+            activated[claim.slug] = policy.isEmpty ? "invite_only" : policy
+            held[claim.slug] = (role: "admin", status: "active")
+            claim.status = "completed"
+            claims[index] = claim
+            return "{\"status\":\"ok\",\"slug\":\"\(claim.slug)\"}"
+        default:
+            throw APIError.status(404)
+        }
+    }
+
     // MARK: Answering an invitation
 
     /// `POST nodes/{slug}/invitations/accept|decline`, in the server's order
@@ -854,6 +1225,16 @@ enum PreviewData {
         var answer = (try? JSONSerialization.jsonObject(with: Data(edited(found.json, edits).utf8))) as? [String: Any] ?? [:]
         for key in ["node_name", "node_slug", "node_status", "links", "mentions"] { answer[key] = nil }
         return serialize(answer)
+    }
+
+    /// A node's JSON with its id leading, as every fixture node's does: the
+    /// tree's `scope=my` narrowing finds a patch by the start of its JSON,
+    /// and an edit laid over a node re-sorts its keys.
+    private static func idFirst(_ json: String) -> String {
+        guard !json.hasPrefix("{\"id\""),
+              var object = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any],
+              let id = object.removeValue(forKey: "id") as? String else { return json }
+        return "{\"id\":\"\(id)\"," + serialize(object).dropFirst()
     }
 
     private static func serialize(_ object: [String: Any]) -> String {
@@ -1827,13 +2208,19 @@ enum PreviewData {
             return serialize(["items": items])
         case "users/me/claims":
             guard signedIn else { throw APIError.unauthenticated }
-            // An approved claim on the unclaimed River Walkers, its setup
-            // window still open: the one act the app sends to the website.
-            return serialize(["items": [[
-                "id": "claim-river-walkers", "method": "email", "status": "approved",
-                "created_at": stamp(minutesAgo: 5 * day), "setup_expires_at": stamp(minutesAgo: -9 * day),
-                "node_slug": "extra-3", "node_name": extraNames[3],
-            ]]])
+            // Only claims on a patch still unclaimed, newest first, as `MyClaims` serves them.
+            let items = claims.filter { c in
+                ["pending", "approved"].contains(c.status) && claimableIndex(c.slug).map(isUnclaimedExtra) == true
+            }
+            .sorted { $0.createdMinutesAgo < $1.createdMinutesAgo }
+            .map { c -> [String: Any] in
+                var row: [String: Any] = ["id": c.id, "method": c.method, "status": c.status,
+                                          "created_at": stamp(minutesAgo: c.createdMinutesAgo),
+                                          "node_slug": c.slug, "node_name": patchName(c.slug)]
+                if let left = c.setupExpiresIn { row["setup_expires_at"] = stamp(minutesAgo: -left) }
+                return row
+            }
+            return serialize(["items": items])
         case "me/nodes" where query.contains { $0.name == "status" && $0.value == "archived" }:
             guard signedIn else { throw APIError.unauthenticated }
             // A duplicate of the Repair Cafe, archived by its admin — the
@@ -2078,6 +2465,7 @@ enum PreviewData {
     static func write(_ method: String, _ path: String, body: Data?) throws -> String {
         let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
         if let answer = try invitationWrite(method, path) { return answer }
+        if let answer = try claimWrite(method, path, fields: fields) { return answer }
         if let answer = try eventWrite(method, path, fields: fields) { return answer }
         if let answer = try peopleWrite(method, path, fields: fields) { return answer }
         if let answer = try notificationWrite(method, path) { return answer }
@@ -2117,6 +2505,10 @@ enum PreviewData {
             return "{}"
         case "events":
             return try eventPost(fields)
+        case "nodes":
+            return try createNode(fields)
+        case "submissions":
+            return try submit(fields)
         default:
             return try membershipPost(path, fields: fields)
         }
@@ -2136,8 +2528,8 @@ enum PreviewData {
             // Repair Cafe keeps its non-public events from followers, so
             // the tier's ceiling has somewhere to be seen offline.
             let posting = ",\"timezone\":\"America/New_York\",\"accept_event_suggestions\":true,\"follower_permissions\":{\"events\":\(index != 6),\"proposals\":true,\"charters\":false,\"members\":true}"
-            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")\(moved)\(record)\(posting)}"
-        }
+            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(isUnclaimedExtra(index) ? ",\"is_unclaimed\":true" : "")\(moved)\(record)\(posting)}"
+        }.enumerated().map { index, json in idFirst(edited(json, nodeEdits["extra-\(index)"])) }
         let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m5","user_id":"u7","role":"member","username":"wren","display_name":"Wren Adler"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
         let document = #"{"id":"demo-doc","node_id":"demo-patch","title":"How we decide","body":"This patch keeps its own copy of the shared standards, and adds one paragraph of its own.\n\n## Open studio hours\n\nAnyone may use the studio during open hours. Tools go back where they were found, and whoever is last out locks the door.\n\n## Changing this\n\nAny member may propose a change. A majority carries it.","kind":"charter","visibility":"public","version":3,"created_at":"2026-04-02T10:00:00Z","updated_at":"2026-08-14T10:00:00Z"}"#
@@ -2147,9 +2539,9 @@ enum PreviewData {
         let withheldOverview = #"{"rules":{"decision_method":"admin","leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":true,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"invite_only","member_count":8,"document_count":0,"open_proposals":0,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
         let record = #"{"items":[{"kind":"vote","at":"2026-08-14T12:00:00Z","title":"Amend the studio hours","link":"/patches/common-thread/governance/demo-proposal-3","outcome":"carried"},{"kind":"vote","at":"2026-06-08T12:00:00Z","title":"Buy a second kiln","outcome":"lapsed"},{"kind":"direct","at":"2026-04-02T12:00:00Z","title":"Publish the charter","outcome":"applied","actor":"Rowan Hale"}],"public_governance_record":"everyone"}"#
         let json: String
-        if let governed = try governanceRead(path, query: query) ?? noticeboardRead(path, query: query) ?? peopleRead(path, query: query) ?? personRead(path) { json = governed } else {
+        if let governed = try governanceRead(path, query: query) ?? noticeboardRead(path, query: query) ?? peopleRead(path, query: query) ?? personRead(path) ?? claimRead(path) { json = governed } else {
         switch path {
-        case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York"},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true}"#
+        case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York","latitude":40.04,"longitude":-76.3},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true,"email_enabled":true}"#
         case "label": json = ###"{"published":true,"stewards":[{"username":"samplesteward","display_name":"Sample Steward","avatar_url":"","blurb":"Keeps the lights on and answers the email."}],"prose":"## Why this exists\n\nThis quilt is fictional, and so is everything on this page. It is here so the app has something to draw.\n\nThe figures below are **made up**, and *nobody* is billed for them. Even `code` and ***both at once*** are only here to be looked at.\n\n- No real money changes hands.\n- No real person is named.","cost_items":[{"service":"Sample Hosting","purpose":"the server (where all this lives)","why":"invented, for the preview","amount_minor":1200,"period":"monthly"},{"service":"Sample Domain","purpose":"the address","why":"also invented","amount_minor":1800,"period":"yearly"}],"currency":"USD","total_monthly_minor":1350,"stale":true,"stated_on":"2026-01-01","version":"v0.0.0-preview","federation":false,"multi_quilt":false,"support_url":"https://example.org/support","feedback_url":"https://example.org/feedback","seamripped_from_name":"","seamripped_from_url":""}"###
         case "instance/lining": json = ###"{"title":"Community Standards","body":"This fictional patch, like every patch on this fictional quilt, starts by agreeing to the lining.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are. We regulate actions, not identity.\n\n## Say what you are\n\nA patch describes itself honestly: who it is, what it does, and who it answers to.","version":1}"###
         case "legal/privacy": json = ###"{"doc":"privacy","title":"Privacy Policy","markdown":"## The short version\n\nNothing here is real, so nothing here is collected. This document exists so the app has a document to render.\n\n- No ads.\n- No trackers.","customized":true,"updated_at":"2026-01-01T00:00:00.000Z"}"###
@@ -2158,7 +2550,7 @@ enum PreviewData {
             // `scope=my` narrows the tree the way it narrows the feed: to the
             // patches the reader holds an active row on. Signed out there is
             // nobody for it to be about, so it answers an empty quilt.
-            var children = [patch, second] + extras
+            var children = [patch, second] + extras + treeMade()
             if query.contains(where: { $0.name == "scope" && $0.value == "my" }) {
                 let held = signedIn ? heldNodeIds : []
                 children = children.filter { json in held.contains { json.hasPrefix("{\"id\":\"\($0)\"") } }
@@ -2206,6 +2598,9 @@ enum PreviewData {
         case "notifications/count":
             guard signedIn else { throw APIError.unauthenticated }
             json = "{\"unread\":\(notifications.filter { !$0.read }.count)}"
+        case "gazetteer/suggest":
+            guard signedIn else { throw APIError.unauthenticated }
+            json = gazetteer(query)
         case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":3},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6},{"name":"archive","node_count":0}]"#
         case "events": json = eventsPage(query)
         case "nodes/common-thread/members": json = members
@@ -2229,8 +2624,21 @@ enum PreviewData {
             // A pending suggestion is readable by its submitter and nobody
             // else, and it is on no list (the server's `GetEvent` rule).
             else if let event = everyEvent.first(where: { "events/\($0.id)" == path }), signedIn { json = event.json }
+            else if let made = madePatches.first(where: { "nodes/\($0.slug)" == path && $0.status != "pending_review" }) {
+                json = "{\"node\":\(node(madeJSON(made), slug: made.slug)),\"is_unclaimed\":\(made.status == "unclaimed"),\"lining_status\":\"pristine\",\"viewer_trusted\":false}"
+            }
+            else if let made = madePatches.first(where: { "nodes/\($0.slug)/members" == path && $0.status == "active" }) {
+                // The founder, as the one admin a new patch has, and nobody
+                // waiting to be let in.
+                let me = accountFields
+                let pending = query.contains { $0.name == "status" && $0.value == "pending" }
+                json = pending ? #"{"items":[],"next_cursor":"","member_count":0,"follower_count":0}"# : serialize(["items": [["id": "m-\(made.slug)", "user_id": (me["id"] as? String) ?? "demo-user", "role": "admin",
+                                             "username": (me["username"] as? String) ?? "samplereader",
+                                             "display_name": (me["display_name"] as? String) ?? ""]],
+                                  "next_cursor": "", "member_count": 1, "follower_count": 0, "public_member_list": "nobody"])
+            }
             else if let index = Int(path.replacingOccurrences(of: "nodes/extra-", with: "")), extras.indices.contains(index) {
-                json = "{\"node\":\(node(extras[index], slug: "extra-\(index)")),\"is_unclaimed\":\(index == 3),\"viewer_trusted\":false}"
+                json = "{\"node\":\(node(extras[index], slug: "extra-\(index)")),\"is_unclaimed\":\(isUnclaimedExtra(index)),\"viewer_trusted\":false}"
             }
             else { throw APIError.status(404) }
         }

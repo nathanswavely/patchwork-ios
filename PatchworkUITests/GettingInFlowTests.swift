@@ -53,7 +53,100 @@ final class GettingInFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["relationshipFollow"].waitForExistence(timeout: 5), "and the patch offers what it offers anybody")
     }
 
+    // MARK: - Creating a patch
+
+    /// The fork, the form with a confirmed point and a tag, and the new
+    /// patch docked with its creator as its admin.
+    func testCreateAPatchAndLandOnItAsItsAdmin() {
+        let app = launch()
+        signIn(app)
+        openAddPatch(app)
+        let run = app.buttons["forkRun"]
+        XCTAssertTrue(run.waitForExistence(timeout: 5), "the fork comes first")
+        XCTAssertTrue(app.buttons["forkSuggest"].exists)
+        capture(app, "G3 Is this your patch to run?")
+        run.tap()
+
+        XCTAssertTrue(app.staticTexts["patchFormHeading"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["policy-invite_only"].isSelected, "invite only is preselected")
+        let name = app.textFields["patchName"]
+        name.tap()
+        name.typeText("Night Market\n")
+        let address = app.textFields["patchAddress"]
+        address.tap()
+        address.typeText("12 Example Street\n")
+        let suggestion = app.descendants(matching: .any)["placeSuggestion"]
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10), "leaving the address proposes a point")
+        XCTAssertFalse(app.descendants(matching: .any)["placedOnMap"].exists, "and proposing is not placing")
+        capture(app, "G4 A suggested point")
+        let use = app.buttons["savePlacement"]
+        XCTAssertEqual(use.label, "Use this spot")
+        use.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["placedOnMap"].waitForExistence(timeout: 5), "confirmed, it is on the map")
+
+        let craft = app.buttons["tagChoice-craft"]
+        XCTAssertTrue(scroll(app, to: craft))
+        craft.tap()
+        XCTAssertTrue(app.buttons["pickedTag-craft"].waitForExistence(timeout: 5))
+        let minimal = app.buttons["template-minimal"]
+        XCTAssertTrue(scroll(app, to: minimal))
+        XCTAssertTrue(minimal.isSelected, "Minimal is the default template")
+        capture(app, "G5 The form, filled")
+        app.buttons["patchFormSubmit"].tap()
+
+        XCTAssertTrue(app.scrollViews["patchProfile"].waitForExistence(timeout: 10), "the new patch docks")
+        XCTAssertTrue(app.staticTexts["Night Market"].waitForExistence(timeout: 5))
+        XCTAssertTrue(wait(app.descendants(matching: .any)["relationshipNote"], label: "Patch created"))
+        XCTAssertTrue(wait(app.buttons["relationshipControl"], label: "Admin"), "its creator is its admin")
+        capture(app, "G6 The new patch, docked")
+    }
+
+    // MARK: - Suggesting a patch
+
+    /// A name the quilt already holds is refused with a door to the patch it
+    /// collided with; a new one waits for an admin.
+    func testSuggestAPatchAndMeetTheOneThatExists() {
+        let app = launch()
+        signIn(app)
+        openAddPatch(app)
+        app.buttons["forkSuggest"].tap()
+        XCTAssertTrue(app.staticTexts["suggestHeading"].waitForExistence(timeout: 5))
+        XCTAssertTrue(wait(app.staticTexts["suggestReviewNote"], label: "An instance admin reviews suggestions"), "the fixture reader is not trusted")
+        let name = app.textFields["suggestName"]
+        name.tap()
+        name.typeText("Common Thread")
+        app.buttons["suggestSubmit"].tap()
+        let error = app.descendants(matching: .any)["suggestError"]
+        XCTAssertTrue(wait(error, label: "A patch with a similar name already exists."))
+        let door = app.buttons["openExistingPatch"]
+        XCTAssertTrue(door.waitForExistence(timeout: 5), "the patch it collided with is a door")
+        capture(app, "G7 A name the quilt already holds")
+        door.tap()
+        XCTAssertTrue(app.scrollViews["patchProfile"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Common Thread Studio"].waitForExistence(timeout: 5), "and it opens the patch that exists")
+        app.buttons["closePatch"].tap()
+
+        openAddPatch(app)
+        app.buttons["forkSuggest"].tap()
+        let again = app.textFields["suggestName"]
+        XCTAssertTrue(again.waitForExistence(timeout: 5))
+        again.tap()
+        again.typeText("Gallery Row")
+        app.buttons["suggestSubmit"].tap()
+        XCTAssertTrue(wait(app.staticTexts["suggestWaiting"], label: "An admin will review it"), "a suggestion waits for review")
+        capture(app, "G8 Suggested")
+        app.buttons["suggestDone"].tap()
+        XCTAssertFalse(app.staticTexts["suggestWaiting"].waitForExistence(timeout: 2))
+    }
+
     // MARK: - Helpers
+
+    func openAddPatch(_ app: XCUIApplication) {
+        app.buttons["Account"].tap()
+        let add = app.buttons["accountAddPatch"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        add.tap()
+    }
 
     func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
