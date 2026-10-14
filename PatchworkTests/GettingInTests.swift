@@ -347,4 +347,34 @@ final class GettingInTests: XCTestCase {
         XCTAssertEqual(AgreementLine.doc(for: URL(string: "patchwork-legal:privacy")!), .privacy)
         XCTAssertNil(AgreementLine.doc(for: URL(string: "https://quilt.example.org/terms")!))
     }
+
+    // MARK: - Account invite links
+
+    func testAnInviteLinkIsReadForThisQuiltOnly() {
+        let host = "quilt.example.org"
+        XCTAssertEqual(InviteLink.parse("https://quilt.example.org/invite/abc123", quiltHost: host), .token("abc123"))
+        XCTAssertEqual(InviteLink.parse("  https://Quilt.Example.org/invite/abc123/?ref=x \n", quiltHost: host), .token("abc123"))
+        XCTAssertEqual(InviteLink.parse("quilt.example.org/invite/abc123", quiltHost: host), .token("abc123"), "the scheme may be left off")
+        XCTAssertEqual(InviteLink.parse("abc123", quiltHost: host), .token("abc123"), "the bare token")
+        XCTAssertEqual(InviteLink.parse("https://other.example.org/invite/abc123", quiltHost: host), .otherQuilt(host: "other.example.org"))
+        XCTAssertEqual(InviteLink.parse("https://quilt.example.org/patches/common-thread", quiltHost: host), .notALink)
+        XCTAssertEqual(InviteLink.parse("https://quilt.example.org/invite/", quiltHost: host), .notALink)
+        XCTAssertEqual(InviteLink.parse("   ", quiltHost: host), .notALink)
+    }
+
+    func testRedeemingSendsTheAddressOnlyWhereTheQuiltSendsMail() throws {
+        let mail = try json(InviteRedemption(token: "t", username: " New-Reader ", displayName: "  ", email: " me@example.org ", emailEnabled: true))
+        XCTAssertEqual(mail["token"] as? String, "t")
+        XCTAssertEqual(mail["username"] as? String, "new-reader", "lowercased and trimmed, as the web sends it")
+        XCTAssertNil(mail["display_name"])
+        XCTAssertEqual(mail["email"] as? String, "me@example.org")
+        let noMail = try json(InviteRedemption(token: "t", username: "a-b", displayName: "Ann", email: "me@example.org", emailEnabled: false))
+        XCTAssertNil(noMail["email"], "a quilt with no mail collects no address it could not use")
+        XCTAssertEqual(noMail["display_name"] as? String, "Ann")
+    }
+
+    func testASignedInReaderIsToldRatherThanGivenASecondAccount() {
+        XCTAssertTrue(InviteLink.signedInSentence("@samplereader").hasPrefix("You're already signed in to this quilt as @samplereader."))
+        XCTAssertEqual(InviteLink.deadLinkSentence, "This invite link may have expired or already been used. Ask your community admin for a new one.")
+    }
 }

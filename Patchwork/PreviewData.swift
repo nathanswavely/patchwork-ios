@@ -1052,6 +1052,18 @@ enum PreviewData {
         }
     }
 
+    // MARK: Account invite links
+
+    /// `auth.ValidateInviteLink`'s sentences: one live link, one used up,
+    /// and every other token unknown.
+    private static func inviteProblem(_ token: String) -> String? {
+        switch token {
+        case "demo-invite": return nil
+        case "used-invite": return "invite link has reached maximum uses"
+        default: return "invalid invite token"
+        }
+    }
+
     // MARK: Answering an invitation
 
     /// `POST nodes/{slug}/invitations/accept|decline`, in the server's order
@@ -2503,6 +2515,22 @@ enum PreviewData {
             notifications = []
             account = "{\"id\":\"demo-user\",\"username\":\"\(username)\",\"display_name\":\"\(display)\",\"role\":\"member\"}"
             return account
+        case "auth/invite":
+            // `RedeemInviteLink`, in its order and words. The fixture quilt
+            // sends mail, so the address is required.
+            let token = (fields["token"] as? String) ?? ""
+            let username = ((fields["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !token.isEmpty, !username.isEmpty else { throw APIError.message("token and username are required", status: 400) }
+            let email = ((fields["email"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !email.isEmpty else { throw APIError.message("email is required so you can sign in again later", status: 400) }
+            if email == "taken@example.org" { throw APIError.message("an account with this email already exists — sign in instead", status: 400) }
+            if let problem = inviteProblem(token) { throw APIError.message(problem, status: 400) }
+            startSession()
+            held = [:]
+            notifications = []
+            let display = ((fields["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            account = serialize(["id": "invited-user", "username": username, "display_name": display, "role": "member"])
+            return account
         case "auth/logout":
             signOut()
             return "{}"
@@ -2601,6 +2629,10 @@ enum PreviewData {
         case "notifications/count":
             guard signedIn else { throw APIError.unauthenticated }
             json = "{\"unread\":\(notifications.filter { !$0.read }.count)}"
+        case _ where path.hasPrefix("auth/invite/") && path.hasSuffix("/validate"):
+            let token = String(path.dropFirst("auth/invite/".count).dropLast("/validate".count))
+            if let problem = inviteProblem(token) { throw APIError.message(problem, status: 404) }
+            json = #"{"valid":true}"#
         case "gazetteer/suggest":
             guard signedIn else { throw APIError.unauthenticated }
             json = gazetteer(query)

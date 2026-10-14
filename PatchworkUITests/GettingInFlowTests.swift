@@ -247,6 +247,64 @@ final class GettingInFlowTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["welcomeHeading"].waitForExistence(timeout: 4), "once is once")
     }
 
+    // MARK: - Account invite links
+
+    /// Signed out, a pasted link is checked against this quilt and the
+    /// server, then makes an account, which is welcomed; signed in, there is
+    /// no door to a second account.
+    func testRedeemAnAccountInviteLink() {
+        let app = launch()
+        app.buttons["Account"].tap()
+        let door = app.buttons["accountInvite"]
+        XCTAssertTrue(door.waitForExistence(timeout: 5))
+        door.tap()
+        let link = app.textFields["inviteLink"]
+        XCTAssertTrue(link.waitForExistence(timeout: 5))
+        link.tap()
+        link.typeText("https://other.example.org/invite/demo-invite")
+        app.buttons["inviteContinue"].tap()
+        XCTAssertTrue(wait(app.descendants(matching: .any)["inviteError"], label: "This link is for other.example.org"))
+
+        paste(app, "https://quilt.example.org/invite/used-invite")
+        XCTAssertTrue(wait(app.descendants(matching: .any)["inviteDead"], label: "This invite didn't work"))
+
+        paste(app, "https://quilt.example.org/invite/demo-invite")
+        let username = app.textFields["inviteUsername"]
+        XCTAssertTrue(username.waitForExistence(timeout: 5), "a live link asks for a username")
+        XCTAssertTrue(app.staticTexts["agreementLine"].exists)
+        username.tap()
+        username.typeText("invited-reader")
+        let email = app.textFields["inviteEmail"]
+        XCTAssertTrue(email.exists, "this quilt sends mail, so the address is the way back in")
+        email.tap()
+        email.typeText("invited@example.org")
+        capture(app, "G16 An invite link")
+        app.buttons["inviteCreate"].tap()
+
+        let welcome = app.staticTexts["welcomeHeading"]
+        XCTAssertTrue(welcome.waitForExistence(timeout: 10), "the new account is welcomed")
+        app.buttons["welcomeSkip"].tap()
+        XCTAssertFalse(welcome.waitForExistence(timeout: 2))
+        app.buttons["Account"].tap()
+        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5), "signed in as the new account")
+        XCTAssertFalse(app.buttons["accountInvite"].exists, "and there is no door to a second account")
+    }
+
+    /// A fresh sheet for each link: a field's caret lands where it is
+    /// tapped, so typing over what is there is not a reliable clear.
+    func paste(_ app: XCUIApplication, _ text: String) {
+        app.buttons["Cancel"].tap()
+        app.buttons["Account"].tap()
+        let door = app.buttons["accountInvite"]
+        XCTAssertTrue(door.waitForExistence(timeout: 5))
+        door.tap()
+        let link = app.textFields["inviteLink"]
+        XCTAssertTrue(link.waitForExistence(timeout: 5))
+        link.tap()
+        link.typeText(text)
+        app.buttons["inviteContinue"].tap()
+    }
+
     // MARK: - Helpers
 
     func openAddPatch(_ app: XCUIApplication) {

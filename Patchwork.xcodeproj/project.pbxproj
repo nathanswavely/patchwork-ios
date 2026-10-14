@@ -17,6 +17,7 @@
 		09EAD7EC52B7EA5B230CECAB /* Motifs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6280253991897DC2B3FDDF06 /* Motifs.swift */; };
 		0FB4DE5B83B37EA33D3224E9 /* RelationshipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 510F83070BA4646EDC16D86B /* RelationshipTests.swift */; };
 		151CC357CA100483033629EF /* Discover.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E90AA0007CCFBCD3D80C16 /* Discover.swift */; };
+		16A78E28FDF45FBCA9376D52 /* AccountInvites.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBC79F3B5368C892C80F80C /* AccountInvites.swift */; };
 		16D1A6157D7C2A3847CED277 /* ProfileDepthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FBBFCFEB1DC1DDE8E13864 /* ProfileDepthTests.swift */; };
 		1EF52F9D0AEA929F04181CD2 /* Noticeboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9072B6CBE53F60A6D548C7C /* Noticeboard.swift */; };
 		2180112E9E680A9F657DC682 /* Orientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9FDB4B0FEECCD81AC0E3F0 /* Orientation.swift */; };
@@ -237,6 +238,7 @@
 		F4E90AA0007CCFBCD3D80C16 /* Discover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discover.swift; sourceTree = "<group>"; };
 		F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
 		F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltAppearanceTests.swift; sourceTree = "<group>"; };
+		FFBC79F3B5368C892C80F80C /* AccountInvites.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountInvites.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -260,6 +262,7 @@
 		95A7FADD0F55CADA06FA6668 /* Patchwork */ = {
 			isa = PBXGroup;
 			children = (
+				FFBC79F3B5368C892C80F80C /* AccountInvites.swift */,
 				8DA231C2A9285F4CAA73CF96 /* AddToCalendar.swift */,
 				EF358FEA7BC11AA077E2E5A1 /* API.swift */,
 				4858D666E2FE8B480005EB38 /* Assets.xcassets */,
@@ -523,6 +526,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5D600B7F9841C69CCB97B0F9 /* API.swift in Sources */,
+				16A78E28FDF45FBCA9376D52 /* AccountInvites.swift in Sources */,
 				F5A038362F8CE362C9910F8A /* AddToCalendar.swift in Sources */,
 				486EF6A269D7759DC9412620 /* Claiming.swift in Sources */,
 				CDDDA449B8FEC407418B2E98 /* ContactCard.swift in Sources */,

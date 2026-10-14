@@ -176,6 +176,8 @@ struct DiscoveryToolbar: ViewModifier {
     @State private var settings = false
     /// "Add a patch", the web's New → New patch.
     @State private var adding = false
+    /// Pasting an account invite link (web `/invite/:token`).
+    @State private var inviting = false
     /// How the reader left Settings, acted on once the sheet has gone.
     @State private var settingsExit: SettingsExit?
     @FocusState private var focused: Bool
@@ -244,6 +246,10 @@ struct DiscoveryToolbar: ViewModifier {
                                 }
                             } else {
                                 Button { signIn = true } label: { Label("Sign in", systemImage: "person.badge.key") }
+                                // Offered only signed out: a link makes a new
+                                // account, never a second one beside a session.
+                                Button { inviting = true } label: { Label("Have an invite link?", systemImage: "envelope.open") }
+                                    .accessibilityIdentifier("accountInvite")
                             }
                             Divider()
                             Button { about = true } label: { Label("About this quilt", systemImage: "info.circle") }
@@ -281,6 +287,7 @@ struct DiscoveryToolbar: ViewModifier {
             }
             .sheet(isPresented: $notifications, onDismiss: { session.sheetDismissed() }) { NotificationsSheet() }
             .sheet(isPresented: $adding, onDismiss: { session.sheetDismissed() }) { NewPatchSheet() }
+            .sheet(isPresented: $inviting) { InviteSheet() }
             .sheet(isPresented: $settings, onDismiss: leaveSettings) {
                 SettingsSheet { exit in settingsExit = exit; settings = false }
             }
