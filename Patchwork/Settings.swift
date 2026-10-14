@@ -547,13 +547,7 @@ struct SecuritySettings: View {
                 } footer: {
                     settingsFootnote("Where you’re signed in to this quilt. Sign out any you don’t recognise.")
                 }
-                Section {
-                    Text("This app doesn’t use passkeys yet. Signing in by emailed code works everywhere, and a recovery code confirms anything a passkey would.")
-                        .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                        .accessibilityIdentifier("passkeysNote")
-                } header: {
-                    settingsHeading("Passkeys")
-                }
+                PasskeysSection()
             }
             .listRows()
         }
@@ -844,5 +838,110 @@ struct DeleteAccountSettings: View {
         } catch {
             failure = SignInModel.sentence(error)
         }
+    }
+}
+
+// MARK: - Passkeys
+
+/// The web's Security passkeys list, where this app may use passkeys at all:
+/// the person's passkeys for this quilt, Add a passkey, rename and remove.
+/// On any other quilt, one plain line instead of a list — a button that
+/// cannot work would be a promise the app cannot keep (web ADR 2026-09-20).
+struct PasskeysSection: View {
+    @EnvironmentObject private var session: QuiltSession
+    @State private var passkeys: [PasskeyCredential]?
+    @State private var failure: String?
+    @State private var busy = false
+    @State private var removing: PasskeyCredential?
+    @State private var renaming: PasskeyCredential?
+    @State private var newName = ""
+
+    private var supported: Bool { PasskeyDomains.supports(session.quilt.url) }
+
+    var body: some View {
+        Section {
+            if supported {
+                if let passkeys {
+                    ForEach(passkeys) { passkey in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(passkey.title).font(Font.pw.body).foregroundStyle(Color.pwText)
+                            if let added = passkey.createdAt.flatMap(ISO8601DateFormatter().date(from:)) {
+                                Text("Added \(added.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                        .contextMenu {
+                            Button { newName = passkey.title; renaming = passkey } label: { Label("Rename", systemImage: "pencil") }
+                            Button(role: .destructive) { removing = passkey } label: { Label("Remove", systemImage: "trash") }
+                        }
+                        .swipeActions {
+                            Button("Remove", role: .destructive) { removing = passkey }
+                            Button("Rename") { newName = passkey.title; renaming = passkey }
+                        }
+                        .accessibilityIdentifier("passkeyRow")
+                    }
+                } else if failure == nil {
+                    ProgressView().frame(maxWidth: .infinity)
+                }
+                Button { Task { await add() } } label: {
+                    Text("Add a passkey").font(Font.pw.body).inkAction("person.badge.key")
+                }
+                .buttonStyle(.plain)
+                .disabled(busy)
+                .accessibilityIdentifier("passkeyAdd")
+                if let failure { Text(failure).font(Font.pw.footnote).foregroundStyle(Color.pwText) }
+            } else {
+                Text("This app can use passkeys only on quilts it is set up with, and \(session.quilt.url.host() ?? "this quilt") isn’t one yet. Signing in by emailed code works everywhere, and a recovery code confirms anything a passkey would.")
+                    .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                    .accessibilityIdentifier("passkeysNote")
+            }
+        } header: {
+            settingsHeading("Passkeys")
+        } footer: {
+            if supported {
+                settingsFootnote("Sign in and confirm with Face ID or Touch ID instead of an emailed code. A second passkey on another device keeps you in if you lose this one.")
+            }
+        }
+        .task { if supported { await load() } }
+        .confirmationDialog("Remove this passkey?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible, presenting: removing) { passkey in
+            Button("Remove passkey", role: .destructive) { Task { await remove(passkey) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("It stops working for this quilt, and every other device signed in here is signed out.")
+        }
+        .alert("Rename passkey", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { passkey in
+            TextField("Name", text: $newName)
+            Button("Save") { Task { await rename(passkey) } }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func load() async {
+        do { passkeys = try await session.api.passkeys(); failure = nil }
+        catch { failure = SignInModel.sentence(error) }
+    }
+
+    private func add() async {
+        busy = true
+        defer { busy = false }
+        do {
+            try await session.api.addPasskey()
+            await load()
+        } catch {
+            if let sentence = Passkeys.sentence(error, for: .enroll) { failure = sentence }
+        }
+    }
+
+    private func rename(_ passkey: PasskeyCredential) async {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        do { try await session.api.renamePasskey(passkey.id, to: name); await load() }
+        catch { failure = SignInModel.sentence(error) }
+    }
+
+    private func remove(_ passkey: PasskeyCredential) async {
+        do { try await session.api.removePasskey(passkey.id); await load() }
+        catch { failure = SignInModel.sentence(error) }
     }
 }

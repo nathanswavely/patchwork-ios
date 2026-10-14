@@ -216,6 +216,19 @@ struct PatchworkAPI {
         encoder.keyEncodingStrategy = .convertToSnakeCase
         _ = try await write(method, path, payload: try encoder.encode(body))
     }
+    /// A `POST` whose body is already JSON, sent as it is. WebAuthn's fields
+    /// are spelled `rawId` and `clientDataJSON`, and the snake-case encoder
+    /// every other write uses would rename them into something the server's
+    /// parser refuses; the answer comes back raw for the same reason.
+    func postJSON(_ path: String, json: Data?) async throws -> Data {
+        try await write("POST", path, payload: json ?? Data("{}".utf8))
+    }
+    /// An answer decoded the way every other answer is, for the callers of
+    /// `postJSON` whose answer is an ordinary snake-case object.
+    static func decodeAnswer<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        do { return try decoder().decode(T.self, from: data) }
+        catch { throw APIError.response }
+    }
     func patch<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("PATCH", path, body: body) }
     func put<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("PUT", path, body: body) }
     func delete<T: Decodable>(_ path: String, body: some Encodable) async throws -> T { try await send("DELETE", path, body: body) }
