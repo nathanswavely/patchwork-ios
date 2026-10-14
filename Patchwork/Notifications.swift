@@ -176,6 +176,11 @@ enum NotificationLink {
         case patch(slug: String)
         case calendar(slug: String)
         case members(slug: String)
+        /// The pending queue: `membership.request` links to the members
+        /// page with `?status=pending`. Who is shown the queue rather than
+        /// the roster is decided where the reader is known
+        /// (`PatchAdmin.requestsRoute`).
+        case joinRequests(slug: String)
         case governance(slug: String)
         case proposal(slug: String, id: String)
         case document(slug: String, id: String)
@@ -204,7 +209,7 @@ enum NotificationLink {
             case 3:
                 switch parts[2] {
                 case "events": return .calendar(slug: slug)
-                case "members": return .members(slug: slug)
+                case "members": return query(raw, "status") == "pending" ? .joinRequests(slug: slug) : .members(slug: slug)
                 case "governance": return .governance(slug: slug)
                 case "noticeboard": return .noticeboard(slug: slug)
                 default: break
@@ -249,6 +254,11 @@ enum NotificationLink {
         let parts = raw.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
         let query = parts.count > 1 ? URLComponents(string: "?" + parts[1])?.queryItems ?? [] : []
         return (bare(String(parts.first ?? "")), query)
+    }
+
+    /// One value from a link's query, or nothing.
+    private static func query(_ path: String, _ name: String) -> String? {
+        exit(path).query.first { $0.name == name }?.value
     }
 
     /// The path with its query and its leading and trailing slashes gone.
@@ -596,6 +606,8 @@ struct NotificationsSheet: View {
             if let patch = await patch(slug) { route.append(.calendar(patch)) }
         case .members(let slug):
             route.append(.members(slug))
+        case .joinRequests(let slug):
+            route.append(PatchAdmin.requestsRoute(slug: slug, standing: session.standing(for: slug)))
         case .governance(let slug):
             if let patch = await patch(slug) { route.append(.governance(patch)) }
         case .proposal(_, let id):
@@ -644,6 +656,7 @@ struct NotificationsSheet: View {
         switch route {
         case .calendar(let patch): PatchCalendar(quilt: session.quilt, patch: patch)
         case .members(let slug): PatchMemberList(quilt: session.quilt, slug: slug)
+        case .joinRequests(let slug): JoinRequestsView(slug: slug)
         case .governance(let patch): PatchGovernanceHome(quilt: session.quilt, patch: patch)
         case .proposal(let proposal): ProposalDetailView(quilt: session.quilt, initial: proposal)
         case .document(let document): GovernanceDocumentDetail(quilt: session.quilt, initial: document)
@@ -662,6 +675,7 @@ struct NotificationsSheet: View {
 enum NotificationRoute: Hashable {
     case calendar(Patch)
     case members(String)
+    case joinRequests(String)
     case governance(Patch)
     case proposal(Proposal)
     case document(GovernanceDocument)
