@@ -244,6 +244,9 @@ enum PreviewData {
          "Independent music in good company.", "public", "open"),
         (memberSlug, memberSlug, extraNames[6], "", "public", "open"),
         (adminSlug, adminSlug, extraNames[7], "", "public", "open"),
+        // The Food Share adds members by invitation only, so a
+        // `--preview-invited` launch has a patch to have been asked into.
+        (invitingSlug, invitingSlug, extraNames[8], "", "public", "invite_only"),
     ]
 
     /// The membership set the writes mutate and `me/nodes`, `nodes/{slug}` and
@@ -269,6 +272,15 @@ enum PreviewData {
     static let adminSlug = "extra-7"
     /// The extra the fixture reader is a member of: the Repair Cafe.
     static let memberSlug = "extra-6"
+    /// The invite-only extra, the Food Share, whose admins ask the reader in
+    /// on a `--preview-invited` launch (web ADR 098).
+    static let invitingSlug = "extra-8"
+    private static let invitedLaunch = ProcessInfo.processInfo.arguments.contains("--preview-invited")
+    /// The patches the reader has been asked into and not answered. Never
+    /// rows in `held`: an invited row is not membership anywhere, and
+    /// `me/nodes` does not serve it.
+    private static var invited: Set<String> = []
+    private static var freshInvited: Set<String> { invitedLaunch ? [invitingSlug] : [] }
     /// The quilt's other ten patches, by name; `extra-N` is the Nth.
     private static let extraNames = ["Community Garden", "Bike Kitchen", "Neighborhood Books", "River Walkers", "Pottery Circle", "Market Friends", "Repair Cafe", "Film Club", "Food Share", "Evening Choir"]
 
@@ -276,6 +288,7 @@ enum PreviewData {
         signedIn = false
         account = sampleAccount
         held = [:]
+        invited = []
         notifications = []
         stepUpOpen = false
         resetPeople()
@@ -283,6 +296,7 @@ enum PreviewData {
     private static func startSession() {
         signedIn = true
         held = freshHeld
+        invited = freshInvited
         notifications = Self.freshNotifications
         sessionRows = freshSessionRows
         // A new sign-in is younger than whatever batch the account already
@@ -456,7 +470,11 @@ enum PreviewData {
     /// carries no link at all, because there is nowhere in this app to send
     /// somebody about one.
     private static var freshNotifications: [Notif] {
-        [
+        // The invitation's own row, the way the server words it, on a
+        // launch that is asked into the Food Share.
+        (invitedLaunch ? [Notif(id: "notif-7", type: "membership.invited",
+                                title: "You're invited to join \(extraNames[8])", body: "",
+                                link: "/patches/\(invitingSlug)", minutesAgo: 1, read: false)] : []) + [
             Notif(id: "notif-6", type: "proposal.voting_opened",
                   title: "A proposal needs your vote",
                   body: "Add a Tuesday evening session — voting closes on the 24th.",
@@ -661,6 +679,28 @@ enum PreviewData {
         default:
             throw APIError.status(404)
         }
+    }
+
+    // MARK: Answering an invitation
+
+    /// `POST nodes/{slug}/invitations/accept|decline`, in the server's order
+    /// and words (`invitations.go`). Accepting turns the invited row into an
+    /// active membership; declining deletes it. Nil means "not one of these".
+    private static func invitationWrite(_ method: String, _ path: String) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count == 4, parts[0] == "nodes", parts[2] == "invitations",
+              ["accept", "decline"].contains(parts[3]) else { return nil }
+        guard method == "POST" else { throw APIError.status(405) }
+        guard signedIn else { throw APIError.unauthenticated }
+        let slug = parts[1]
+        guard holdable.contains(where: { $0.slug == slug }) || slug.hasPrefix("extra-") else {
+            throw APIError.message("node not found", status: 404)
+        }
+        guard invited.contains(slug) else { throw APIError.message("no invitation to answer", status: 400) }
+        invited.remove(slug)
+        if parts[3] == "decline" { return #"{"status":"declined"}"# }
+        held[slug] = (role: "member", status: "active")
+        return "{\"status\":\"active\",\"membership_id\":\"membership-\(slug)\"}"
     }
 
     // MARK: Posting an event
@@ -1777,6 +1817,14 @@ enum PreviewData {
                 return contactJSON(item, extra: count > 0 ? ["shared_with": count] : [:])
             }
             return serialize(["items": items])
+        case "users/me/invitations":
+            guard signedIn else { throw APIError.unauthenticated }
+            let items = invited.sorted().map { slug -> [String: Any] in
+                let facts = patchFacts(slug)
+                return ["id": "invite-\(slug)", "node_id": facts.id, "node_slug": slug, "node_name": facts.name,
+                        "status": "invited", "invited_at": stamp(minutesAgo: 1)]
+            }
+            return serialize(["items": items])
         case "users/me/claims":
             guard signedIn else { throw APIError.unauthenticated }
             // An approved claim on the unclaimed River Walkers, its setup
@@ -2029,6 +2077,7 @@ enum PreviewData {
     /// and everything else is still a `POST`.
     static func write(_ method: String, _ path: String, body: Data?) throws -> String {
         let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
+        if let answer = try invitationWrite(method, path) { return answer }
         if let answer = try eventWrite(method, path, fields: fields) { return answer }
         if let answer = try peopleWrite(method, path, fields: fields) { return answer }
         if let answer = try notificationWrite(method, path) { return answer }

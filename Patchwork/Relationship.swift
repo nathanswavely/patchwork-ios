@@ -163,6 +163,11 @@ enum Relationship: Equatable {
     case holding(MembershipRole)
     /// A request the patch has not answered yet.
     case requested
+    /// An invitation this reader has not answered yet (web ADR 098). The
+    /// requester's mirror image: a request waits on the patch's admins, an
+    /// invitation waits on the reader, so its two answers sit in the open
+    /// where Follow would be rather than behind a menu.
+    case invited
     /// A stranger, and what this patch will take from one.
     case offering(Offer)
 
@@ -186,7 +191,14 @@ enum Relationship: Equatable {
 
     /// The web's rules, in the web's order. Every guard above the offers is a
     /// state the server would refuse an act in.
-    static func resolve(node: Patch, standing: Standing?) -> Relationship {
+    ///
+    /// `invited` is read from `users/me/invitations` rather than from the
+    /// node or the membership index, because the server serves an invited
+    /// row on neither: it is not membership anywhere (web ADR 098). It is
+    /// hidden on a moved patch for the reason the offers are — accepting is
+    /// a join, and the server declines those there — and it yields to any
+    /// standing the index already holds.
+    static func resolve(node: Patch, standing: Standing?, invited: Bool = false) -> Relationship {
         if node.isBanned == true { return .none }
         if node.movedTo?.isEmpty == false { return .none }
         switch standing {
@@ -194,6 +206,7 @@ enum Relationship: Equatable {
         case .pending: return .requested
         case nil: break
         }
+        if invited { return .invited }
         var offer = Offer()
         // Following is a public act on a public patch and nothing else. A
         // patch that states no visibility is one the tree served, and the
@@ -220,4 +233,11 @@ enum Relationship: Equatable {
     /// a follow and a join with the same `active`, so the act has to say
     /// which of the two it was.
     static let followOutcome = "Following patch"
+
+    /// The invitation's two answers, in the web's words: accepting is
+    /// joining, so it says what a join says.
+    static let acceptOutcome = "You are now a member"
+    static let declineOutcome = "Invitation declined"
+    /// The label the two answers sit beside (web `PatchRelationship.svelte`).
+    static let invitedLabel = "You've been invited to join"
 }

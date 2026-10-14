@@ -513,6 +513,9 @@ struct NotificationsSheet: View {
         opening = row.id
         defer { opening = nil }
         if row.isUnread { await markRead(row) }
+        // An invitation can arrive after the list of them was last read, and
+        // the profile this row docks reads that list to offer its answers.
+        if row.type == "membership.invited" { await session.refreshInvitations() }
         guard !row.target.isEmpty else { return }
         await go(NotificationLink.route(row.target))
     }

@@ -115,6 +115,14 @@ struct PatchSheet: View {
             if !shown { noticeGlimpse = nil } else if glimpsesAsked { Task { await loadNoticeGlimpse() } }
         }
         .task { await load() }
+        // Arriving from a sheet that made or set up this patch: what that
+        // sheet would have said is said here, where the reader has landed.
+        .onAppear {
+            if let arrival = session.arrival, arrival.slug == initial.slug {
+                feedback = RelationshipFeedback(text: arrival.text, refused: false)
+                session.arrival = nil
+            }
+        }
         // An event edited or deleted from its page: the glimpse reads its
         // three again, if it had read them at all.
         .onChange(of: session.eventRevision) { _, _ in

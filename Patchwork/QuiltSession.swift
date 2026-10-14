@@ -110,6 +110,16 @@ struct LaunchLens: Equatable {
     /// the Dashboard alike, so no two surfaces can disagree about who the
     /// reader is to a patch. Empty is the honest answer for a signed-out one.
     @Published private(set) var memberships: [Membership] = []
+    /// The patches this reader has been invited into and has not answered
+    /// (web ADR 098). Held apart from `memberships` on purpose, as the web
+    /// holds them: every reader of the index counts what it holds as "my
+    /// patches", and an invitation is not one. The server keeps them apart
+    /// the same way — `me/nodes` never serves an invited row.
+    @Published private(set) var invitations: [Invitation] = []
+    /// A sentence for the profile that is about to dock — "Patch created",
+    /// "This patch is yours" — said once, in the place the reader lands, by
+    /// whichever sheet sent them there and has since gone.
+    @Published var arrival: ArrivalNote?
     /// How many notifications this reader has not read, on this quilt. It is
     /// the bell's whole state and the Dashboard's first row, which is why it
     /// lives here rather than in either of them: two surfaces counting
@@ -272,6 +282,7 @@ struct LaunchLens: Equatable {
         // account there is nothing for `scope=my` to be about.
         scope = .whole
         memberships = []
+        invitations = []
         unread = UnreadTally.cleared
         stopUnreadPoll()
     }
@@ -328,16 +339,32 @@ struct LaunchLens: Equatable {
     /// act, so the profile, the cards and the Dashboard all answer from one
     /// index rather than from three guesses about what just happened.
     func refreshMemberships() async {
-        guard me != nil else { memberships = []; return }
+        guard me != nil else { memberships = []; invitations = []; return }
         do {
             let api = api
             memberships = try await MembershipPage.all { try await api.get("me/nodes", query: $0) }
         } catch APIError.unauthenticated {
             signedOut()
+            return
         } catch {
             // A quilt that could not be reached has not changed who anyone is.
         }
+        // Read beside the index, as the web's store reads them, so an act on
+        // either kind of row leaves both answering from the quilt.
+        await refreshInvitations()
     }
+
+    /// The invitations alone: a notification that names one may have arrived
+    /// after the index was last read.
+    func refreshInvitations() async {
+        guard me != nil else { invitations = []; return }
+        do { invitations = try await api.invitations() }
+        catch APIError.unauthenticated { signedOut() }
+        catch { /* Best effort: an unread list is not an empty one. */ }
+    }
+
+    /// Whether this reader holds an unanswered invitation into a patch.
+    func isInvited(_ slug: String) -> Bool { invitations.contains { $0.nodeSlug == slug } }
 
     /// Where the reader stands with one patch, or nowhere.
     func standing(for slug: String) -> Standing? { Self.standing(in: memberships, for: slug) }
@@ -376,6 +403,13 @@ struct LaunchLens: Equatable {
     /// Take back a request nobody has answered. Withdrawing is not leaving
     /// (web ADR 088), and the server keeps them apart, so this client does too.
     @discardableResult func withdraw(_ slug: String) async throws -> String { try await act("nodes/\(slug)/withdraw") }
+
+    /// The two answers to an invitation (web ADR 098). Their own routes, not
+    /// join and leave: accepting is the one write that makes a member out of
+    /// an invited row, and declining deletes a row that was never a
+    /// membership — `…/leave` would refuse it.
+    @discardableResult func acceptInvitation(_ slug: String) async throws -> String { try await act("nodes/\(slug)/invitations/accept") }
+    @discardableResult func declineInvitation(_ slug: String) async throws -> String { try await act("nodes/\(slug)/invitations/decline") }
 
     private func act(_ path: String) async throws -> String { try await act(path, body: NoBody()) }
 

@@ -91,7 +91,7 @@ struct RelationshipControl: View {
 
     private var standing: Standing? { session.standing(for: patch.slug) ?? known ?? Standing.from(node: patch) }
     private var relationship: Relationship {
-        banned ? .none : Relationship.resolve(node: patch, standing: standing)
+        banned ? .none : Relationship.resolve(node: patch, standing: standing, invited: session.isInvited(patch.slug))
     }
 
     var body: some View {
@@ -148,6 +148,27 @@ struct RelationshipControl: View {
                     Label("Withdraw request", systemImage: "arrow.uturn.backward")
                 }
                 .accessibilityIdentifier("withdrawRequest")
+            }
+        case .invited:
+            // Waiting on this reader, not on an admin: the label is a state,
+            // in the requester's muted register, and both answers sit in the
+            // open beside it. Accept leads, because it is the act the
+            // invitation asks for; Decline is the same size and plainly there.
+            VStack(alignment: .leading, spacing: 8) {
+                Text(Relationship.invitedLabel)
+                    .font(Font.pw.subheadlineMedium)
+                    .foregroundStyle(onCover ? Color.white.opacity(0.9) : Color.pwTextMuted)
+                    .accessibilityIdentifier("invitedLabel")
+                HStack(spacing: 10) {
+                    Button { act { try await session.acceptInvitation(patch.slug) } } label: { buttonFace("Accept", symbol: "checkmark") }
+                        .modifier(ActButton(prominent: true, onCover: onCover))
+                        .disabled(busy)
+                        .accessibilityIdentifier("acceptInvitation")
+                    Button { act { try await session.declineInvitation(patch.slug) } } label: { buttonFace("Decline", symbol: "xmark") }
+                        .modifier(ActButton(prominent: false, onCover: onCover))
+                        .disabled(busy)
+                        .accessibilityIdentifier("declineInvitation")
+                }
             }
         case .offering(let offer):
             HStack(spacing: 10) {
@@ -234,6 +255,7 @@ struct RelationshipControl: View {
         case "ok": return nil
         case "following": return Relationship.followOutcome
         case "pending", "active": return Relationship.joinOutcome(status: status)
+        case "declined": return Relationship.declineOutcome
         default: return nil
         }
     }
@@ -351,7 +373,7 @@ struct FollowChip: View {
     @State private var landed = false
 
     private var standing: Standing? { session.standing(for: patch.slug) ?? Standing.from(node: patch) }
-    private var relationship: Relationship { Relationship.resolve(node: patch, standing: standing) }
+    private var relationship: Relationship { Relationship.resolve(node: patch, standing: standing, invited: session.isInvited(patch.slug)) }
 
     var body: some View {
         content
@@ -364,7 +386,9 @@ struct FollowChip: View {
 
     @ViewBuilder private var content: some View {
         switch relationship {
-        case .none, .requested:
+        case .none, .requested, .invited:
+            // An invitation is answered on the profile, in words; a heart
+            // on a card would offer to follow somebody who has been asked in.
             EmptyView()
         case .holding(let role):
             switch role {
