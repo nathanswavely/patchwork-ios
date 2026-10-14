@@ -48,6 +48,7 @@
 		6C5751F9EC6AF86CD9873CCA /* SuggestedEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8BDCBC66A197B6C5348BFF /* SuggestedEvents.swift */; };
 		6D7431CC2258AFCB22F728D5 /* EventPostingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5391021D4C3E67CBDAD1A32 /* EventPostingTests.swift */; };
 		7097C89D351894467DC0FEF4 /* GovernanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E2F95B2F9A50371C0B5200 /* GovernanceTests.swift */; };
+		7239C988DB2BA43173F8511D /* PasskeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F80A10FCED1D69CF853351C /* PasskeyTests.swift */; };
 		734A0612AF1C3409A9EF80C2 /* QuiltTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8958EDC97FC429B38CD2DAE /* QuiltTheme.swift */; };
 		73BF506CA5671806F1D8BABC /* FilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF781619947A025A8719BEC3 /* FilterSheet.swift */; };
 		752535D3DB619088CE649AE8 /* DisplaySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CCFAA08AB987160A0C96678 /* DisplaySettings.swift */; };
@@ -82,10 +83,12 @@
 		B5090C2DB1C8BD4391A929EA /* EventEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DAA50C86CF281FFD894C7E /* EventEditing.swift */; };
 		B9E735AC26656A6B85F469D8 /* MapPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D1BBC55D6424C8522478089 /* MapPlacement.swift */; };
 		BA4385AB910F5ED96FC0A620 /* PatchGovernance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A665F8F6905212C2452DE92A /* PatchGovernance.swift */; };
+		BC21BA1B3590DD6B8468885E /* Passkeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51EF6559341A0C7017F81FC /* Passkeys.swift */; };
 		BC2219C27E0B4BFF3A767D28 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA5BA70D1C312F3863229DC /* Palette.swift */; };
 		BC83FCD961C536C590C9A3C2 /* QuiltSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41A7515238A35D73C8309066 /* QuiltSwitcher.swift */; };
 		BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */; };
 		CAB4C54746B116EAF3B456CE /* PatchNoticeboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC4F7EE1A9AFDA8388654EA /* PatchNoticeboard.swift */; };
+		CD75CCEE3B13C01A8B77CE0E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */; };
 		CDDDA449B8FEC407418B2E98 /* ContactCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE5641C25C6C1AB8784D61A /* ContactCard.swift */; };
 		D14CD2DCE109BB357BDE327E /* EventForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD601D344604C029C0AF7B0 /* EventForm.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
@@ -146,6 +149,7 @@
 		1C5EDD8A87C7355F760C72A6 /* Events.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Events.swift; sourceTree = "<group>"; };
 		1C8BDCBC66A197B6C5348BFF /* SuggestedEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestedEvents.swift; sourceTree = "<group>"; };
 		1CCFAA08AB987160A0C96678 /* DisplaySettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplaySettings.swift; sourceTree = "<group>"; };
+		24FED5A166FE685DE6909B7F /* Patchwork.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Patchwork.entitlements; sourceTree = "<group>"; };
 		293BA8AA195974A4AA7FD88F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		2A05965A09AF7E5653F37B64 /* PatchworkTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2D1BBC55D6424C8522478089 /* MapPlacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapPlacement.swift; sourceTree = "<group>"; };
@@ -153,6 +157,7 @@
 		2F7233C3A988DA4C67073F63 /* TypographyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyTests.swift; sourceTree = "<group>"; };
 		32C4A6B576ED752A74140651 /* EventEditingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventEditingFlowTests.swift; sourceTree = "<group>"; };
 		3475E4A053C83424DD2469A3 /* ProposalPosting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalPosting.swift; sourceTree = "<group>"; };
+		34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3EFC7ACE15046E1958924BFE /* QuiltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSession.swift; sourceTree = "<group>"; };
 		41A7515238A35D73C8309066 /* QuiltSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSwitcher.swift; sourceTree = "<group>"; };
 		44033C62C60DE5758C6859B4 /* PatchAdmin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchAdmin.swift; sourceTree = "<group>"; };
@@ -179,6 +184,7 @@
 		770179CED65BEF6BCBBF53DF /* NoticeboardFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeboardFlowTests.swift; sourceTree = "<group>"; };
 		7AC4F7EE1A9AFDA8388654EA /* PatchNoticeboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchNoticeboard.swift; sourceTree = "<group>"; };
 		7E55DE3EFB5510AEE052A819 /* MyPatches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyPatches.swift; sourceTree = "<group>"; };
+		7F80A10FCED1D69CF853351C /* PasskeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyTests.swift; sourceTree = "<group>"; };
 		804B85FE1C76199D53442DB0 /* JoinRequests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinRequests.swift; sourceTree = "<group>"; };
 		8258292508FE2DD12B36218B /* LabelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabelView.swift; sourceTree = "<group>"; };
 		82C8B28434034C4CB0F843D2 /* GovernanceFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GovernanceFlowTests.swift; sourceTree = "<group>"; };
@@ -222,6 +228,7 @@
 		D8958EDC97FC429B38CD2DAE /* QuiltTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltTheme.swift; sourceTree = "<group>"; };
 		DBAA546CA1C556D90F3EEA7C /* BrowsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingTests.swift; sourceTree = "<group>"; };
 		DF9FDB4B0FEECCD81AC0E3F0 /* Orientation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Orientation.swift; sourceTree = "<group>"; };
+		E51EF6559341A0C7017F81FC /* Passkeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Passkeys.swift; sourceTree = "<group>"; };
 		E85E70F9C3CCD938F6E7BBE6 /* NoticeDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeDetail.swift; sourceTree = "<group>"; };
 		EC4AA9C392300C35325A88EE /* ShantellSans-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "ShantellSans-Variable.ttf"; sourceTree = "<group>"; };
 		EDDB8097E477A3EBCF88E550 /* PatchCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchCardTests.swift; sourceTree = "<group>"; };
@@ -282,6 +289,7 @@
 				13104ECF5B23C48E73CC0571 /* Notifications.swift */,
 				DF9FDB4B0FEECCD81AC0E3F0 /* Orientation.swift */,
 				BAA5BA70D1C312F3863229DC /* Palette.swift */,
+				E51EF6559341A0C7017F81FC /* Passkeys.swift */,
 				44033C62C60DE5758C6859B4 /* PatchAdmin.swift */,
 				4F1CE19D520C26DFAB2758DE /* PatchCalendar.swift */,
 				F146C3632B5D365A4DE77035 /* PatchCard.swift */,
@@ -290,10 +298,12 @@
 				7AC4F7EE1A9AFDA8388654EA /* PatchNoticeboard.swift */,
 				5C217C3BCE3AF77E084E40D6 /* PatchProfile.swift */,
 				4F2C785CDD61C9D4283C6DB6 /* PatchProfileParts.swift */,
+				24FED5A166FE685DE6909B7F /* Patchwork.entitlements */,
 				66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */,
 				A5DCA007B257784F71DB5F4A /* People.swift */,
 				7383BF37670A958AB4682100 /* PersonProfile.swift */,
 				CC491BDA8B532F53F22BCE42 /* PreviewData.swift */,
+				34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */,
 				648BEEA637812310BB0E269B /* ProposalDetail.swift */,
 				5F9489A74FAF68B68C6D0D25 /* ProposalForm.swift */,
 				3475E4A053C83424DD2469A3 /* ProposalPosting.swift */,
@@ -349,6 +359,7 @@
 				AD733C30091E1FB2EA5F8834 /* MapPlacementTests.swift */,
 				4AB66908A621B58242B7F592 /* NoticeboardTests.swift */,
 				12490C966FAACE5C55A51707 /* NotificationsTests.swift */,
+				7F80A10FCED1D69CF853351C /* PasskeyTests.swift */,
 				0EA009766DAC088A1ACA5EA8 /* PatchAdminTests.swift */,
 				EDDB8097E477A3EBCF88E550 /* PatchCardTests.swift */,
 				97A5FE79FBB789D3D2E638D6 /* PeopleSettingsTests.swift */,
@@ -493,6 +504,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */,
+				CD75CCEE3B13C01A8B77CE0E /* PrivacyInfo.xcprivacy in Resources */,
 				08B360701DD1A03A8A9C5AAA /* ShantellSans-Variable.ttf in Resources */,
 				224BE2E32065E7056BEEC2B0 /* SpaceGrotesk-Variable.ttf in Resources */,
 			);
@@ -539,6 +551,7 @@
 				25A5AED1E33D75FAE0A2B477 /* Notifications.swift in Sources */,
 				2180112E9E680A9F657DC682 /* Orientation.swift in Sources */,
 				BC2219C27E0B4BFF3A767D28 /* Palette.swift in Sources */,
+				BC21BA1B3590DD6B8468885E /* Passkeys.swift in Sources */,
 				9623331CBCA3FBDE603CF0A5 /* PatchAdmin.swift in Sources */,
 				B067E3063F1A3647C9BF4F72 /* PatchCalendar.swift in Sources */,
 				46B57957AD0EAA6DD42AA457 /* PatchCard.swift in Sources */,
@@ -594,6 +607,7 @@
 				04FDB78202DB1A36089EBF8F /* MapPlacementTests.swift in Sources */,
 				3245CD5A36AC3351A11A4F47 /* NoticeboardTests.swift in Sources */,
 				929B94F43A1AD5F5C11FF403 /* NotificationsTests.swift in Sources */,
+				7239C988DB2BA43173F8511D /* PasskeyTests.swift in Sources */,
 				E289CD777DFAFF56F8D5B883 /* PatchAdminTests.swift in Sources */,
 				A8633D86D33FD39FB71CAD95 /* PatchCardTests.swift in Sources */,
 				89BDE90334B0E3AF79749194 /* PeopleSettingsTests.swift in Sources */,
@@ -678,6 +692,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = H886Z8M8DG;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -694,6 +709,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -741,6 +757,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = H886Z8M8DG;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -763,6 +780,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -779,16 +797,19 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Patchwork/Patchwork.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Patchwork;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Patchwork adds an event you choose to your calendar. It never reads your calendar.";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.patchwork.prototype;
+				PRODUCT_BUNDLE_IDENTIFIER = com.swavelycreative.patchwork;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -803,7 +824,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.patchwork.prototype.PatchworkUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.swavelycreative.patchwork.PatchworkUITests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Patchwork;
@@ -819,7 +840,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.patchwork.prototype.PatchworkTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.swavelycreative.patchwork.PatchworkTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Patchwork.app/Patchwork";
@@ -835,7 +856,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.patchwork.prototype.PatchworkTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.swavelycreative.patchwork.PatchworkTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Patchwork.app/Patchwork";
@@ -846,16 +867,19 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Patchwork/Patchwork.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Patchwork;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Patchwork adds an event you choose to your calendar. It never reads your calendar.";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.patchwork.prototype;
+				PRODUCT_BUNDLE_IDENTIFIER = com.swavelycreative.patchwork;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -870,7 +894,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.patchwork.prototype.PatchworkUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.swavelycreative.patchwork.PatchworkUITests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Patchwork;
