@@ -224,6 +224,7 @@ enum PreviewData {
         held = [:]
         notifications = []
         stepUpOpen = false
+        resetPeople()
     }
     private static func startSession() {
         signedIn = true
@@ -234,6 +235,7 @@ enum PreviewData {
         // holds, so that batch can confirm from now on (web ADR 099).
         batchPredatesSession = true
         stepUpOpen = false
+        resetPeople()
     }
 
     // MARK: The account's own security
@@ -532,9 +534,10 @@ enum PreviewData {
             guard let row = held[patch.slug] else { return nil }
             let role = row.status == "active" ? ",\"role\":\"\(row.role)\"" : ""
             return "{\"id\":\"membership-\(patch.slug)\",\"user_id\":\"demo-user\",\"node_id\":\"\(patch.id)\"\(role)," +
-                "\"status\":\"\(row.status)\",\"visible\":true,\"joined_at\":\"2026-09-01T10:00:00Z\"," +
+                "\"status\":\"\(row.status)\",\"visible\":\(!hiddenMemberships.contains(patch.slug)),\"joined_at\":\"2026-09-01T10:00:00Z\"," +
                 "\"node_name\":\"\(patch.name)\",\"node_slug\":\"\(patch.slug)\",\"node_description\":\"\(patch.blurb)\"," +
-                "\"node_visibility\":\"\(patch.visibility)\",\"membership_policy\":\"\(patch.policy)\",\"node_status\":\"active\"}"
+                "\"node_visibility\":\"\(patch.visibility)\",\"membership_policy\":\"\(patch.policy)\",\"node_status\":\"active\"," +
+                "\"contact_items_shared\":\(sharesCount(patch.slug))}"
         }
         return "{\"items\":[\(rows.joined(separator: ","))]}"
     }
@@ -593,6 +596,9 @@ enum PreviewData {
         case "leave":
             guard held[slug]?.status == "active" else { throw APIError.message("not a member", status: 400) }
             held[slug] = nil
+            // A membership that ends takes its contact shares with it
+            // (`DropContactSharesFor`): rejoining discloses nothing on its own.
+            contactShares[slug] = nil
             return #"{"status":"ok"}"#
         case "withdraw":
             guard held[slug]?.status == "pending" else { throw APIError.message("no pending request", status: 400) }
@@ -1209,7 +1215,7 @@ enum PreviewData {
                       title: "Welcome to the board",
                       body: "Notices for the people who use the studio. Nobody outside it reads them.",
                       createdMinutesAgo: 40 * day),
-        FixtureNotice(id: "notice-r1", slug: memberSlug, authorId: "rc1", authorName: "Dee Marsh", authorUsername: "dee",
+        FixtureNotice(id: "notice-r1", slug: memberSlug, authorId: "rc1", authorName: "Dee Marsh", authorUsername: "deemarsh",
                       title: "Soldering irons are back",
                       body: "Both irons are back from repair and on the bench by the window.\n\nPlease switch them off at the wall when you finish.",
                       membersTold: true, createdMinutesAgo: 9 * day),
@@ -1340,6 +1346,15 @@ enum PreviewData {
             guard !kind.isEmpty, !id.isEmpty, !reason.isEmpty else {
                 throw APIError.message("entity_type, entity_id, and reason are required", status: 400)
             }
+            // A person: any account the quilt has a row for, as the server
+            // checks it, and to the instance admins' queue.
+            if kind == "user" {
+                guard people.contains(where: { $0.id == id }) || id == me else {
+                    throw APIError.message("target entity not found", status: 404)
+                }
+                reportSerial += 1
+                return "{\"id\":\"report-\(reportSerial)\",\"status\":\"ok\"}"
+            }
             let noticeId = kind == "reply" ? noticeReplies.first { $0.id == id }?.noticeId : (kind == "notice" ? id : nil)
             guard let noticeId, (try? noticeIndex(noticeId)) != nil else {
                 throw APIError.message("target entity not found", status: 404)
@@ -1405,6 +1420,371 @@ enum PreviewData {
         }
     }
 
+    // MARK: People: the contact card, visibility, claims, preferences
+
+    /// One item on the fixture reader's contact card. The card starts empty,
+    /// so the page's empty states are what a first visit sees, and every
+    /// item on it is one a test added.
+    private struct FixtureContact {
+        let id: String
+        var kind: String
+        var value: String
+        var label: String
+        var position: Int
+    }
+    private static var contactItems: [FixtureContact] = []
+    private static var contactSerial = 0
+    /// Slug → the item ids that patch reads, in the order they were given.
+    private static var contactShares: [String: [String]] = [:]
+    /// The slugs whose membership the reader has hidden (web ADR 006).
+    private static var hiddenMemberships: Set<String> = []
+    /// Type → channel → enabled: the rows a `PUT` wrote. A type with no row
+    /// sits on its default and is not `decided`.
+    private static var preferenceRows: [String: [String: Bool]] = [:]
+
+    private static func resetPeople() {
+        contactItems = []
+        contactShares = [:]
+        hiddenMemberships = []
+        preferenceRows = [:]
+    }
+
+    private static func sharesCount(_ slug: String) -> Int {
+        (contactShares[slug] ?? []).filter { id in contactItems.contains { $0.id == id } }.count
+    }
+
+    private static func contactJSON(_ item: FixtureContact, extra: [String: Any] = [:]) -> [String: Any] {
+        var fields: [String: Any] = ["id": item.id, "kind": item.kind, "value": item.value, "position": item.position]
+        // `omitempty`, as the server writes them.
+        if !item.label.isEmpty { fields["label"] = item.label }
+        for (key, value) in extra { fields[key] = value }
+        return fields
+    }
+
+    /// The server's own checks, in its order and its words (`contact_items.go`).
+    private static func validateContact(kind: String, value: String, label: String) throws {
+        guard ["phone", "email", "handle", "note"].contains(kind) else {
+            throw APIError.message("kind must be phone, email, handle or note", status: 400)
+        }
+        guard !value.isEmpty else { throw APIError.message("an item needs a value — delete it instead of emptying it", status: 400) }
+        switch kind {
+        case "phone" where value.utf8.count > 60: throw APIError.message("phone must be 60 characters or fewer", status: 400)
+        case "email" where value.utf8.count > 254: throw APIError.message("email must be 254 characters or fewer", status: 400)
+        case "email" where !value.contains("@") || value.contains(where: { $0 == " " || $0 == "\t" || $0 == "\n" }):
+            throw APIError.message("that doesn't look like an email address", status: 400)
+        case "handle" where value.utf8.count > 100: throw APIError.message("handle must be 100 characters or fewer", status: 400)
+        case "note" where value.utf8.count > 200: throw APIError.message("note must be 200 characters or fewer", status: 400)
+        default: break
+        }
+        guard label.utf8.count <= 40 else { throw APIError.message("label must be 40 characters or fewer", status: 400) }
+    }
+
+    /// The registry's shape, cut down: every category, a few types in each,
+    /// and the server's defaults — in-app on, email on for the urgent ones,
+    /// and the monthly bulletin off everywhere until asked for.
+    private static let preferenceCatalog: [(id: String, label: String, description: String, types: [(type: String, label: String, high: Bool)])] = [
+        ("proposals", "Proposals", "New proposals, voting updates, deadlines", [
+            ("proposal.new", "New proposal in your patch", false),
+            ("proposal.voting", "Voting has started", false),
+            ("proposal.approved", "Proposal approved", true),
+            ("proposal.deadline", "Voting ends in 24 hours and you have not voted", true),
+            ("proposal.comment", "Comment on a proposal you're in", false),
+        ]),
+        ("governance", "Governance", "Document and rules changes", [
+            ("governance.doc_updated", "Document updated", false),
+            ("governance.rules_changed", "Rules changed", false),
+        ]),
+        ("membership", "Membership", "Join/leave notifications for admins", [
+            ("membership.joined", "New member joined", false),
+            ("membership.request", "Membership request pending", true),
+            ("membership.approved", "Your membership was approved", true),
+        ]),
+        ("events", "Events", "Submissions, links, and program offers", [
+            ("event.suggested", "Event suggested to your patch", true),
+            ("event.submission_approved", "Your event was approved", true),
+        ]),
+        ("admin", "Admin", "Claim requests, submissions, suggested tags", [
+            ("admin.claim_request", "New patch claim request", true),
+            ("claim.approved", "Your claim was approved", true),
+        ]),
+        ("noticeboard", "Noticeboard", "A notice whose author chose to tell members, replies on notices you're in, and reports for admins", [
+            ("notice.posted", "A notice for your patch", false),
+            ("notice.reply", "Reply on a notice you're in", false),
+            ("notice.reported", "A notice or reply was reported", true),
+        ]),
+        ("quilt", "The quilt", "A monthly note naming the patches that joined. Off unless you ask for it, and the one notification here that is not about you.", [
+            ("quilt.bulletin", "New patches this month", false),
+        ]),
+    ]
+    private static let preferenceChannels = ["in_app", "email"]
+
+    private static func preferencesJSON() -> String {
+        let categories: [[String: Any]] = preferenceCatalog.map { category in
+            let types: [[String: Any]] = category.types.map { kind in
+                var channels: [String: Bool] = [:]
+                for channel in preferenceChannels {
+                    let fallback = kind.type == "quilt.bulletin" ? false : (channel == "in_app" ? true : kind.high)
+                    channels[channel] = preferenceRows[kind.type]?[channel] ?? fallback
+                }
+                return ["type": kind.type, "label": kind.label, "channels": channels, "decided": preferenceRows[kind.type] != nil]
+            }
+            return ["id": category.id, "label": category.label, "description": category.description, "types": types]
+        }
+        return serialize(["channels": preferenceChannels, "categories": categories])
+    }
+
+    private static func peopleRead(_ path: String, query: [URLQueryItem]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        switch path {
+        case "users/me/contact-items":
+            guard signedIn else { throw APIError.unauthenticated }
+            let items = contactItems.map { item -> [String: Any] in
+                let count = contactShares.values.filter { $0.contains(item.id) }.count
+                return contactJSON(item, extra: count > 0 ? ["shared_with": count] : [:])
+            }
+            return serialize(["items": items])
+        case "users/me/claims":
+            guard signedIn else { throw APIError.unauthenticated }
+            // An approved claim on the unclaimed River Walkers, its setup
+            // window still open: the one act the app sends to the website.
+            return serialize(["items": [[
+                "id": "claim-river-walkers", "method": "email", "status": "approved",
+                "created_at": stamp(minutesAgo: 5 * day), "setup_expires_at": stamp(minutesAgo: -9 * day),
+                "node_slug": "extra-3", "node_name": extraNames[3],
+            ]]])
+        case "me/nodes" where query.contains { $0.name == "status" && $0.value == "archived" }:
+            guard signedIn else { throw APIError.unauthenticated }
+            // A duplicate of the Repair Cafe, archived by its admin — the
+            // same name as the live one, which is why the row shows its address.
+            return "{\"items\":[{\"id\":\"membership-annex\",\"user_id\":\"demo-user\",\"node_id\":\"repair-cafe-annex\",\"role\":\"admin\"," +
+                "\"status\":\"active\",\"visible\":true,\"joined_at\":\"2025-11-02T10:00:00Z\",\"node_name\":\"\(extraNames[6])\"," +
+                "\"node_slug\":\"repair-cafe-2\",\"node_description\":\"\",\"node_visibility\":\"public\",\"membership_policy\":\"open\"," +
+                "\"node_status\":\"archived\",\"contact_items_shared\":0}],\"next_cursor\":\"\"}"
+        case "notifications/preferences":
+            guard signedIn else { throw APIError.unauthenticated }
+            return preferencesJSON()
+        default:
+            break
+        }
+        if parts.count == 3, parts[0] == "nodes", parts[2] == "contact-shares" {
+            guard signedIn else { throw APIError.unauthenticated }
+            guard holdable.contains(where: { $0.slug == parts[1] }) else { throw APIError.message("patch not found", status: 404) }
+            let shared = Set(contactShares[parts[1]] ?? [])
+            return serialize([
+                "items": contactItems.map { contactJSON($0, extra: ["shared": shared.contains($0.id)]) },
+                "can_share": inRoom(parts[1]),
+            ])
+        }
+        return nil
+    }
+
+    private static func peopleWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        let isCard = parts.count >= 3 && parts[0] == "users" && parts[1] == "me" && parts[2] == "contact-items"
+        let isVisibility = parts.count == 4 && parts[0] == "users" && parts[1] == "me" && parts[2] == "memberships"
+        let isShares = parts.count == 3 && parts[0] == "nodes" && parts[2] == "contact-shares"
+        let isPreferences = path == "notifications/preferences"
+        guard isCard || isVisibility || isShares || isPreferences else { return nil }
+        guard signedIn else { throw APIError.unauthenticated }
+        func text(_ key: String) -> String? { (fields[key] as? String).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } }
+
+        if isCard {
+            switch (method, parts.count) {
+            case ("POST", 3):
+                let kind = (fields["kind"] as? String) ?? ""
+                let value = text("value") ?? "", label = text("label") ?? ""
+                try validateContact(kind: kind, value: value, label: label)
+                guard contactItems.count < 12 else { throw APIError.message("a contact card holds 12 items at most", status: 400) }
+                contactSerial += 1
+                let item = FixtureContact(id: "contact-\(contactSerial)", kind: kind, value: value, label: label,
+                                          position: (contactItems.map(\.position).max() ?? -1) + 1)
+                contactItems.append(item)
+                return serialize(contactJSON(item))
+            case (_, 4), (_, 5):
+                guard let index = contactItems.firstIndex(where: { $0.id == parts[3] }) else {
+                    throw APIError.message("contact item not found", status: 404)
+                }
+                if parts.count == 5 {
+                    guard method == "DELETE", parts[4] == "shares" else { throw APIError.status(405) }
+                    let id = contactItems[index].id
+                    var from = 0
+                    for slug in contactShares.keys where contactShares[slug]?.contains(id) == true {
+                        contactShares[slug]?.removeAll { $0 == id }
+                        from += 1
+                    }
+                    return "{\"unshared_from\":\(from)}"
+                }
+                switch method {
+                case "PATCH":
+                    var item = contactItems[index]
+                    if let kind = fields["kind"] as? String {
+                        guard ["phone", "email", "handle", "note"].contains(kind) else {
+                            throw APIError.message("kind must be phone, email, handle or note", status: 400)
+                        }
+                        item.kind = kind
+                    }
+                    if let value = text("value") { item.value = value }
+                    if let label = text("label") { item.label = label }
+                    try validateContact(kind: item.kind, value: item.value, label: item.label)
+                    contactItems[index] = item
+                    return serialize(contactJSON(item))
+                case "DELETE":
+                    let id = contactItems[index].id
+                    contactItems.remove(at: index)
+                    for slug in contactShares.keys { contactShares[slug]?.removeAll { $0 == id } }
+                    return ""
+                default:
+                    throw APIError.status(405)
+                }
+            default:
+                throw APIError.status(405)
+            }
+        }
+        if isVisibility {
+            guard method == "PATCH" else { throw APIError.status(405) }
+            guard let visible = fields["visible"] as? Bool else { throw APIError.message("body must include visible: true|false", status: 400) }
+            guard let patch = holdable.first(where: { $0.id == parts[3] }), held[patch.slug] != nil else {
+                throw APIError.message("membership not found", status: 404)
+            }
+            if visible { hiddenMemberships.remove(patch.slug) } else { hiddenMemberships.insert(patch.slug) }
+            return "{\"node_id\":\"\(patch.id)\",\"visible\":\(visible)}"
+        }
+        if isShares {
+            guard method == "PUT" else { throw APIError.status(405) }
+            guard let patch = holdable.first(where: { $0.slug == parts[1] }) else { throw APIError.message("patch not found", status: 404) }
+            guard inRoom(patch.slug) else {
+                throw APIError.message("only this patch's members and admins can share contact details with it", status: 403)
+            }
+            guard let ids = fields["item_ids"] as? [String] else { throw APIError.message("body must include item_ids", status: 400) }
+            for id in ids where !contactItems.contains(where: { $0.id == id }) {
+                throw APIError.message("that contact item is not yours", status: 403)
+            }
+            contactShares[patch.slug] = ids
+            return serialize(["node_id": patch.id, "item_ids": ids])
+        }
+        // Preferences: every row as sent, no validation — the server's way.
+        guard method == "PUT" else { throw APIError.status(405) }
+        guard let rows = fields["preferences"] as? [[String: Any]] else { throw APIError.message("invalid request body", status: 400) }
+        for row in rows {
+            guard let type = row["type"] as? String, let channel = row["channel"] as? String else { continue }
+            preferenceRows[type, default: [:]][channel] = (row["enabled"] as? Bool) ?? false
+        }
+        return #"{"status":"ok"}"#
+    }
+
+    // MARK: People
+
+    /// Everybody the other fixtures name with a username — the members
+    /// room, the slate and the ballots, the noticeboard, the governance
+    /// overview and the Label — so every door opens on somebody. Rowan runs
+    /// the studio and is a member of the Repair Cafe, so a plain sign-in
+    /// (which is in the Repair Cafe) is shown his contact card; Imani's card
+    /// goes only to the studio, so it waits for a `--preview-member` launch;
+    /// Theo has hidden his membership and has nothing to show; Sam has moved.
+    /// Wren is in the studio's members room but her account is suspended,
+    /// which the profile answers with the same 404 as a name nobody holds.
+    private struct FixturePerson {
+        let id: String
+        let username: String
+        let name: String
+        var bio = ""
+        var links: [(url: String, label: String)] = []
+        var movedTo = ""
+        var since = "2026-01-14T10:00:00Z"
+        /// slug and role, admins first as the server orders them.
+        var memberships: [(slug: String, role: String)] = []
+        /// kind, value, label — and only ever shown to somebody in one of
+        /// the patches it was shared into.
+        var contact: [(kind: String, value: String, label: String)] = []
+        var sharedInto: Set<String> = []
+    }
+
+    private static let people: [FixturePerson] = [
+        FixturePerson(id: "u1", username: "rowan", name: "Rowan Hale",
+                      bio: "Runs the studio desk most evenings. Ask me about the kiln.",
+                      links: [("https://rowan.example.org", ""), ("https://www.makers.example.org/rowan", "Makers’ directory")],
+                      memberships: [("common-thread", "admin"), (memberSlug, "member")],
+                      contact: [("phone", "+1 717 555 0100, evenings only", "mobile"), ("email", "rowan@example.org", ""),
+                                ("handle", "@rowan@social.example", "fediverse"), ("note", "Usually at the studio desk on Tuesdays", "")],
+                      sharedInto: ["common-thread", memberSlug]),
+        FixturePerson(id: "u2", username: "imani", name: "Imani Osei", bio: "Keeps the studio calendar honest.",
+                      since: "2026-02-03T10:00:00Z", memberships: [("common-thread", "member")],
+                      contact: [("email", "imani@example.org", "")], sharedInto: ["common-thread"]),
+        FixturePerson(id: "u3", username: "theo", name: "", since: "2026-03-02T10:00:00Z"),
+        FixturePerson(id: "u5", username: "mara", name: "Mara Quinn", since: "2026-03-20T10:00:00Z",
+                      memberships: [("common-thread", "member")]),
+        FixturePerson(id: "u9", username: "sam", name: "Sam Ortiz", movedTo: "https://neighbor.example.org/users/sam",
+                      since: "2025-11-08T10:00:00Z"),
+        FixturePerson(id: "l1", username: "dee", name: "Dee Ramos", bio: "Books the listening nights.",
+                      memberships: [("listening-room", "admin")]),
+        FixturePerson(id: "l2", username: "ade", name: "Ade Bello", memberships: [("listening-room", "member")]),
+        FixturePerson(id: "rc1", username: "deemarsh", name: "Dee Marsh", bio: "Fixes things, mostly toasters.",
+                      memberships: [(memberSlug, "admin")]),
+        FixturePerson(id: "rc2", username: "kofi", name: "Kofi Adu", memberships: [(memberSlug, "member")],
+                      contact: [("handle", "kofi on the Repair Cafe group chat", "")], sharedInto: [memberSlug]),
+        FixturePerson(id: "steward", username: "samplesteward", name: "Sample Steward",
+                      bio: "Keeps the lights on and answers the email.", since: "2025-09-01T10:00:00Z",
+                      memberships: [("extra-0", "member")]),
+    ]
+
+    /// A patch's id and name, for a membership row.
+    private static func patchFacts(_ slug: String) -> (id: String, name: String) {
+        if let row = holdable.first(where: { $0.slug == slug }) { return (row.id, row.name) }
+        if slug.hasPrefix("extra-"), let index = Int(slug.dropFirst("extra-".count)), extraNames.indices.contains(index) {
+            return (slug, extraNames[index])
+        }
+        return (slug, slug)
+    }
+
+    private static func membershipJSON(_ slug: String, _ role: String) -> [String: Any] {
+        let facts = patchFacts(slug)
+        return ["node_id": facts.id, "node_slug": slug, "node_name": facts.name, "role": role,
+                "joined_at": "2026-02-01T10:00:00Z"]
+    }
+
+    /// `GET users/{username}`. The reader's own profile is built from the
+    /// account and the membership set the writes mutate, so it says what
+    /// Settings and the Dashboard say; anybody else is a fixture. An
+    /// unknown name is the server's 404, in its words.
+    private static func personRead(_ path: String) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count == 2, parts[0] == "users", parts[1] != "me" else { return nil }
+        let username = parts[1]
+        let mine = (accountFields["username"] as? String) ?? "samplereader"
+        if username == mine {
+            let fields = accountFields
+            // A hidden membership is hidden from its holder's own profile too
+            // (web ADR 006), and the card shows what the reader has shared.
+            let rows = held.filter { ["member", "admin"].contains($0.value.role) && $0.value.status == "active" && !hiddenMemberships.contains($0.key) }
+                .sorted { ($0.value.role == "admin" ? 0 : 1, $0.key) < ($1.value.role == "admin" ? 0 : 1, $1.key) }
+                .map { membershipJSON($0.key, $0.value.role) }
+            return serialize([
+                "id": (fields["id"] as? String) ?? me, "username": mine,
+                "display_name": (fields["display_name"] as? String) ?? "", "bio": (fields["bio"] as? String) ?? "",
+                "avatar_url": "", "links": (fields["links"] as? [[String: Any]]) ?? [], "moved_to": "",
+                "created_at": "2026-02-01T10:00:00Z", "memberships": signedIn ? rows : [],
+                "contact": signedIn ? contactItems.filter { item in contactShares.values.contains { $0.contains(item.id) } }.map { contactJSON($0) } : [],
+            ])
+        }
+        guard let person = people.first(where: { $0.username == username }) else {
+            throw APIError.message("user not found", status: 404)
+        }
+        // Somebody in a patch the person gave their card to, and signed in.
+        let shares = signedIn && !person.sharedInto.filter(inRoom).isEmpty
+        return serialize([
+            "id": person.id, "username": person.username, "display_name": person.name, "bio": person.bio,
+            "avatar_url": "", "links": person.links.map { ["url": $0.url, "label": $0.label] },
+            "moved_to": person.movedTo, "created_at": person.since,
+            "memberships": person.memberships.map { membershipJSON($0.slug, $0.role) },
+            "contact": shares ? person.contact.enumerated().map { index, item -> [String: Any] in
+                var row: [String: Any] = ["id": "\(person.id)-contact-\(index)", "kind": item.kind, "value": item.value, "position": index]
+                // `label` is omitempty on the server.
+                if !item.label.isEmpty { row["label"] = item.label }
+                return row
+            } : [],
+        ])
+    }
+
     /// The offline stand-in for every non-GET. The JSON is returned as text so
     /// a write with nothing to read (`auth/logout`, marking a notification
     /// read) runs the same path as one with a user in the answer.
@@ -1414,8 +1794,9 @@ enum PreviewData {
     /// same road). The notifications and account paths are answered first,
     /// and everything else is still a `POST`.
     static func write(_ method: String, _ path: String, body: Data?) throws -> String {
-        if let answer = try notificationWrite(method, path) { return answer }
         let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
+        if let answer = try peopleWrite(method, path, fields: fields) { return answer }
+        if let answer = try notificationWrite(method, path) { return answer }
         if let answer = try governanceWrite(method, path, fields: fields) { return answer }
         if let answer = try noticeboardWrite(method, path, fields: fields) { return answer }
         if let answer = try accountWrite(method, path, fields: fields) { return answer }
@@ -1473,7 +1854,7 @@ enum PreviewData {
             let posting = ",\"timezone\":\"America/New_York\",\"accept_event_suggestions\":true,\"follower_permissions\":{\"events\":\(index != 6),\"proposals\":true,\"charters\":false,\"members\":true}"
             return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(index == 3 ? ",\"is_unclaimed\":true" : "")\(moved)\(record)\(posting)}"
         }
-        let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
+        let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m5","user_id":"u7","role":"member","username":"wren","display_name":"Wren Adler"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
         let document = #"{"id":"demo-doc","node_id":"demo-patch","title":"How we decide","body":"This patch keeps its own copy of the shared standards, and adds one paragraph of its own.\n\n## Open studio hours\n\nAnyone may use the studio during open hours. Tools go back where they were found, and whoever is last out locks the door.\n\n## Changing this\n\nAny member may propose a change. A majority carries it.","kind":"charter","visibility":"public","version":3,"created_at":"2026-04-02T10:00:00Z","updated_at":"2026-08-14T10:00:00Z"}"#
         let lining = #"{"id":"demo-lining","node_id":"demo-patch","title":"Community Standards","body":"Every patch on this quilt starts by agreeing to the lining. This patch amended it.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are.","kind":"lining","visibility":"public","version":2,"created_at":"2026-03-01T10:00:00Z","updated_at":"2026-07-21T10:00:00Z"}"#
@@ -1482,7 +1863,7 @@ enum PreviewData {
         let withheldOverview = #"{"rules":{"decision_method":"admin","leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":true,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"invite_only","member_count":8,"document_count":0,"open_proposals":0,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
         let record = #"{"items":[{"kind":"vote","at":"2026-08-14T12:00:00Z","title":"Amend the studio hours","link":"/patches/common-thread/governance/demo-proposal-3","outcome":"carried"},{"kind":"vote","at":"2026-06-08T12:00:00Z","title":"Buy a second kiln","outcome":"lapsed"},{"kind":"direct","at":"2026-04-02T12:00:00Z","title":"Publish the charter","outcome":"applied","actor":"Rowan Hale"}],"public_governance_record":"everyone"}"#
         let json: String
-        if let governed = try governanceRead(path, query: query) ?? noticeboardRead(path, query: query) { json = governed } else {
+        if let governed = try governanceRead(path, query: query) ?? noticeboardRead(path, query: query) ?? peopleRead(path, query: query) ?? personRead(path) { json = governed } else {
         switch path {
         case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York"},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true}"#
         case "label": json = ###"{"published":true,"stewards":[{"username":"samplesteward","display_name":"Sample Steward","avatar_url":"","blurb":"Keeps the lights on and answers the email."}],"prose":"## Why this exists\n\nThis quilt is fictional, and so is everything on this page. It is here so the app has something to draw.\n\nThe figures below are **made up**, and *nobody* is billed for them. Even `code` and ***both at once*** are only here to be looked at.\n\n- No real money changes hands.\n- No real person is named.","cost_items":[{"service":"Sample Hosting","purpose":"the server (where all this lives)","why":"invented, for the preview","amount_minor":1200,"period":"monthly"},{"service":"Sample Domain","purpose":"the address","why":"also invented","amount_minor":1800,"period":"yearly"}],"currency":"USD","total_monthly_minor":1350,"stale":true,"stated_on":"2026-01-01","version":"v0.0.0-preview","federation":false,"multi_quilt":false,"support_url":"https://example.org/support","feedback_url":"https://example.org/feedback","seamripped_from_name":"","seamripped_from_url":""}"###

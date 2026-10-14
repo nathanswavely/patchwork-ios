@@ -41,6 +41,8 @@ struct ProposalDetailView: View {
     @State private var buttonsFrame: CGRect?
     @State private var listFrame: CGRect = .zero
     @State private var showVoters = false
+    /// A candidate, opened by their name on the slate.
+    @State private var person: String?
     @State private var signingIn = false
 
     // The discussion's own state: one composer, one inline reply or edit at
@@ -130,7 +132,8 @@ struct ProposalDetailView: View {
                             canNominate: canNominate, slug: slug,
                             signIn: { signingIn = true },
                             reload: { await load() },
-                            unauthenticated: { session.signedOut() }
+                            unauthenticated: { session.signedOut() },
+                            openPerson: { person = $0 }
                         )
                     } else if VoteRules.showsVoteSection(proposal) {
                         voteSection
@@ -153,6 +156,7 @@ struct ProposalDetailView: View {
             if let line = Discussion.deleteMessage(comment) { Text(line) }
         }
         .signInGate($signingIn)
+        .personDestination($person, quilt: quilt, close: close)
         .task { await load(); await loadComments() }
         .refreshable { await load(); await loadComments() }
         // Signing in changes who is asking: `can_vote`, `my_vote` and every
@@ -300,16 +304,17 @@ struct ProposalDetailView: View {
             .accessibilityIdentifier("showVoters")
             if showVoters {
                 ForEach(Array(list.enumerated()), id: \.offset) { _, ballot in
-                    HStack(spacing: 8) {
-                        Text(ballot.name).font(Font.pw.subheadline).foregroundStyle(ballot.isCounted ? Color.pwText : Color.pwTextMuted)
-                        if !ballot.isCounted {
-                            Text("not counted").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
-                        }
-                        Spacer(minLength: 8)
-                        ValueBadge(value: ballot.value ?? "")
+                    // A voter with a username is a row that opens them; a
+                    // hidden member's ballot arrives with none, and stays a
+                    // name.
+                    if let handle = People.door(ballot.username) {
+                        NavigationLink { PersonProfile(quilt: quilt, username: handle, close: close) } label: { voterLine(ballot) }
+                            .accessibilityIdentifier("voterRow")
+                    } else {
+                        voterLine(ballot)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("voterRow")
                     }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("voterRow")
                 }
                 if list.contains(where: { !$0.isCounted }) {
                     Text("Not counted: cast by someone who has since left this patch or is no longer a member.")
@@ -317,6 +322,17 @@ struct ProposalDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+    }
+
+    private func voterLine(_ ballot: Ballot) -> some View {
+        HStack(spacing: 8) {
+            Text(ballot.name).font(Font.pw.subheadline).foregroundStyle(ballot.isCounted ? Color.pwText : Color.pwTextMuted)
+            if !ballot.isCounted {
+                Text("not counted").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+            }
+            Spacer(minLength: 8)
+            ValueBadge(value: ballot.value ?? "")
         }
     }
 
@@ -802,6 +818,8 @@ struct ElectionPanel: View {
     let signIn: () -> Void
     let reload: () async -> Void
     let unauthenticated: () -> Void
+    /// A candidate's name opens them, on the proposal's own stack.
+    var openPerson: (String) -> Void = { _ in }
 
     @State private var approved: Set<String> = []
     @State private var busy = false
@@ -886,7 +904,7 @@ struct ElectionPanel: View {
                 .accessibilityIdentifier("ballotTick-\(candidate.id)")
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(candidate.name).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                PersonName(name: candidate.name, username: candidate.username, font: Font.pw.headline, open: openPerson)
                 HStack(spacing: 8) {
                     if !nominating {
                         let n = candidate.approvals ?? 0

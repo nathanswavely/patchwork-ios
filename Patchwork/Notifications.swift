@@ -185,6 +185,9 @@ enum NotificationLink {
         case notice(slug: String, id: String)
         case event(id: String)
         case remotePatch(host: String, slug: String)
+        /// A person's profile. No notification the server sends today
+        /// points at one, but a link that did would open it here.
+        case person(username: String)
         /// Not a native surface. The path travels whole, query and all.
         case website(path: String)
     }
@@ -223,6 +226,10 @@ enum NotificationLink {
             }
         case "events":
             if parts.count == 2, !parts[1].isEmpty { return .event(id: parts[1]) }
+        case "users":
+            if parts.count == 2, let username = People.door(parts[1].removingPercentEncoding ?? parts[1]) {
+                return .person(username: username)
+            }
         case "quilts":
             // A patch on a neighbour quilt, read-only on their soil (ADR 024).
             if parts.count == 4, parts[2] == "patches", !parts[1].isEmpty, !parts[3].isEmpty {
@@ -319,6 +326,11 @@ struct NotificationsSheet: View {
                         Button(role: .destructive) { confirmingClear = true } label: { Label("Clear all", systemImage: "trash") }
                             .disabled(rows.isEmpty)
                             .accessibilityIdentifier("notificationsClearAll")
+                        // The same page Settings opens: what reaches the
+                        // reader is decided next to what reached them.
+                        Divider()
+                        Button { route.append(.preferences) } label: { Label("Notification settings", systemImage: "gearshape") }
+                            .accessibilityIdentifier("notificationsPreferences")
                     } label: { Image(systemName: "ellipsis.circle") }
                     .accessibilityLabel("Manage notifications")
                     .accessibilityIdentifier("notificationsMenu")
@@ -333,6 +345,12 @@ struct NotificationsSheet: View {
             }
             .navigationDestination(for: NotificationRoute.self) { destination($0) }
             .task { if !loaded { await load() } }
+        }
+        // A patch named on a profile pushed in here docks over the quilt the
+        // way a patch row does: the sheet closes first.
+        .environment(\.patchDoor) { slug in
+            session.dock(afterSheet: slug)
+            dismiss()
         }
     }
 
@@ -594,6 +612,10 @@ struct NotificationsSheet: View {
             if let event: PatchworkEvent = await fetch("events/\(id)") { route.append(.event(event)) }
         case .remotePatch(let host, let slug):
             route.append(.remote(host: host, slug: slug))
+        case .person(let username):
+            // The profile reads itself, and is the one that knows how to say
+            // there is nobody by that name.
+            route.append(.person(username))
         case .website(let path):
             // Not a surface this client has built. It is an exit, and it is
             // drawn as one: the reader leaves for the website rather than
@@ -629,6 +651,8 @@ struct NotificationsSheet: View {
         case .notice(let notice): NoticeDetailView(quilt: session.quilt, initial: notice)
         case .event(let event): EventDetail(quilt: session.quilt, initial: event)
         case .remote(let host, let slug): RemotePatchView(host: host, slug: slug)
+        case .preferences: NotificationPreferencesView()
+        case .person(let username): PersonProfile(quilt: session.quilt, username: username)
         }
     }
 }
@@ -645,6 +669,9 @@ enum NotificationRoute: Hashable {
     case notice(Notice)
     case event(PatchworkEvent)
     case remote(host: String, slug: String)
+    /// Not a notification's destination: the menu's door to the preferences.
+    case preferences
+    case person(String)
 }
 
 /// One row: the type's mark, what happened, and when — with the unread dot in

@@ -57,25 +57,47 @@ struct LabelView: View {
     private var stewardRoster: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(stewards) { steward in
-                HStack(alignment: .top, spacing: 12) {
-                    StewardAvatar(steward: steward)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(steward.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
-                        Text("@" + steward.username).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                        if let blurb = steward.blurb, !blurb.isEmpty {
-                            Text(blurb).font(Font.pw.subheadline).foregroundStyle(Color.pwText)
-                        }
+                // The card is the door to the steward's profile, with the
+                // platform's chevron in its corner to say so.
+                if let handle = People.door(steward.username) {
+                    NavigationLink { PersonProfile(quilt: session.quilt, username: handle) } label: {
+                        stewardCard(steward, door: true)
                     }
-                    Spacer(minLength: 0)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("stewardCard")
+                } else {
+                    stewardCard(steward, door: false)
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // A steward is somebody who could move to another quilt, so
-                // they get the card: surface, hairline, the site's radius.
-                .background(Color.pwSurface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.pwBorder, lineWidth: 1))
             }
         }
+    }
+
+    private func stewardCard(_ steward: QuiltLabel.Steward, door: Bool) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            StewardAvatar(steward: steward)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(steward.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
+                Text("@" + steward.username).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                if let blurb = steward.blurb, !blurb.isEmpty {
+                    Text(blurb).font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            Spacer(minLength: 0)
+            if door {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold)).foregroundStyle(Color.pwTextMuted)
+                    .frame(maxHeight: .infinity)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // A steward is somebody who could move to another quilt, so
+        // they get the card: surface, hairline, the site's radius.
+        .background(Color.pwSurface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.pwBorder, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     /// What this runs on. Ungated: the software is a material whether or not
