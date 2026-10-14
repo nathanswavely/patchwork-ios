@@ -46,7 +46,16 @@ struct PatchCalendar: View {
     @State private var loaded = false
     @State private var subscribing = false
     @State private var error: String?
+    /// The events waiting on this patch's admins, for a reader who reviews
+    /// them (web `PatchEvents.svelte`'s "Suggested events").
+    @StateObject private var suggestions = SuggestionQueue()
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
+    /// Whether this reader reviews the patch's suggestions: its admins, or
+    /// the quilt's — and only on the quilt they are signed in to.
+    private var reviews: Bool {
+        guard quilt.url == session.quilt.url else { return false }
+        return PatchAdmin.reviews(standing: session.standing(for: patch.slug), isInstanceAdmin: session.me?.role == "admin")
+    }
     private var feedsAvailable: Bool { patch.visibility == "public" }
     private var node: Patch { envelope?.node ?? patch }
     /// Only on the quilt the reader is signed in to: a calendar read from
@@ -60,6 +69,11 @@ struct PatchCalendar: View {
             // One Group so every section's rows take the card surface: the
             // modifier does not reach them from the List itself.
             Group {
+            // Above the calendar, where the web keeps it: somebody is waiting
+            // on an answer, and the nights below are already settled.
+            if reviews {
+                SuggestedEventsSection(queue: suggestions, zone: session.eventZone(for: node)) { opened = $0 }
+            }
             Section {
                 ForEach(upcoming) { row($0) }
                 if let cursor = upcomingCursor, !cursor.isEmpty {
@@ -143,10 +157,16 @@ struct PatchCalendar: View {
         }
         .signInGate($signingIn)
         .navigationDestination(item: $opened) { EventDetail(quilt: quilt, initial: $0, close: close) }
+        .decliningSuggestions(suggestions, session: session)
         .task {
             if !loaded { await loadUpcoming() }
             await loadNode()
+            await loadSuggestions()
         }
+        // The membership index can arrive after the calendar: an admin's
+        // queue is read once the index says they are one.
+        .onChange(of: reviews) { _, now in if now { Task { await loadSuggestions() } } }
+        .onChange(of: session.adminRevision) { _, _ in Task { await loadSuggestions() } }
         // Signing in through the door changes who is asking: the envelope's
         // trust and standing are read again for the new reader.
         .onChange(of: session.me?.id) { _, _ in Task { await loadNode() } }
@@ -158,7 +178,11 @@ struct PatchCalendar: View {
                 if askedForEarlier { await loadEarlier() }
             }
         }
-        .refreshable { await loadUpcoming() }
+        .refreshable { await loadUpcoming(); await loadSuggestions() }
+    }
+    private func loadSuggestions() async {
+        guard reviews else { return }
+        await suggestions.load(api: session.api, slug: patch.slug)
     }
     private func loadNode() async {
         guard quilt.url == session.quilt.url else { return }

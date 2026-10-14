@@ -137,6 +137,12 @@ struct LaunchLens: Equatable {
     /// reads its page again rather than keep showing what is gone.
     @Published private(set) var eventRevision = 0
     func eventsChanged() { eventRevision += 1 }
+    /// The same signal for what a patch's admin answers: a request approved
+    /// or rejected, a suggestion reviewed, somebody invited, removed or
+    /// reinstated. The Dashboard's counts and a patch's Members room each
+    /// hold their own copy, and read it again when this moves.
+    @Published private(set) var adminRevision = 0
+    func adminChanged() { adminRevision += 1 }
     init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
     func apply(colorMode next: ColorMode) {
         QuiltTheme.colorMode = next
