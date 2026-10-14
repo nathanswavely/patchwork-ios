@@ -81,6 +81,15 @@ final class GettingInFlowTests: XCTestCase {
         capture(app, "G4 A suggested point")
         let use = app.buttons["savePlacement"]
         XCTAssertEqual(use.label, "Use this spot")
+        // On a shorter phone the map's buttons arrive under the form's
+        // pinned Create Patch bar, which would take the tap. The form is
+        // dragged from its upper fields: a swipe through the middle lands
+        // on the map and pans it instead.
+        let bar = app.buttons["patchFormSubmit"]
+        for _ in 0..<4 where use.frame.maxY > bar.frame.minY - 8 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)))
+        }
         use.tap()
         XCTAssertTrue(app.descendants(matching: .any)["placedOnMap"].waitForExistence(timeout: 5), "confirmed, it is on the map")
 
