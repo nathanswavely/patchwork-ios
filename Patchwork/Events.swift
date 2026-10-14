@@ -201,6 +201,13 @@ struct EventList: View {
 /// whose — and wears a tier chip only where the event is not everyone's.
 struct EventRow: View {
     let event: PatchworkEvent
+    @EnvironmentObject private var session: QuiltSession
+    /// The host, from the whole tree rather than the scoped one, so a lens on
+    /// the quilt never strips a row of its mark.
+    private var host: Patch? {
+        guard let slug = event.nodeSlug else { return nil }
+        return session.wholeQuilt.first { $0.slug == slug } ?? session.patches.first { $0.slug == slug }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             // The date is the row's own emphasis, and emphasis is weight
@@ -215,7 +222,14 @@ struct EventRow: View {
             }
             if let name = event.nodeName {
                 HStack(spacing: 6) {
-                    Label(name, systemImage: "square.grid.2x2").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+                    // The host's own mark — its identity colour and motif,
+                    // the disc its card and tile wear — so a row says whose
+                    // night it is at a glance. A host the tree does not hold
+                    // goes by its name alone rather than a stand-in glyph.
+                    if let host {
+                        MotifDisc(patch: host, tagMotifs: session.tagMotifs, side: 16, colorMode: session.colorMode)
+                    }
+                    Text(name).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     if event.communitySubmitted { EventBadge(text: "Community-submitted") }
                 }
             }
