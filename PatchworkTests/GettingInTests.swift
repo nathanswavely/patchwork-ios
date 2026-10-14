@@ -254,4 +254,65 @@ final class GettingInTests: XCTestCase {
         XCTAssertNil(other.existingSlug)
         XCTAssertEqual(SuggestionRules.sentence(other), "Could not read a calendar at that address")
     }
+
+    // MARK: - Claiming
+
+    func testWhatAPatchTakesIsReadFromClaimsMine() throws {
+        let state = try decode(ClaimState.self, #"{"claim":null,"methods":{"dns":true,"meta_tag":true,"did":true,"email":false,"admin":true},"verification_domain":"choir.example.org","node_status":"unclaimed"}"#)
+        XCTAssertNil(state.claim)
+        XCTAssertTrue(state.offers(.metaTag), "the snake-case decoder rewrites meta_tag; it is still read")
+        XCTAssertTrue(state.offers(.dns))
+        XCTAssertFalse(state.offers(.email))
+        XCTAssertEqual(state.domain, "choir.example.org")
+        XCTAssertEqual(ClaimMethod.unavailableReason(.email, domain: "choir.example.org"), "This quilt can't send email")
+        XCTAssertEqual(ClaimMethod.unavailableReason(.dns, domain: ""), "Requires a verified domain on this listing")
+        XCTAssertEqual(ClaimMethod.unavailableReason(.dns, domain: "x.org"), "Unavailable on this listing")
+    }
+
+    func testAnOpenClaimCarriesItsInstructions() throws {
+        let state = try decode(ClaimState.self, #"{"claim":{"id":"c1","method":"dns","evidence":"","status":"pending","email":"","created_at":"2026-10-01T10:00:00Z","instructions":"Add a TXT record on x.org with the value: patchwork-verify=abc","record_value":"patchwork-verify=abc"},"methods":{"admin":true},"verification_domain":"x.org","node_status":"unclaimed"}"#)
+        let claim = try XCTUnwrap(state.claim)
+        XCTAssertEqual(claim.kind, .dns)
+        XCTAssertTrue(claim.kind?.verifiable == true)
+        XCTAssertFalse(claim.approved)
+        XCTAssertEqual(claim.recordValue, "patchwork-verify=abc")
+        let approved = try decode(PatchClaimDetail.self, #"{"id":"c2","method":"email","status":"approved","setup_expires_at":"2026-10-27T10:00:00Z"}"#)
+        XCTAssertTrue(approved.approved)
+        XCTAssertFalse(ClaimMethod.email.verifiable, "an email claim is completed by its link, not by Verify Now")
+    }
+
+    func testAClaimSendsOnlyWhatItsMethodAsksFor() throws {
+        let email = try json(ClaimRequestBody(method: .email, evidence: "ignored", email: " me@choir.example.org "))
+        XCTAssertEqual(email["method"] as? String, "email")
+        XCTAssertEqual(email["email"] as? String, "me@choir.example.org")
+        XCTAssertNil(email["evidence"])
+        let admin = try json(ClaimRequestBody(method: .admin, evidence: " I run it. ", email: "x@y"))
+        XCTAssertEqual(admin["evidence"] as? String, "I run it.")
+        XCTAssertNil(admin["email"])
+        XCTAssertEqual(try json(ClaimRequestBody(method: .metaTag, evidence: "", email: ""))["method"] as? String, "meta_tag")
+        XCTAssertFalse(ClaimRules.canSubmit(nil, email: ""))
+        XCTAssertFalse(ClaimRules.canSubmit(.email, email: "me"))
+        XCTAssertTrue(ClaimRules.canSubmit(.email, email: "me@choir.example.org"))
+        XCTAssertTrue(ClaimRules.canSubmit(.dns, email: ""))
+    }
+
+    func testVerifyingAnswersEitherWay() throws {
+        let still = try decode(ClaimVerification.self, #"{"status":"pending","verified":false,"error":"TXT record not found — it may take a few minutes to propagate"}"#)
+        XCTAssertEqual(still.verified, false)
+        XCTAssertEqual(still.error, "TXT record not found — it may take a few minutes to propagate")
+        let done = try decode(ClaimVerification.self, #"{"status":"approved","verified":true,"slug":"x","setup_required":true}"#)
+        XCTAssertEqual(done.setupRequired, true)
+    }
+
+    func testASetupRefusalIsSaidInTheRightWords() {
+        let expired = APIError.from(status: 410, data: Data(#"{"error":"this claim's setup window has expired. The patch is claimable again"}"#.utf8))
+        XCTAssertEqual(PatchSetupRules.sentence(expired), "This claim's setup window has expired. The patch is claimable again")
+        XCTAssertTrue(PatchSetupRules.isFinal(expired))
+        let taken = APIError.from(status: 409, data: Data(#"{"error":"this patch is no longer unclaimed"}"#.utf8))
+        XCTAssertEqual(PatchSetupRules.sentence(taken), "This patch is no longer claimable.", "the web's own words for somebody else's setup")
+        XCTAssertTrue(PatchSetupRules.isFinal(taken))
+        let other = APIError.from(status: 400, data: Data(#"{"error":"unknown governance template"}"#.utf8))
+        XCTAssertEqual(PatchSetupRules.sentence(other), "Unknown governance template")
+        XCTAssertFalse(PatchSetupRules.isFinal(other))
+    }
 }

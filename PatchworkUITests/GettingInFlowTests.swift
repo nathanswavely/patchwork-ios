@@ -139,6 +139,66 @@ final class GettingInFlowTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["suggestWaiting"].waitForExistence(timeout: 2))
     }
 
+    // MARK: - Claiming
+
+    /// Claim the Evening Choir by email: the link is the browser's, coming
+    /// back picks the approval up, and setup lands on the live patch with
+    /// the reader as its admin.
+    func testClaimByEmailAndSetItUp() {
+        let app = launch()
+        signIn(app)
+        openPatch(app, named: "Evening Choir")
+        let door = app.buttons["claimDoor"]
+        XCTAssertTrue(door.waitForExistence(timeout: 10))
+        XCTAssertTrue(door.label.contains("If it's yours, claim it"))
+        door.tap()
+
+        let email = app.buttons["claimMethod-email"]
+        XCTAssertTrue(email.waitForExistence(timeout: 10), "the methods the listing takes")
+        XCTAssertTrue(app.buttons["claimMethod-admin"].isEnabled)
+        XCTAssertFalse(app.buttons["claimSubmit"].isEnabled, "nothing is preselected")
+        email.tap()
+        let address = app.textFields["claimEmail"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        address.tap()
+        address.typeText("songs@eveningchoir.example.org")
+        capture(app, "G9 Claiming by email")
+        app.buttons["claimSubmit"].tap()
+
+        XCTAssertTrue(wait(app.staticTexts["claimEmailSent"], label: "songs@eveningchoir.example.org"))
+        XCTAssertTrue(app.descendants(matching: .any)["claimBrowserNote"].exists, "the browser's part is said plainly")
+        XCTAssertTrue(app.buttons["claimResend"].exists)
+        XCTAssertTrue(app.buttons["claimWithdraw"].exists)
+        capture(app, "G10 The link is in the email")
+
+        // The emailed link is opened in the browser; offline, leaving the
+        // app stands in for that, and coming back is when it is read.
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.activate()
+        XCTAssertTrue(app.staticTexts["claimApprovedHeading"].waitForExistence(timeout: 15), "the approval is picked up on return")
+        capture(app, "G11 Approved")
+        app.buttons["claimSetUp"].tap()
+
+        XCTAssertTrue(wait(app.staticTexts["patchFormHeading"], label: "Set up your patch"))
+        XCTAssertTrue(app.staticTexts["setupSlug"].exists, "the patch's existing address")
+        XCTAssertTrue(app.staticTexts["setupExpires"].exists)
+        let seeded = app.staticTexts["policySeeded"]
+        XCTAssertTrue(scroll(app, to: seeded))
+        XCTAssertTrue(seeded.label.contains("Set by the Minimal template"))
+        let casual = app.buttons["template-casual"]
+        XCTAssertTrue(scroll(app, to: casual))
+        casual.tap()
+        XCTAssertTrue(app.buttons["policy-open"].isSelected, "the policy follows the template until it is answered")
+        capture(app, "G12 Setting it up")
+        app.buttons["patchFormSubmit"].tap()
+
+        XCTAssertTrue(wait(app.descendants(matching: .any)["relationshipNote"], label: "This patch is yours", timeout: 15))
+        XCTAssertTrue(wait(app.buttons["relationshipControl"], label: "Admin"))
+        XCTAssertFalse(app.staticTexts["unclaimedNotice"].exists, "it is nobody's listing any more")
+        capture(app, "G13 The patch is yours")
+    }
+
     // MARK: - Helpers
 
     func openAddPatch(_ app: XCUIApplication) {

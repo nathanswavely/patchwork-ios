@@ -49,8 +49,7 @@ final class NotificationsTests: XCTestCase {
     /// The surfaces this client has not built are exits, not stubs — the same
     /// rule the rest of the app follows about the website's own pages.
     func testWhatThisClientDoesNotDrawIsAnExitToTheWebsite() {
-        for path in ["/patches/common-thread/setup",
-                     "/patches/common-thread/settings/noticeboard",
+        for path in ["/patches/common-thread/settings/noticeboard",
                      "/patches/common-thread/settings/sources",
                      "/submit",
                      "/sources",
@@ -59,6 +58,13 @@ final class NotificationsTests: XCTestCase {
                      ""] {
             XCTAssertEqual(NotificationLink.route(path), .website(path: path), "\(path) is not a native screen")
         }
+    }
+
+    /// A claim and its setup are native (web ADR 039): `claim.approved`
+    /// links to `/setup`, and both open the claim's own page.
+    func testClaimAndSetupLinksOpenTheClaim() {
+        XCTAssertEqual(NotificationLink.route("/patches/extra-9/setup"), .claim(slug: "extra-9"))
+        XCTAssertEqual(NotificationLink.route("/patches/extra-9/claim"), .claim(slug: "extra-9"))
     }
 
     /// The noticeboard is a native room now (web ADR 081): the board, and a
