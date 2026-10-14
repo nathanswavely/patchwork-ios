@@ -69,5 +69,12 @@ schemes:
     build:
       targets:
         Patchwork: all
+    # Two plans (README, Testing): Smoke is every unit test and the seven
+    # paths that must never break, run on every pull request and by ⌘U;
+    # Full is everything, the accessibility audits included, run in
+    # parallel on every merge to main and before a release.
     test:
-      targets: [PatchworkTests, PatchworkUITests]
+      testPlans:
+        - path: Smoke.xctestplan
+          defaultPlan: true
+        - path: Full.xctestplan
