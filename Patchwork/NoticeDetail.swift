@@ -50,6 +50,8 @@ struct NoticeDetailView: View {
     @State private var confirmingTakeDown = false
     @State private var removing: NoticeReply?
     @State private var reporting: ReportTarget?
+    /// The author of the notice or of a reply, opened by their name.
+    @State private var person: String?
     @FocusState private var typing: Bool
 
     private var notice: Notice { loadedNotice ?? initial }
@@ -119,6 +121,7 @@ struct NoticeDetailView: View {
             }
         }
         .sheet(item: $reporting) { ReportSheet(target: $0, api: api) }
+        .personDestination($person, quilt: quilt, close: close)
         .task { await load(); await loadReplies() }
         .refreshable { await load(); await loadReplies() }
     }
@@ -139,8 +142,14 @@ struct NoticeDetailView: View {
                         .accessibilityIdentifier("noticeTitleText")
                 }
                 if loadedNotice != nil || !notice.createdAt.isEmpty {
-                    Text(byline(author: notice.author, at: notice.createdAt))
-                        .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                    // The author is a door where there is somebody to open;
+                    // a deleted account's notice keeps the plain byline.
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        PersonName(name: notice.author, username: notice.authorUsername, font: Font.pw.subheadline,
+                                   inert: .pwTextMuted) { person = $0 }
+                        let when = NotificationTime.ago(notice.createdAt)
+                        if !when.isEmpty { Text(" · \(when)").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted) }
+                    }
                 }
                 if notice.membersTold || !notice.repliesOpen {
                     HStack(spacing: 8) {
@@ -180,11 +189,6 @@ struct NoticeDetailView: View {
             }
         }
         .accessibilityIdentifier("noticeImage")
-    }
-
-    private func byline(author: String, at stamp: String) -> String {
-        let when = NotificationTime.ago(stamp)
-        return when.isEmpty ? author : "\(author) · \(when)"
     }
 
     // MARK: The acts
@@ -272,7 +276,7 @@ struct NoticeDetailView: View {
     private func replyCard(_ reply: NoticeReply) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(reply.author).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
+                PersonName(name: reply.author, username: reply.authorUsername) { person = $0 }
                 Spacer(minLength: 8)
                 Text(NotificationTime.ago(reply.createdAt)).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
             }
@@ -481,22 +485,37 @@ struct NoticeDetailView: View {
 
 // MARK: - Reporting
 
-/// What is being reported: a notice by its title, or a reply.
+/// What is being reported: a notice by its title, a reply, or a person by
+/// their name.
 struct ReportTarget: Identifiable, Hashable {
     let kind: ReportBody.Kind
     let id: String
-    /// The notice's title. A reply has none, and is called "this reply".
+    /// The notice's title, or the person's name. A reply has none, and is
+    /// called "this reply".
     let subject: String
-    var heading: String { kind == .notice ? "Report this notice" : "Report this reply" }
+    var heading: String {
+        switch kind {
+        case .notice: return "Report this notice"
+        case .reply: return "Report this reply"
+        case .user: return "Report this person"
+        }
+    }
     var named: String {
         let title = subject.trimmingCharacters(in: .whitespacesAndNewlines)
-        return kind == .notice && !title.isEmpty ? "“\(title)”" : (kind == .notice ? "this notice" : "this reply")
+        switch kind {
+        case .notice: return title.isEmpty ? "this notice" : "“\(title)”"
+        case .reply: return "this reply"
+        case .user: return title.isEmpty ? "this person" : title
+        }
     }
+    /// Who reads it. A notice or a reply goes to its patch's admins; a person
+    /// belongs to no one patch, so a report about them goes to the quilt's.
+    var destination: String { kind == .user ? People.reportDestination : Noticeboard.reportDestination }
 }
 
 /// The web's report dialog as a sheet: a reason from its list, room to say
-/// more, and where the report goes — which, for this room, is the patch's
-/// own admins.
+/// more, and where the report goes — the patch's own admins for what was
+/// written in its room, the quilt's admins for a person.
 struct ReportSheet: View {
     let target: ReportTarget
     let api: PatchworkAPI
@@ -547,7 +566,7 @@ struct ReportSheet: View {
                 .font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("reportHeading")
-            Text("\(Noticeboard.reportDestination) You’re reporting \(target.named).")
+            Text("\(target.destination) You’re reporting \(target.named).")
                 .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }

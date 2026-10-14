@@ -394,6 +394,33 @@ struct LaunchLens: Equatable {
         if let response: PatchResponse = try? await api.get("nodes/\(slug)") { docked = response.node }
     }
 
+    /// A patch asked for again from inside its own docked profile — a person
+    /// reached from its members room names it under "Runs". A sheet holding
+    /// the same patch cannot be handed it a second time, so the sheet is let
+    /// go and the patch docked afresh once it has gone, which brings the
+    /// reader back to its profile from however deep in its rooms they were.
+    /// Any other patch simply takes the sheet's place.
+    func openFromProfile(slug: String) async {
+        if docked?.slug == slug {
+            waitingToDock = slug
+            docked = nil
+            return
+        }
+        await open(slug: slug)
+    }
+    /// A patch named inside some other sheet — the notifications, the
+    /// quilt's information stack — docks once that sheet has gone: a sheet
+    /// cannot be presented while another is still leaving.
+    func dock(afterSheet slug: String) { waitingToDock = slug }
+    private var waitingToDock: String?
+    /// A sheet has gone (its presenter's `onDismiss`), and a patch may be
+    /// waiting for the quilt underneath.
+    func sheetDismissed() {
+        guard let slug = waitingToDock else { return }
+        waitingToDock = nil
+        Task { await open(slug: slug) }
+    }
+
     /// Let go of this quilt, and only this quilt.
     ///
     /// The cookie is cleared whatever the POST did. A 401 means the session
