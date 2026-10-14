@@ -2498,6 +2498,9 @@ enum PreviewData {
             let display = ((fields["display_name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !username.isEmpty else { throw APIError.message("Choose a username.", status: 400) }
             startSession()
+            // A new account belongs nowhere and has heard nothing yet.
+            held = [:]
+            notifications = []
             account = "{\"id\":\"demo-user\",\"username\":\"\(username)\",\"display_name\":\"\(display)\",\"role\":\"member\"}"
             return account
         case "auth/logout":

@@ -199,6 +199,54 @@ final class GettingInFlowTests: XCTestCase {
         capture(app, "G13 The patch is yours")
     }
 
+    // MARK: - A first account
+
+    /// The username step says what creating an account agrees to, and both
+    /// documents open over it; the new account is welcomed once, and not
+    /// again after the Welcome has been answered.
+    func testANewAccountSeesTheAgreementAndTheWelcomeOnce() {
+        let app = launch()
+        signIn(app, code: "654321")
+        let username = app.textFields["signInUsername"]
+        XCTAssertTrue(username.waitForExistence(timeout: 5))
+        let line = app.staticTexts["agreementLine"]
+        XCTAssertTrue(line.exists, "the agreement line sits under the act it is about")
+        XCTAssertTrue(line.label.contains("By creating an account you agree to the User Agreement and Privacy Policy."))
+        capture(app, "G14 The agreement line")
+        let terms = app.links["User Agreement"]
+        XCTAssertTrue(terms.waitForExistence(timeout: 5))
+        terms.tap()
+        XCTAssertTrue(app.navigationBars["User Agreement"].waitForExistence(timeout: 10), "the quilt's own document, natively")
+        app.navigationBars["User Agreement"].buttons["Done"].tap()
+        XCTAssertTrue(username.waitForExistence(timeout: 5), "and back to the step it interrupted")
+
+        username.tap()
+        username.typeText("new-reader")
+        app.buttons["signInCreate"].tap()
+        let heading = app.staticTexts["welcomeHeading"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 10), "a new account is welcomed")
+        XCTAssertEqual(heading.label, "Welcome to Sample quilt")
+        XCTAssertTrue(wait(app.staticTexts["welcomeLabel"], label: "This quilt is stewarded by Sample Steward"), "the Label's panel")
+        XCTAssertTrue(app.staticTexts["What's expected here"].exists)
+        XCTAssertTrue(app.staticTexts["Report harmful behavior instead of ignoring it"].exists)
+        capture(app, "G15 Welcome")
+        app.buttons["welcomeBuild"].tap()
+        XCTAssertFalse(heading.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.tabBars.buttons["Discover"].isSelected, "Build your quilt hands on to Discover")
+
+        // Out and back in as the same account: the Welcome was answered.
+        app.buttons["Account"].tap()
+        app.buttons["Sign out"].tap()
+        signIn(app, code: "654321")
+        let again = app.textFields["signInUsername"]
+        XCTAssertTrue(again.waitForExistence(timeout: 5))
+        again.tap()
+        again.typeText("new-reader")
+        app.buttons["signInCreate"].tap()
+        XCTAssertFalse(again.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["welcomeHeading"].waitForExistence(timeout: 4), "once is once")
+    }
+
     // MARK: - Helpers
 
     func openAddPatch(_ app: XCUIApplication) {

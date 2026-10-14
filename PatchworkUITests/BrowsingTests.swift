@@ -514,6 +514,11 @@ final class BrowsingTests: XCTestCase {
         app.buttons["signInCreate"].tap()
 
         XCTAssertFalse(app.textFields["signInUsername"].waitForExistence(timeout: 5), "the account is made and the sheet is done")
+        // A new account is welcomed once (GettingInFlowTests reads it).
+        let skip = app.buttons["welcomeSkip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertFalse(app.staticTexts["welcomeHeading"].waitForExistence(timeout: 2), "and lets go when answered")
         app.buttons["Account"].tap()
         XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5))
         XCTAssertTrue(named(app, "new-reader").waitForExistence(timeout: 5), "the menu wears the name they chose")

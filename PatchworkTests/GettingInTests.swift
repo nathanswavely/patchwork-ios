@@ -315,4 +315,36 @@ final class GettingInTests: XCTestCase {
         XCTAssertEqual(PatchSetupRules.sentence(other), "Unknown governance template")
         XCTAssertFalse(PatchSetupRules.isFinal(other))
     }
+
+    // MARK: - A first account
+
+    func testTheWelcomeIsForAReaderWhoBelongsNowhereYet() throws {
+        XCTAssertTrue(WelcomeRule.shouldWelcome(memberships: [], dismissed: false))
+        XCTAssertFalse(WelcomeRule.shouldWelcome(memberships: [], dismissed: true), "skipping genuinely exits")
+        let row = try decode(Membership.self, #"{"id":"m","node_slug":"a","status":"active","role":"follower"}"#)
+        XCTAssertFalse(WelcomeRule.shouldWelcome(memberships: [row], dismissed: false))
+        let quilt = Quilt(url: URL(string: "https://quilt.example.org")!, name: "Q")
+        XCTAssertEqual(WelcomeRule.key(quilt: quilt, userID: "u1"), "welcome-dismissed:https://quilt.example.org:u1",
+                       "kept per quilt and per account, as the web keys it per user")
+    }
+
+    func testTheLabelPanelSaysWhoAndWhat() throws {
+        let one = try decode(QuiltLabel.self, ###"{"published":true,"stewards":[{"username":"sam","display_name":"Sample Steward"}],"total_monthly_minor":1350,"currency":"USD","prose":"## Why\n\nThis quilt is fictional.\n\nMore."}"###)
+        XCTAssertEqual(WelcomeRule.stewardLine(one), "This quilt is stewarded by Sample Steward and costs about $13.50/month to run.")
+        XCTAssertEqual(WelcomeRule.proseLine(one.prose), "This quilt is fictional.", "the first line that is not a heading")
+        let many = try decode(QuiltLabel.self, #"{"published":true,"stewards":[{"username":"a"},{"username":"b","display_name":"Bee"},{"username":"c"},{"username":"d"}]}"#)
+        XCTAssertEqual(WelcomeRule.stewardLine(many), "This quilt is stewarded by @a, Bee, @c +1.")
+        let three = try decode(QuiltLabel.self, #"{"stewards":[{"username":"a"},{"username":"b"},{"username":"c"}]}"#)
+        XCTAssertEqual(WelcomeRule.stewardLine(three), "This quilt is stewarded by @a, @b, @c.")
+        XCTAssertEqual(WelcomeRule.proseLine(String(repeating: "a", count: 200))?.count, 141, "cut at 140, with an ellipsis")
+        XCTAssertEqual(WelcomeRule.expectations.count, 4)
+    }
+
+    func testTheAgreementLineNamesBothDocuments() {
+        XCTAssertEqual(String(AgreementLine.sentence.characters),
+                       "By creating an account you agree to the User Agreement and Privacy Policy.")
+        XCTAssertEqual(AgreementLine.doc(for: URL(string: "patchwork-legal:terms")!), .terms)
+        XCTAssertEqual(AgreementLine.doc(for: URL(string: "patchwork-legal:privacy")!), .privacy)
+        XCTAssertNil(AgreementLine.doc(for: URL(string: "https://quilt.example.org/terms")!))
+    }
 }

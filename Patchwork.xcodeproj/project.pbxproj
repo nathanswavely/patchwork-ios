@@ -87,6 +87,7 @@
 		BC83FCD961C536C590C9A3C2 /* QuiltSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41A7515238A35D73C8309066 /* QuiltSwitcher.swift */; };
 		BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */; };
 		CAB4C54746B116EAF3B456CE /* PatchNoticeboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC4F7EE1A9AFDA8388654EA /* PatchNoticeboard.swift */; };
+		CB47A39C0A5519A26B592255 /* Welcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36F289D04BA1DDF3EF45FE89 /* Welcome.swift */; };
 		CDDDA449B8FEC407418B2E98 /* ContactCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE5641C25C6C1AB8784D61A /* ContactCard.swift */; };
 		D14CD2DCE109BB357BDE327E /* EventForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD601D344604C029C0AF7B0 /* EventForm.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
@@ -153,6 +154,7 @@
 		2F7233C3A988DA4C67073F63 /* TypographyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyTests.swift; sourceTree = "<group>"; };
 		32C4A6B576ED752A74140651 /* EventEditingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventEditingFlowTests.swift; sourceTree = "<group>"; };
 		3475E4A053C83424DD2469A3 /* ProposalPosting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalPosting.swift; sourceTree = "<group>"; };
+		36F289D04BA1DDF3EF45FE89 /* Welcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Welcome.swift; sourceTree = "<group>"; };
 		3EFC7ACE15046E1958924BFE /* QuiltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSession.swift; sourceTree = "<group>"; };
 		41A7515238A35D73C8309066 /* QuiltSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSwitcher.swift; sourceTree = "<group>"; };
 		4510113B947EAF0DB94F046F /* QuiltCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltCanvas.swift; sourceTree = "<group>"; };
@@ -325,6 +327,7 @@
 				9A5FE49A81232BB37D460D07 /* SignIn.swift */,
 				9C0BCD036191572728123058 /* StepUp.swift */,
 				F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */,
+				36F289D04BA1DDF3EF45FE89 /* Welcome.swift */,
 				C9BF10AABCDDC67BA1A817E2 /* Fonts */,
 			);
 			path = Patchwork;
@@ -584,6 +587,7 @@
 				DEF113A2D4B497DB90AACC40 /* SignIn.swift in Sources */,
 				355133881A46AB9A1E5F1661 /* StepUp.swift in Sources */,
 				591E2530EDE882D5A8880697 /* Typography.swift in Sources */,
+				CB47A39C0A5519A26B592255 /* Welcome.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -120,6 +120,8 @@ struct LaunchLens: Equatable {
     /// "This patch is yours" — said once, in the place the reader lands, by
     /// whichever sheet sent them there and has since gone.
     @Published var arrival: ArrivalNote?
+    /// The one-screen Welcome is up (see `WelcomeRule`).
+    @Published private(set) var welcoming = false
     /// How many notifications this reader has not read, on this quilt. It is
     /// the bell's whole state and the Dashboard's first row, which is why it
     /// lives here rather than in either of them: two surfaces counting
@@ -269,9 +271,21 @@ struct LaunchLens: Equatable {
         launchLens.signedInMidSession()
         Task {
             await refreshMemberships()
+            // A reader who belongs nowhere yet — an account made a moment
+            // ago, on the username step — is shown the Welcome once.
+            if WelcomeRule.shouldWelcome(memberships: memberships, dismissed: WelcomeRule.dismissed(quilt: quilt, userID: user.id)) {
+                withAnimation { welcoming = true }
+            }
             await refreshUnread()
             startUnreadPoll()
         }
+    }
+
+    /// Either of the Welcome's answers lets it go for good, for this account
+    /// on this quilt: skipping has to genuinely exit, as on the web.
+    func dismissWelcome() {
+        if let me { WelcomeRule.dismiss(quilt: quilt, userID: me.id) }
+        withAnimation { welcoming = false }
     }
 
     /// Any authenticated call anywhere can land here: a 401 means the session
@@ -283,6 +297,7 @@ struct LaunchLens: Equatable {
         scope = .whole
         memberships = []
         invitations = []
+        welcoming = false
         unread = UnreadTally.cleared
         stopUnreadPoll()
     }

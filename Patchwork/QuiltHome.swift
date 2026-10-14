@@ -59,6 +59,20 @@ struct QuiltHome: View {
                 }
             }
         }
+        // The first account's Welcome, over the whole app the way the web's
+        // stands in its threshold shell; Build your quilt hands on to Discover.
+        .overlay {
+            if session.welcoming {
+                WelcomeView(quiltName: session.instance?.name ?? session.quilt.name) {
+                    session.dismissWelcome()
+                    pane = .discover
+                } exploreOnMyOwn: {
+                    session.dismissWelcome()
+                }
+                .transition(.opacity)
+                .accessibilityAddTraits(.isModal)
+            }
+        }
         .onChange(of: pane) { was, now in
             // Search is a place: choosing it keeps the pill selected while the
             // field is live rather than bouncing the selection back, which
