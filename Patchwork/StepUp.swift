@@ -6,10 +6,10 @@ import UIKit
 // Step-up (web ADR 017, ADR 099): an act that cannot be undone asks for a
 // fresh proof that the person is at the keyboard, not only the session they
 // already hold. The server says so with a 403 whose `code` is
-// `sudo_required` or `passkey_required`; the proof this client can offer is
-// a recovery code, which opens the same five-minute window a passkey opens
-// on the web. Passkeys are not offered here at all — this build has none —
-// so nothing on these screens mentions them.
+// `sudo_required` or `passkey_required`. On a quilt this app is associated
+// with (`PasskeyDomains`), a person who has a passkey confirms with it first;
+// everywhere, a recovery code opens the same five-minute window, and is the
+// only proof offered on a quilt the app cannot use passkeys with.
 
 // MARK: - The code itself
 
@@ -266,6 +266,9 @@ struct StepUpSheet: View {
     /// The server's reason for the last failure, which decides the door
     /// offered under the sentence.
     @State private var failureCode: String?
+    /// The account holds a passkey and this quilt is one the app may use it on.
+    @State private var passkeyReady = false
+    @State private var passkeyError: String?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -280,6 +283,8 @@ struct StepUpSheet: View {
                         Text(message).font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
                         Button { Task { await load() } } label: { Text("Try again").font(Font.pw.subheadline).inkAction("arrow.clockwise") }
                             .buttonStyle(.plain)
+                    case .deciding(let codes) where passkeyReady:
+                        passkeyFirst(then: codes)
                     case .deciding(.enterCode(let ready)): enterCode(ready: ready)
                     case .deciding(.signInAgain): signInAgain
                     case .deciding(.makeCodes): makeCodes
@@ -304,14 +309,49 @@ struct StepUpSheet: View {
 
     // MARK: The three states
 
-    private func enterCode(ready: Int) -> some View {
+    /// A passkey confirms in one gesture, so it leads; a recovery code is
+    /// still offered beneath it for a passkey on another device or none at
+    /// hand — the state the codes are in decides what that part says.
+    private func passkeyFirst(then codes: StepUp.Confirm) -> some View {
         Group {
             heading("Confirm it’s you")
             Text("This can’t be undone, so the quilt asks for a fresh proof that it’s you, not only the session you’re signed in with.")
                 .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
-            Text("Enter one of your recovery codes to confirm. Each code works once.")
-                .font(Font.pw.body).foregroundStyle(Color.pwText)
-                .accessibilityIdentifier("stepUpEnterCode")
+            if let passkeyError {
+                Text(passkeyError).font(Font.pw.footnote).foregroundStyle(Color.pwText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("stepUpPasskeyError")
+            }
+            primary("Confirm with your passkey", identifier: "stepUpPasskey", enabled: true) { confirmWithPasskey() }
+            if case .enterCode(let ready) = codes {
+                Divider().padding(.vertical, 6)
+                Text("Or use a recovery code").font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
+                codeField
+                primary("Confirm with code", identifier: "stepUpConfirm", enabled: RecoveryCode.isComplete(code)) { confirm() }
+                Text(ready == 1 ? "One of your codes can confirm this." : "\(ready) of your codes can confirm this.")
+                    .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+            }
+        }
+    }
+
+    private func confirmWithPasskey() {
+        guard !busy else { return }
+        busy = true
+        passkeyError = nil
+        Task {
+            defer { busy = false }
+            do {
+                try await api.stepUpWithPasskey()
+                onFinish(.confirmed)
+            } catch {
+                passkeyError = Passkeys.sentence(error, for: .stepUp)
+            }
+        }
+    }
+
+    /// The code field and its refusal, shared by both ways in.
+    private var codeField: some View {
+        Group {
             TextField(text: $code, prompt: Text(verbatim: "xxxx-xxxx-xxxx")) { Text("Recovery code") }
                 .font(.system(.body, design: .monospaced))
                 .textInputAutocapitalization(.never)
@@ -336,6 +376,18 @@ struct StepUpSheet: View {
                 if failureCode == "recovery_codes_too_new" { signOutButton }
                 if failureCode == "no_recovery_codes" { makeCodesLink }
             }
+        }
+    }
+
+    private func enterCode(ready: Int) -> some View {
+        Group {
+            heading("Confirm it’s you")
+            Text("This can’t be undone, so the quilt asks for a fresh proof that it’s you, not only the session you’re signed in with.")
+                .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+            Text("Enter one of your recovery codes to confirm. Each code works once.")
+                .font(Font.pw.body).foregroundStyle(Color.pwText)
+                .accessibilityIdentifier("stepUpEnterCode")
+            codeField
             primary("Confirm", identifier: "stepUpConfirm", enabled: RecoveryCode.isComplete(code)) { confirm() }
             Text(ready == 1 ? "One of your codes can confirm this." : "\(ready) of your codes can confirm this.")
                 .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
@@ -421,6 +473,7 @@ struct StepUpSheet: View {
             // Already open (a recovery sign-in opens it on arrival): there is
             // nothing to ask, and asking would spend a code for nothing.
             if status.active == true { onFinish(.confirmed); return }
+            passkeyReady = status.hasPasskey == true && PasskeyDomains.supports(api.base)
             let codes = (status.recoveryReady ?? 0) > 0 ? nil : try? await api.recoveryCodeStatus()
             phase = .deciding(StepUp.decide(status: status, codes: codes))
         } catch {
