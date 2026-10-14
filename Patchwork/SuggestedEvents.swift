@@ -238,6 +238,7 @@ struct SuggestedEventsView: View {
             }
             if reviews && !queue.loaded { await queue.load(api: session.api, slug: slug) }
         }
+        .onChange(of: reviews) { _, now in if now && !queue.loaded { Task { await queue.load(api: session.api, slug: slug) } } }
         .refreshable { await queue.load(api: session.api, slug: slug) }
     }
 }
