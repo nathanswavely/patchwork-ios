@@ -14,17 +14,32 @@ import SwiftUI
 ///
 /// Voting, standing and discussing happen on a proposal's own screen, which
 /// the rows here lead to; a member who owes a ballot is told so at the top,
-/// as a door into the open proposals. Proposing a change stays the website's,
-/// and a disabled button pretending otherwise would be the one thing the
-/// profile must not do.
+/// as a door into the open proposals. A member or an admin raises a proposal
+/// from the bar at the foot, here and in the proposals room; the form is
+/// what the patch's rules make it (`ProposalPosting`). Changing a document
+/// or the rules, nominating, and deciding somebody else's proposal stay the
+/// website's.
 struct PatchGovernanceHome: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let patch: Patch
     var close: (() -> Void)? = nil
     @State private var overview: GovernanceOverview?
     @State private var loading = true
     @State private var error: String?
+    @State private var composing = false
+    /// A proposal the form made, waiting for the form to leave before it is
+    /// opened; and the one opened.
+    @State private var made: Proposal?
+    @State private var opened: Proposal?
+    /// Something was proposed or withdrawn while another screen was up: the
+    /// counts here are out of date.
+    @State private var stale = false
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
+    /// Only on the quilt the reader is signed in to: no act crosses quilts.
+    private var signedIn: Bool { quilt.url == session.quilt.url && session.me != nil }
+    private var standing: Standing? { session.standing(for: patch.slug) }
+    private var door: String? { ProposalPosting.door(signedIn: signedIn, standing: standing, rules: overview?.rules) }
     /// The patch's own setting decides until the overview answers; then the
     /// overview does, because it is answered for this reader — a member of
     /// a patch that keeps its record to the room is in the room, and must
@@ -42,7 +57,7 @@ struct PatchGovernanceHome: View {
                 if let needs = overview.needsVote, needs > 0, !recordWithheld {
                     Section {
                         NavigationLink {
-                            PatchProposalList(quilt: quilt, slug: patch.slug, close: close)
+                            proposalList
                         } label: {
                             Label(Self.needsVoteLine(needs), systemImage: "checkmark.circle")
                                 .font(Font.pw.headline).foregroundStyle(Color.pwText)
@@ -53,7 +68,7 @@ struct PatchGovernanceHome: View {
                 if let election = overview.election, election.phase == "nominating" {
                     Section {
                         NavigationLink {
-                            ProposalDetailView(quilt: quilt, initial: Proposal(id: election.id, title: ""), close: close)
+                            ProposalDetailView(quilt: quilt, initial: Proposal(id: election.id, title: ""), close: close) { stale = true }
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Nominations are open for \(VoteRules.seatsLabel(election.seats ?? 0))")
@@ -108,7 +123,7 @@ struct PatchGovernanceHome: View {
                             .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                     } else {
                         NavigationLink {
-                            PatchProposalList(quilt: quilt, slug: patch.slug, close: close)
+                            proposalList
                         } label: {
                             Label("Proposals", systemImage: "checkmark.bubble")
                                 .badge(overview.openProposals ?? 0)
@@ -130,14 +145,35 @@ struct PatchGovernanceHome: View {
                 }
             }
             Section {
-                WebsiteOnlyNote(text: "Proposing a change happens on this quilt’s website.")
+                WebsiteOnlyNote(text: ProposalPosting.documentsNote)
             }
             }.listRows()
         }
         .groundedList()
         .navigationTitle("Governance").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if let door {
+                ToolbarItem(placement: .bottomBar) { ProposalDoorButton(label: door) { composing = true } }
+            }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
+        // The new proposal opens once the form has gone, pushed onto this
+        // room's own stack, so Back is the room with it already counted.
+        .sheet(isPresented: $composing, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            ProposalFormSheet(slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [],
+                              isPatchAdmin: standing == .active(.admin)) { proposal in
+                made = proposal
+                stale = true
+            }
+        }
+        .navigationDestination(item: $opened) { ProposalDetailView(quilt: quilt, initial: $0, close: close) { stale = true } }
         .task { if overview == nil { await load() } }
+        .onAppear { if stale { stale = false; Task { await load() } } }
+    }
+    /// The proposals room, handed the rules this room already holds, so its
+    /// own door opens the same form.
+    private var proposalList: some View {
+        PatchProposalList(quilt: quilt, slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [], close: close) { stale = true }
     }
     /// "1 proposal needs your vote", "3 proposals need your vote".
     static func needsVoteLine(_ count: Int) -> String {
@@ -327,16 +363,30 @@ struct GovernanceDocumentDetail: View {
 /// column: a lapse and an unsettled contest both carry the schema's
 /// `rejected`, so "Not decided" is the drawer they belong in (web ADR 097).
 struct PatchProposalList: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let slug: String
+    /// The patch's rules, from the governance overview: what the door's
+    /// form will be. Without them there is no door.
+    var rules: GovernanceRules? = nil
+    var seats: [GovernanceSeat] = []
     var close: (() -> Void)? = nil
+    /// Something here changed: whoever counts these is out of date.
+    var changed: () -> Void = {}
     @State private var proposals: [Proposal] = []
+    @State private var composing = false
+    @State private var made: Proposal?
+    @State private var opened: Proposal?
+    @State private var stale = false
     @State private var filter = "open"
     @State private var loading = true
     @State private var loaded = false
     @State private var withheld = false
     @State private var error: String?
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
+    private var signedIn: Bool { quilt.url == session.quilt.url && session.me != nil }
+    private var standing: Standing? { session.standing(for: slug) }
+    private var door: String? { ProposalPosting.door(signedIn: signedIn, standing: standing, rules: rules) }
     static let filters: [(value: String, label: String)] = [
         ("open", "Open"), ("approved", "Approved"), ("rejected", "Rejected"),
         ("not_decided", "Not decided"), ("all", "All"),
@@ -352,7 +402,7 @@ struct PatchProposalList: View {
                 }.pickerStyle(.menu)
             }
             ForEach(proposals) { proposal in
-                NavigationLink { ProposalDetailView(quilt: quilt, initial: proposal, close: close) } label: {
+                NavigationLink { ProposalDetailView(quilt: quilt, initial: proposal, close: close) { stale = true; changed() } } label: {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(proposal.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
                         HStack(spacing: 8) {
@@ -382,11 +432,35 @@ struct PatchProposalList: View {
                         .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
+            // Where a member finds the door, a follower is told what opens
+            // it (web `ProposalList`); joining lives on the profile.
+            if signedIn && standing == .active(.follower) && !withheld {
+                Section {
+                    Text(ProposalPosting.followerLine)
+                        .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                        .accessibilityIdentifier("proposalFollowerLine")
+                }
+            }
             }.listRows()
         }
         .groundedList()
         .navigationTitle("Proposals").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if let door, !withheld {
+                ToolbarItem(placement: .bottomBar) { ProposalDoorButton(label: door) { composing = true } }
+            }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
+        .sheet(isPresented: $composing, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            ProposalFormSheet(slug: slug, rules: rules, seats: seats, isPatchAdmin: standing == .active(.admin)) { proposal in
+                made = proposal
+                changed()
+                // Open is where a new proposal is, unless it was applied.
+                Task { await load() }
+            }
+        }
+        .navigationDestination(item: $opened) { ProposalDetailView(quilt: quilt, initial: $0, close: close) { stale = true; changed() } }
+        .onAppear { if stale { stale = false; Task { await load() } } }
         .overlay {
             if loaded && !loading && error == nil && proposals.isEmpty {
                 ContentUnavailableView(

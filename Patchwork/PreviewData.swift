@@ -243,6 +243,7 @@ enum PreviewData {
         ("listening-room", "demo-patch-2", "The Listening Room",
          "Independent music in good company.", "public", "open"),
         (memberSlug, memberSlug, extraNames[6], "", "public", "open"),
+        (adminSlug, adminSlug, extraNames[7], "", "public", "open"),
     ]
 
     /// The membership set the writes mutate and `me/nodes`, `nodes/{slug}` and
@@ -260,8 +261,12 @@ enum PreviewData {
             memberSlug: (role: "member", status: "active"),
         ]
         if governanceMember { rows["common-thread"] = (role: "member", status: "active") }
+        if governanceAdmin { rows[adminSlug] = (role: "admin", status: "active") }
         return rows
     }
+    /// The extra a `--preview-admin` launch makes the reader an admin of: the
+    /// Film Club, whose admins decide its proposals.
+    static let adminSlug = "extra-7"
     /// The extra the fixture reader is a member of: the Repair Cafe.
     static let memberSlug = "extra-6"
     /// The quilt's other ten patches, by name; `extra-N` is the Nth.
@@ -824,6 +829,45 @@ enum PreviewData {
     /// switch rather than the default because the follow, join and My Quilt
     /// tests read the studio as a patch the reader is not in.
     private static let governanceMember = ProcessInfo.processInfo.arguments.contains("--preview-member")
+    /// `--preview-admin` holds an admin row on the Film Club, where the
+    /// admins decide: the one place offline a change is applied directly.
+    private static let governanceAdmin = ProcessInfo.processInfo.arguments.contains("--preview-admin")
+
+    /// How each patch with rules decides, as its governance config states it
+    /// — the three setups a new proposal can meet. Common Thread and the
+    /// Listening Room vote by majority; the Bike Kitchen and the Film Club
+    /// are decided by their admins; the Repair Cafe decides at meetings, so
+    /// a proposal there opens for discussion with no ballot and no clock.
+    private struct FixtureRules {
+        var method = "majority"
+        var venue = "patchwork"
+        var quorum = 0
+        var hours = 0
+        var eligible = 5
+    }
+    private static let fixtureRules: [String: FixtureRules] = [
+        "common-thread": FixtureRules(quorum: 20, hours: 336, eligible: 12),
+        "listening-room": FixtureRules(hours: 168),
+        "extra-1": FixtureRules(method: "admin"),
+        memberSlug: FixtureRules(venue: "elsewhere", hours: 168, eligible: 6),
+        adminSlug: FixtureRules(method: "admin", hours: 48, eligible: 4),
+    ]
+
+    /// The overview of a patch whose rules are only the table's.
+    private static func plainOverview(_ slug: String) -> String? {
+        guard let rules = fixtureRules[slug] else { return nil }
+        let object: [String: Any] = [
+            "rules": ["decision_method": rules.method, "quorum_percent": rules.quorum,
+                      "default_vote_duration_hours": rules.hours, "leadership_model": "maintainer",
+                      "leadership_venue": "patchwork", "proposal_venue": rules.venue] as [String: Any],
+            "admins": [] as [Any], "admins_withheld": true, "proposals_withheld": false, "election": NSNull(),
+            "seats": [] as [Any], "next_term_end": "", "next_contest_opens": "", "membership_policy": "open",
+            "member_count": rules.eligible, "document_count": 0, "open_proposals": 0, "passed_proposals": 0,
+            "rejected_proposals": 0, "needs_vote": 0,
+        ]
+        return overviewJSON(slug, base: serialize(object))
+    }
+    private static var proposalSerial = 0
     private static let me = "demo-user"
     private static var myName: String { (accountFields["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Sample Reader" }
 
@@ -870,6 +914,8 @@ enum PreviewData {
         var nominationsCloseInMinutes: Int?
         var candidates: [FixtureCandidate] = []
         var abstainers: Set<String> = []
+        /// An admin of an admin-decides patch asked the members first.
+        var advisory = false
         var isElection: Bool { seats > 0 }
     }
 
@@ -1029,8 +1075,8 @@ enum PreviewData {
         ] as [String: Any]
         fields["tenure_days"] = 0
         fields["vote_eligible_at"] = ""
-        fields["applied_at"] = p.state == "in_effect" ? stamp(minutesAgo: p.createdMinutesAgo - day) : ""
-        fields["advisory"] = false
+        fields["applied_at"] = p.state == "in_effect" ? stamp(minutesAgo: max(0, p.createdMinutesAgo - day)) : ""
+        fields["advisory"] = p.advisory
         fields["can_decide"] = false
         fields["declined_by"] = ""
         return fields
@@ -1141,12 +1187,26 @@ enum PreviewData {
     /// "not one of these".
     private static func governanceWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
         let parts = path.split(separator: "/").map(String.init)
+        if method == "POST", parts.count == 3, parts[0] == "nodes", parts[2] == "proposals" {
+            return try propose(slug: parts[1], fields: fields)
+        }
         guard parts.count >= 2, parts[0] == "proposals" || parts[0] == "comments" else { return nil }
         guard signedIn else { throw APIError.unauthenticated }
         if parts[0] == "proposals" {
             let index = try proposalIndex(parts[1])
             var p = proposals[index]
             switch (method, Array(parts.dropFirst(2))) {
+            case ("DELETE", []):
+                // `WithdrawProposal`, in its order.
+                guard p.status == "open" else { throw APIError.message("can only withdraw open proposals", status: 400) }
+                guard !p.isElection else {
+                    throw APIError.message("an election cannot be withdrawn: the calendar opens it and the electorate closes it (docs/adr/051)", status: 409)
+                }
+                guard p.authorId == me || role(p.slug) == "admin" else { throw APIError.message("insufficient permissions", status: 403) }
+                p.status = "withdrawn"
+                p.state = "withdrawn"
+                proposals[index] = p
+                return #"{"status":"withdrawn"}"#
             case ("POST", ["vote"]):
                 guard p.status == "open" else { throw APIError.message("proposal is not open for voting", status: 400) }
                 guard inRoom(p.slug) else { throw APIError.message("must be member of node to vote", status: 403) }
@@ -1266,6 +1326,52 @@ enum PreviewData {
         default:
             throw APIError.status(405)
         }
+    }
+
+    /// `POST nodes/{slug}/proposals`: the server's refusals in its order and
+    /// words, then its switch for the state a proposal is born in. Answered
+    /// with the bare proposal, as the server answers.
+    private static func propose(slug: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        let known = ["common-thread", "listening-room"] + extraNames.indices.map { "extra-\($0)" }
+        guard known.contains(slug) else { throw APIError.message("node not found", status: 404) }
+        guard inRoom(slug) else { throw APIError.message("must be member of node", status: 403) }
+        let title = (fields["title"] as? String) ?? ""
+        guard !title.isEmpty else { throw APIError.message("title is required", status: 400) }
+        var type = (fields["proposal_type"] as? String) ?? ""
+        if type.isEmpty { type = "other" }
+        guard ["amendment", "membership", "action", "other"].contains(type) else { throw APIError.message("invalid proposal_type", status: 400) }
+        let target = (fields["target_user_id"] as? String) ?? ""
+        if !target.isEmpty && type != "membership" {
+            throw APIError.message("a proposal about a person must be of type membership", status: 400)
+        }
+        if type == "membership" && target.isEmpty {
+            throw APIError.message("a membership proposal has to name the person it is about", status: 400)
+        }
+        let rules = fixtureRules[slug] ?? FixtureRules()
+        var hours = (fields["duration_hours"] as? Int) ?? 0
+        if hours <= 0 { hours = rules.hours > 0 ? rules.hours : 72 }
+        let isAdmin = role(slug) == "admin"
+        let putToVote = (fields["put_to_vote"] as? Bool) ?? false
+        let adminDecides = rules.method == "admin"
+        var (status, state) = ("open", "voting")
+        if adminDecides && isAdmin && !putToVote { (status, state) = ("approved", "in_effect") }
+        else if rules.venue == "elsewhere" { state = "elsewhere" }
+        else if adminDecides && !isAdmin { state = "awaiting_admin" }
+        proposalSerial += 1
+        let nodeId = slug == "common-thread" ? "demo-patch" : (slug == "listening-room" ? "demo-patch-2" : slug)
+        let p = FixtureProposal(
+            id: "new-proposal-\(proposalSerial)", slug: slug, nodeId: nodeId, title: title,
+            body: (fields["body"] as? String) ?? "", type: type, author: myName, authorId: me,
+            status: status, state: state, createdMinutesAgo: 0,
+            endsInMinutes: state == "voting" ? hours * 60 : nil,
+            eligible: rules.eligible, quorum: rules.quorum, method: rules.method,
+            advisory: adminDecides && isAdmin && putToVote)
+        proposals.append(p)
+        var answer = listFields(p)
+        answer["duration_hours"] = hours
+        answer.removeValue(forKey: "author_name")
+        return serialize(answer)
     }
 
     /// The governance reads that are not fixed text.
@@ -2060,6 +2166,8 @@ enum PreviewData {
         case "nodes/common-thread/governance/overview": json = overviewJSON("common-thread", base: overview)
         case "nodes/listening-room/governance/overview": json = overviewJSON("listening-room", base: listeningOverview)
         case "nodes/extra-1/governance/overview": json = withheldOverview
+        case "nodes/\(memberSlug)/governance/overview", "nodes/\(adminSlug)/governance/overview":
+            json = plainOverview(String(path.split(separator: "/")[1])) ?? "{}"
         case "nodes/extra-1/governance": json = #"{"items":[],"published_only":true}"#
         case "nodes/extra-1/governance/record": json = #"{"items":[],"public_governance_record":"nobody"}"#
         case "nodes/extra-1/proposals": json = #"{"items":[],"next_cursor":"","public_governance_record":"nobody"}"#
