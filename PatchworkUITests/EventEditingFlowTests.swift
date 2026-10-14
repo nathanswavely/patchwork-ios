@@ -38,16 +38,18 @@ final class EventEditingFlowTests: XCTestCase {
         capture(app, "61 The edit form")
 
         // The location first, while no keyboard covers it; then the title,
-        // which sits above the keyboard. Each is tapped past its last word,
-        // so the caret lands at the end.
+        // which sits above the keyboard. The keyboard moves the sheet, so
+        // each field is focused (and asked whether it is) before typing, and
+        // the title is replaced whole rather than trusting where a caret
+        // lands.
         let title = app.textFields["eventTitle"]
         XCTAssertEqual(title.value as? String, "Toaster triage", "filled from the event")
         let location = app.textFields["eventLocation"]
         XCTAssertEqual(location.value as? String, "Repair Cafe back room")
-        location.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        focus(location)
         location.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30))
-        title.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        title.typeText(" and kettles")
+        focus(title)
+        title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30) + "Toaster triage and kettles")
         XCTAssertTrue(save.isEnabled)
         capture(app, "62 Edited")
         save.tap()
@@ -202,5 +204,26 @@ final class EventEditingFlowTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// Taps a field past its last word until it holds the keyboard. A
+    /// keyboard rising for the field before scrolls the form, which can
+    /// carry this one out of view, so the form is scrolled back toward it
+    /// first — inside the form's own scroll view, which never dismisses the sheet.
+    private func focus(_ field: XCUIElement) {
+        let app = XCUIApplication()
+        let form = app.scrollViews.containing(.textField, identifier: field.identifier).firstMatch
+        let focused = { (field.value(forKey: "hasKeyboardFocus") as? Bool) == true }
+        for _ in 0..<6 where !focused() {
+            if field.isHittable {
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            } else if field.frame.midY < app.frame.midY {
+                form.swipeDown()
+            } else {
+                form.swipeUp()
+            }
+            _ = field.waitForExistence(timeout: 1)
+        }
+        XCTAssertTrue(focused(), "the field takes the keyboard")
     }
 }

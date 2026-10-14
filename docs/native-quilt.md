@@ -1485,3 +1485,181 @@ carrying both the card's sharing counts and the profile's `tel:` / `mailto:`
 links. The reader's own fixture profile reads the card: a hidden membership
 is off it, and its contact section is the items the reader has given to a
 patch.
+
+## Editing and deleting events — 2026-10-13
+
+A reader can change or remove an event they have a right over, the way the
+web's `/events/:id/edit` and EventDetail's Delete do. Reference: the web's
+`EventDetail.svelte` (`canEdit`, `canManage`, `deleteEvent`),
+`EventForm.svelte` in edit mode and `ConfirmAction.svelte`; the server's
+`UpdateEvent`, `DeleteEvent`, `checkPatchedImage` and `validateRecurrence`;
+and web ADRs 026, 031, 045, 067 and 093.
+
+- **The right is worked out here, as on the web.** `GET events/{id}` carries
+  no `may_edit`. `PatchworkEvent` now decodes `created_by` and
+  `viewer_trusted`, and `EventEditing.door` is `UpdateEvent`'s rule in its
+  own order: an imported event (`source_id`) is nobody's — admins included;
+  the instance admin and an active patch's admins edit directly; a creator
+  edits directly while still a member of an active patch, or while trusted
+  on an unclaimed one; a creator's own pending suggestion is free to edit;
+  an untrusted creator on an unclaimed patch edits back into review; and an
+  adopted suggestion's submitter gets nothing. The web's button is drawn by
+  a looser test (a creator who is a member, whatever the patch's status);
+  where they disagree this follows the server, so Edit never leads to a 403.
+  `QuiltSession.editDoor(for:)` reads the inputs from where the posting
+  door reads them — `auth/me`'s role and the membership index — and from
+  the detail; the acts wait for the detail rather than trust a list row.
+- **Delete follows the server, not the web's button.** `DeleteEvent` lets
+  the creator delete always, pending or published, even after adoption; the
+  web draws no Delete for an adopted suggestion's submitter. Here they get
+  it. An imported event is the exception: deleting it skip-lists the feed
+  item, which is the feed's managers' call, so only admins see Delete there
+  (as on the web). Detach stays the website's.
+- **The acts are the noticeboard's.** Ink act rows — Edit with a pencil,
+  Delete (or "Withdraw" while the event is `pending_review`, the web's word)
+  with a bin — in a section under the description, the way a notice's acts
+  sit under the notice. Delete is a confirmation dialog: "Delete this
+  event?" / "Withdraw this suggestion?", one destructive button repeating
+  the act's word, and a line saying nobody is notified (ADR 093), because
+  the organizer should hear that before relying on the quilt to tell anybody
+  the night is off. There is no "cancel": the quilt has no such status.
+- **One form, two modes.** `EventFormSheet` takes `.edit(event, door)`:
+  "Edit event" and the web's "Update your event details.", the patch stated
+  rather than asked, the times on the event's own zone, the tier only
+  through the direct door (with Followers kept on screen for an event that
+  already says it, as the web keeps it), and "Save changes", disabled until
+  something has changed. An event that still carries an old recurrence word
+  gets one plain line — "The organizer says this repeats monthly — only
+  this date is on the calendar. Saving changes this date only." — and no
+  control: the server refuses any new word. Before an untrusted creator
+  edits on an unclaimed patch, the sentence says saving sends it back to the
+  quilt admins and off the calendar; the web says nothing until afterwards.
+- **Only what changed, and clears that clear.** `EventDraft.changes(from:)`
+  compares the trimmed form with the event as it was opened and sends only
+  the differences. An emptied description, location or event page is `""`;
+  an end switched off is `ends_at: null`; an emptied image address clears
+  its description too. The web sends empties as `undefined` and so cannot
+  clear any of them — this is the deliberate improvement. No `timezone`
+  (there is no zone control), no `recurrence`, no `node_id`. The image pair
+  and the link are checked only where the edit touches them, so an old
+  event's stored flyer cannot block a change of title; the title and an end
+  after the start are checked in the create form's words, because the
+  server checks neither.
+- **The ending is the server's.** A 200 whose `status` is `active` closes
+  the sheet; the page reads `events/{id}` again (the PATCH answer has no
+  slug or links) and says "Event updated" in a line at its head, the web's
+  toast. `pending_review` replaces the form with the web's "Submitted for
+  review" card, and the page behind it shows the Awaiting review banner.
+  After a delete the page leaves, and VoiceOver hears "Event deleted" or
+  "Submission withdrawn".
+- **Every list reads again.** An event is drawn by the Events tab, a
+  patch's calendar and glimpse, the Dashboard and search, each holding its
+  own copy. `QuiltSession.eventRevision` moves on every edit or delete from
+  this app, and each of those lists reloads when it does, so a deleted night
+  is not left on a list behind the page that removed it.
+- **Fixtures.** The Repair Cafe (where the sample reader is a member) holds
+  "Toaster triage", which the reader posted (and which carries an old
+  "monthly"), and "Bike tune-up clinic", from the patch's feed, naming the
+  reader as creator so that only `source_id` keeps Edit away. `PATCH` and
+  `DELETE events/{id}` are answered by the server's rule re-implemented in
+  the fixture (not borrowed from the app's), in its sentences, with edits
+  laid over the fixed events and deletions removed for the rest of the
+  launch.
+- **Left on the website:** event links and mentions, detaching an imported
+  event, the trust request, the CSV upload, a zone override, retiring an old
+  recurrence word, and moving an event to another patch (the server ignores
+  `node_id`).
+
+## Proposing and withdrawing — 2026-10-13
+
+A member can raise a proposal natively and take their own back. Reference:
+the web's `ProposalForm.svelte`, `ProposalList.svelte` and
+`ProposalStatusBanner.svelte`, the server's `CreateProposal`,
+`WithdrawProposal` and `mayPropose` (origin/main 2d937e3), and web ADRs 041,
+048, 053, 092 and 117.
+
+- **The door.** "New proposal" in the bar at the foot of the Governance room
+  and of the proposals room, where "New event" sits in the calendar's and
+  "Put up a notice" in the board's. It is drawn for an active member or admin
+  of the patch, read off the membership index, and only once the overview's
+  rules have arrived, because the rules are what the form will be. A follower
+  is never shown it, whatever `follower_permissions.proposals` says (that
+  switch governs reading and discussing); the proposals room tells a follower
+  "Become a member to create proposals and vote." as the web's list does. A
+  quilt admin with no role here is not shown it either: `is_admin` would say
+  yes, and the server says "must be member of node". On an admin-decides
+  patch an admin's door says "New change" (ADR 041).
+- **The form is the server's switch.** `ProposalPosting.outcome` ports
+  `CreateProposal`'s order: an admin's change on an admin-decides patch is
+  applied ("Apply change", no window); otherwise a patch that decides at
+  meetings opens it for discussion ("Submit proposal", no window, and a line
+  saying there is no vote and no clock); otherwise a member's proposal on an
+  admin-decides patch goes to the maintainer ("Send to the maintainer", no
+  window); an admin who asks first opens an advisory vote ("Open advisory
+  vote", "How long to ask"); and everything else is a vote ("Submit
+  proposal", "Voting duration"). The web reads only `decision_method`, so on
+  a patch that decides elsewhere it offers a window and "Submit Proposal"
+  for a proposal the server opens with neither; that is not copied. Where a
+  patch is both admin-decides and decides elsewhere, the admin's second
+  choice is "Open it for discussion first", because the server opens it for
+  discussion rather than to a vote.
+- **The window starts on the patch's own default.** The web hard-codes 72
+  hours, so a patch's `default_vote_duration_hours` only ever reached
+  proposals sent without a duration. The menu offers the web's five (24 and
+  48 hours, 72 hours, a week, two weeks) and adds the patch's default where
+  it is not one of them; the hint names the patch's choice, or gives the
+  web's tip where it made none.
+- **Checked before sending.** The server sets no length limit on a
+  proposal's title or body, and neither does the web, so there are no byte
+  counts here: the one check is the title, trimmed as the web sends it, in
+  the server's words ("Title is required"). A refusal from the server is
+  shown in its own sentence; the fallback is the web's "Failed to create
+  proposal".
+- **Afterwards.** The sheet goes, and the new proposal is pushed onto the
+  room's own stack, so Back is the room with it counted: the Governance room
+  reads its overview again (the open count and "needs your vote"), and the
+  proposals room its list.
+- **Withdrawing.** An ink row in the banner, "Withdraw this proposal", for
+  the author of an open proposal that is not an election, in the states the
+  web's banner carries it (voting, advisory, waiting on the maintainer, open
+  for discussion). The confirmation is the web's "Are you sure?" and
+  "Withdraw", with a second line saying it cannot be reopened and that
+  everyone taking part is told. The server would also take it from a patch
+  admin; the web offers it to the author only, and so does this. Withdrawn,
+  the screen leaves and the rooms behind it read again.
+- **Markdown.** The description has the noticeboard's Write / Preview
+  segments, now one shared `MarkdownComposer`, and a proposal's body is
+  drawn as Markdown with a single return as a line break (`marked` with
+  `breaks: true`, as the web renders it), where it was drawn as plain
+  paragraphs, so the preview is what lands.
+- **Still the website's:** nominating an admin (the form notes it only
+  where the web would offer the Membership type to this reader), charter
+  amendments and rules changes (the form and the room say "Changing a
+  governance document or the rules happens on this quilt's website."), new
+  documents, revisions, and deciding or applying somebody else's proposal.
+  The web's notes for an elected patch with no vacancy are not carried.
+
+**Offline.** `PreviewData` answers `POST nodes/{slug}/proposals` with the
+server's refusals in its order ("node not found", "must be member of node",
+"title is required", "invalid proposal_type", the two membership sentences)
+and its switch for the state, and `DELETE proposals/{id}` with "can only
+withdraw open proposals", the election refusal and "insufficient
+permissions". The three setups are on fixture patches: Common Thread votes
+by majority with a two-week default; the Film Club (`extra-7`) is decided by
+its admins, and a `--preview-admin` launch makes the fixture reader one of
+them; the Repair Cafe decides at meetings, and a plain sign-in is a member
+there.
+
+**Verification.** The 16 new unit tests (`ProposalPostingTests`) are listed
+in the README's verification sentence.
+The three new UI tests (`ProposalFlowTests`): a member proposes an Action on
+Common Thread, sees the window start at two weeks, previews the Markdown,
+lands on the new proposal with its vote open, finds the Governance room
+counting it and the list holding it, and withdraws it through the
+confirmation; an admin of the Film Club applies a change, with "New change",
+"Apply change" and no window, and lands on "This change is in effect."; and
+a follower of the Listening Room is shown no door in either room and the
+web's one line.
+
+Not verified: against a live server, VoiceOver, and Dynamic Type at the
+accessibility sizes on the form.
