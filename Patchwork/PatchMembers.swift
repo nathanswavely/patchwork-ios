@@ -10,7 +10,14 @@ import SwiftUI
 /// and `nobody` lists nobody. The counts stay public at every rung — the quilt
 /// sizes this patch's tile by them — so the withheld state states the number
 /// and says the list is not published. It never says there are no members.
+///
+/// For the patch's own admin the room is also where its membership is kept
+/// (web `PatchSettingsMembers.svelte`): doors to the requests waiting, to
+/// inviting somebody, and to the people removed, and Remove on each row
+/// but their own — on the swipe and the long press, as Mail and Contacts
+/// keep a row's acts. Role changes stay on the website.
 struct PatchMemberList: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let slug: String
     var close: (() -> Void)? = nil
@@ -18,26 +25,30 @@ struct PatchMemberList: View {
     @State private var loading = false
     @State private var loaded = false
     @State private var error: String?
+    /// The admin's three counts: the queue, the invitations out, and the
+    /// people removed.
+    @State private var pendingCount = 0
+    @State private var invitedCount = 0
+    @State private var removedCount = 0
+    @State private var removing: PatchMember?
+    @State private var outcome: AdminOutcome?
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
+    private var onSessionQuilt: Bool { quilt.url == session.quilt.url }
+    private var standing: Standing? { onSessionQuilt ? session.standing(for: slug) : nil }
+    private var runs: Bool { PatchAdmin.runs(standing) }
     var body: some View {
         List {
             // One Group so every section's rows take the card surface: the
             // modifier does not reach them from the List itself.
             Group {
+            if runs { adminSection }
+            if let outcome { Section { AdminOutcomeLine(outcome: outcome, id: "membersOutcome") } }
             if loaded && !roster.withheld {
                 Section {
                     ForEach(roster.members) { member in
-                        // Somebody with a username opens their profile; a
-                        // row without one stays a name.
-                        if let handle = People.door(member.username) {
-                            NavigationLink { PersonProfile(quilt: quilt, username: handle, close: close) } label: {
-                                PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
-                            }
-                            .accessibilityIdentifier("memberRow")
-                        } else {
-                            PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
-                                .accessibilityIdentifier("memberRow")
-                        }
+                        memberRow(member)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) { removeAct(member) }
+                            .contextMenu { removeAct(member) }
                     }
                 } header: {
                     VStack(alignment: .leading, spacing: 3) {
@@ -71,11 +82,10 @@ struct PatchMemberList: View {
                 }
             }
             Section {
-                // Joining and following are native now, and they live in the
-                // patch's own head, where the counts they change are. What
-                // still belongs to the website is everything that happens to
-                // somebody else's membership.
-                WebsiteOnlyNote(text: "Following and joining are on this patch’s own page. Inviting people and answering requests happen on this quilt’s website.")
+                // Joining and following live in the patch's own head, where
+                // the counts they change are. An admin keeps the membership
+                // here, all but its roles, which are the website's.
+                WebsiteOnlyNote(text: runs ? PatchAdmin.roleNote : "Following and joining are on this patch’s own page.")
             }
             }.listRows()
         }
@@ -94,8 +104,98 @@ struct PatchMemberList: View {
                 }
             }
         }
+        .confirmationDialog("Are you sure?",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible, presenting: removing) { member in
+            Button("Remove", role: .destructive) { Task { await remove(member) } }
+                .accessibilityIdentifier("confirmAct")
+            Button("Cancel", role: .cancel) {}
+        } message: { member in
+            Text(PatchAdmin.MemberAct.remove.consequence(member.name))
+        }
         .task { if !loaded { await load() } }
         .refreshable { await load() }
+        // A request answered, an invitation sent or somebody reinstated from
+        // a room pushed over this one: the roster and the counts read again.
+        .onChange(of: session.adminRevision) { _, _ in Task { await load() } }
+    }
+
+    @ViewBuilder private func memberRow(_ member: PatchMember) -> some View {
+        // Somebody with a username opens their profile; a row without one
+        // stays a name.
+        if let handle = People.door(member.username) {
+            NavigationLink { PersonProfile(quilt: quilt, username: handle, close: close) } label: {
+                PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+            }
+            .accessibilityIdentifier("memberRow")
+        } else {
+            PersonRow(name: member.name, initial: member.initial, avatar: member.avatar, role: member.role)
+                .accessibilityIdentifier("memberRow")
+        }
+    }
+
+    /// Remove, where this reader may: never their own row. Not a destructive
+    /// role, which would have the list animate the row away before the
+    /// confirmation has been answered.
+    @ViewBuilder private func removeAct(_ member: PatchMember) -> some View {
+        if runs && PatchAdmin.mayRemove(member, me: session.me?.id) {
+            Button { removing = member } label: { Label("Remove", systemImage: "person.fill.xmark") }
+                .tint(.red)
+                .accessibilityIdentifier("memberRemove-\(member.username ?? member.id)")
+        }
+    }
+
+    /// The three rooms an admin keeps, each with its count.
+    private var adminSection: some View {
+        Section {
+            NavigationLink { JoinRequestsView(slug: slug, close: close) } label: {
+                adminDoor("Pending requests", symbol: "person.crop.circle.badge.questionmark", count: pendingCount)
+            }
+            .accessibilityIdentifier("membersRequests")
+            NavigationLink { InviteMembersView(slug: slug, close: close) } label: {
+                adminDoor("Invite a member", symbol: "envelope", count: invitedCount, unit: "invited")
+            }
+            .accessibilityIdentifier("membersInvite")
+            if removedCount > 0 {
+                NavigationLink { RemovedMembersView(slug: slug, close: close) } label: {
+                    adminDoor("Removed members", symbol: "person.fill.xmark", count: removedCount)
+                }
+                .accessibilityIdentifier("membersRemoved")
+            }
+        }
+    }
+
+    private func adminDoor(_ title: String, symbol: String, count: Int, unit: String? = nil) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                .frame(width: 22).accessibilityHidden(true)
+            Text(title).font(Font.pw.body).foregroundStyle(Color.pwText)
+            Spacer(minLength: 8)
+            if count > 0 {
+                Text(unit.map { "\(count) \($0)" } ?? String(count))
+                    .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+            }
+        }
+    }
+
+    /// Off the roster at once, back with the quilt's sentence on a refusal —
+    /// "cannot ban the last admin" among them.
+    private func remove(_ member: PatchMember) async {
+        guard let userId = member.userId, let index = roster.members.firstIndex(of: member) else { return }
+        withAnimation { roster.members.remove(at: index); roster.memberCount = max(0, roster.memberCount - 1) }
+        outcome = nil
+        let act = PatchAdmin.MemberAct.remove
+        do {
+            try await session.api.setMember(slug: slug, userId: userId, act)
+            removedCount += 1
+            outcome = AdminOutcome(text: act.done)
+            UIAccessibility.post(notification: .announcement, argument: act.done)
+            session.adminChanged()
+        } catch {
+            if case APIError.unauthenticated = error { session.signedOut() }
+            withAnimation { roster.members.insert(member, at: min(index, roster.members.count)); roster.memberCount += 1 }
+            outcome = AdminOutcome(text: ProposalDetailView.sentence(error, fallback: act.failed), refused: true)
+        }
     }
     private func load(after: String? = nil) async {
         guard !loading else { return }
@@ -103,7 +203,15 @@ struct PatchMemberList: View {
         defer { loading = false; loaded = true }
         do {
             let page: MemberPage = try await api.get("nodes/\(slug)/members", query: query(after: after))
-            if after == nil { roster = MemberRoster(page: page) } else { roster.append(page) }
+            if after == nil { roster = MemberRoster(page: page, inRoom: Noticeboard.inRoom(standing)) } else { roster.append(page) }
+            if after == nil && runs {
+                invitedCount = page.invited?.count ?? 0
+                async let pending = try? api.memberTotal(slug: slug, status: "pending")
+                async let banned = try? api.memberTotal(slug: slug, status: "banned")
+                let (p, b) = await (pending, banned)
+                pendingCount = p ?? pendingCount
+                removedCount = b ?? removedCount
+            }
         } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
     }
     private func query(after: String?) -> [URLQueryItem] {

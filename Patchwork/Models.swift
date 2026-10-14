@@ -475,6 +475,15 @@ struct PatchMember: Decodable, Identifiable, Hashable {
     let displayName: String?
     let avatarUrl: String?
     let role: String?
+    /// The row's state and when it began. A patch's admins read these on
+    /// the queues: `pending` with the moment the request was made, `banned`
+    /// on the removed list. Absent on an older quilt, and never needed by
+    /// the public roster.
+    var status: String? = nil
+    var joinedAt: String? = nil
+    /// The join sheet's intro note (web ADR 040). The server sends it only
+    /// on the admins' pending listing, and only where somebody wrote one.
+    var joinMessage: String? = nil
     /// The name as the API gives it: whichever of the two the person filled in.
     var name: String {
         let display = (displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -492,6 +501,9 @@ struct MemberPage: Decodable {
     let memberCount: Int?
     let followerCount: Int?
     let publicMemberList: String?
+    /// Outstanding invitations, under their own key and for the patch's own
+    /// admins only (web ADR 098). Everybody else is sent no such key.
+    var invited: [InvitedPerson]? = nil
 }
 
 /// The roster as a reader outside the patch is shown it. A signed-out reader
@@ -521,8 +533,11 @@ struct MemberRoster: Equatable {
         return parts.joined(separator: " · ")
     }
     init() {}
-    init(page: MemberPage) {
-        disclosure = RosterDisclosure(page.publicMemberList)
+    /// `inRoom` is a reader who is an active member or admin of the patch.
+    /// The server lists everyone to them whatever the patch publishes (the
+    /// setting governs visitors), so for them the list is never withheld.
+    init(page: MemberPage, inRoom: Bool = false) {
+        disclosure = inRoom ? .everyone : RosterDisclosure(page.publicMemberList)
         members = (page.items ?? []).filter { $0.role != "follower" }
         memberCount = page.memberCount ?? members.count
         followerCount = page.followerCount ?? 0
@@ -804,6 +819,10 @@ struct ProposalPage: Decodable {
     let items: [Proposal]?
     let nextCursor: String?
     let publicGovernanceRecord: String?
+    /// The open proposals on the whole patch that still wait on this
+    /// reader's ballot, counted by the server from the same query the
+    /// governance overview's `needs_vote` reads — never the page's rows.
+    var awaitingYourVote: Int? = nil
 }
 
 /// One settled thing, assembled from whatever feature owns it (web ADR 055).

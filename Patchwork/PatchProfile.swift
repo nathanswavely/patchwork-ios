@@ -539,7 +539,10 @@ struct PatchSheet: View {
         guard !Task.isCancelled else { return }
         events = eventResult?.items ?? []
         if claimed {
-            roster = memberResult.map(MemberRoster.init(page:))
+            // A member or admin is listed everyone, whatever the patch
+            // publishes to visitors, so the glimpse is never withheld from them.
+            let inRoom = Noticeboard.inRoom(session.standing(for: slug) ?? envelope?.standing)
+            roster = memberResult.map { MemberRoster(page: $0, inRoom: inRoom) }
             documentsPublishedOnly = documentResult?.publishedOnly ?? false
             documents = documentResult.map { page in (page.items ?? []).filter { liningDiverged || $0.kind != "lining" } }
             // A record kept to the room still reaches the room: a member is

@@ -27,10 +27,16 @@ final class NotificationsTests: XCTestCase {
                        .remotePatch(host: "neighbor.example.org", slug: "paper-mill"))
     }
 
-    /// The members tab carries its filter in the query, and a query never
-    /// decides which screen a path names.
-    func testThePendingFilterRidesAlongAndStillOpensTheMembers() {
+    /// `membership.request` carries the queue in its query: the one query
+    /// that names a screen of its own. Any other filter still opens the
+    /// members, and who is actually shown the queue is decided where the
+    /// reader is known (`PatchAdminTests`).
+    func testThePendingFilterNamesTheQueueAndNothingElseDoes() {
         XCTAssertEqual(NotificationLink.route("/patches/common-thread/members?status=pending"),
+                       .joinRequests(slug: "common-thread"))
+        XCTAssertEqual(NotificationLink.route("/patches/common-thread/members?status=banned"),
+                       .members(slug: "common-thread"))
+        XCTAssertEqual(NotificationLink.route("/patches/common-thread/members?page=2"),
                        .members(slug: "common-thread"))
     }
 

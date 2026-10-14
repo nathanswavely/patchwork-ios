@@ -95,8 +95,26 @@ enum PreviewData {
         "status":"active","image_url":"","image_alt":"","event_url":"",\
         "node_name":"Repair Cafe","node_slug":"extra-6","node_status":"active"}
         """
+        // Two suggestions waiting on the Film Club's admins, kept to their
+        // queue until one of them answers.
+        let silent = """
+        {"id":"suggest-silent","node_id":"extra-7","created_by":"rc2","title":"Silent film night",\
+        "description":"Live piano under a 1920s comedy short. Bring a cushion.","location":"Library basement",\
+        "starts_at":"\(instant(daysFromToday: 5, hour: 19))","ends_at":"\(instant(daysFromToday: 5, hour: 21))",\
+        "timezone":"America/New_York","recurrence":"","visibility":"public","status":"pending_review",\
+        "image_url":"","image_alt":"","event_url":"",\
+        "node_name":"Film Club","node_slug":"extra-7","node_status":"active"}
+        """
+        let documentary = """
+        {"id":"suggest-docs","node_id":"extra-7","created_by":"l2","title":"Documentary double bill",\
+        "description":"Two short films about record shops.","location":"The Listening Room",\
+        "starts_at":"\(instant(daysFromToday: 12, hour: 19))","timezone":"America/New_York","recurrence":"",\
+        "visibility":"public","status":"pending_review","image_url":"","image_alt":"","event_url":"",\
+        "node_name":"Film Club","node_slug":"extra-7","node_status":"active"}
+        """
         let fixed = [("demo-event", tonight), ("demo-event-2", soon), ("demo-event-mine", mine),
-                     ("demo-event-imported", imported), ("demo-event-3", later)]
+                     ("demo-event-imported", imported), ("demo-event-3", later),
+                     ("suggest-silent", silent), ("suggest-docs", documentary)]
         return (fixed + postedEvents.map { ($0.id, $0.json) })
             .filter { !deletedEvents.contains($0.0) }
             .map { (id: $0.0, json: edited($0.1, eventEdits[$0.0])) }
@@ -484,7 +502,14 @@ enum PreviewData {
         // launch that is asked into the Food Share.
         (invitedLaunch ? [Notif(id: "notif-7", type: "membership.invited",
                                 title: "You're invited to join \(extraNames[8])", body: "",
-                                link: "/patches/\(invitingSlug)", minutesAgo: 1, read: false)] : []) + [
+                                link: "/patches/\(invitingSlug)", minutesAgo: 1, read: false)] : []) +
+        // An admin of the Film Club is also told what is waiting on them.
+        (governanceAdmin ? [
+            Notif(id: "notif-8", type: "membership.request", title: "Membership request for Film Club",
+                  body: "", link: "/patches/\(adminSlug)/members?status=pending", minutesAgo: 30, read: false),
+            Notif(id: "notif-10", type: "event.suggested", title: "Event suggested: Silent film night",
+                  body: "", link: "/patches/\(adminSlug)/events", minutesAgo: 60, read: true),
+        ] : []) + [
             Notif(id: "notif-6", type: "proposal.voting_opened",
                   title: "A proposal needs your vote",
                   body: "Add a Tuesday evening session — voting closes on the 24th.",
@@ -1546,7 +1571,18 @@ enum PreviewData {
         .sorted { $0.createdMinutesAgo < $1.createdMinutesAgo }
         let limit = Int(query.first { $0.name == "limit" }?.value ?? "") ?? 20
         let items = rows.prefix(limit).map { serialize(listFields($0)) }
-        return "{\"items\":[\(items.joined(separator: ","))],\"next_cursor\":\"\",\"public_governance_record\":\"everyone\"}"
+        return "{\"items\":[\(items.joined(separator: ","))],\"next_cursor\":\"\",\"public_governance_record\":\"everyone\",\"awaiting_your_vote\":\(awaitingVote(slug))}"
+    }
+
+    /// How many open proposals on a patch still wait on this reader's
+    /// ballot — the overview's `needs_vote` and the list's
+    /// `awaiting_your_vote`, one count as on the server.
+    private static func awaitingVote(_ slug: String) -> Int {
+        proposals.filter { $0.slug == slug }.filter { p in
+            guard p.status == "open", p.state == "voting", inRoom(slug) else { return false }
+            if p.isElection { return p.phase == "voting" && !p.candidates.contains { $0.approvers.contains(me) } && !p.abstainers.contains(me) }
+            return !p.ballots.contains { $0.userId == me }
+        }.count
     }
 
     /// The overview's live half: what is open, what needs this reader, and
@@ -1555,11 +1591,7 @@ enum PreviewData {
         guard var object = (try? JSONSerialization.jsonObject(with: Data(base.utf8))) as? [String: Any] else { return base }
         let mine = proposals.filter { $0.slug == slug }
         object["open_proposals"] = mine.filter { $0.status == "open" }.count
-        object["needs_vote"] = mine.filter { p in
-            guard p.status == "open", p.state == "voting", inRoom(slug) else { return false }
-            if p.isElection { return p.phase == "voting" && !p.candidates.contains { $0.approvers.contains(me) } && !p.abstainers.contains(me) }
-            return !p.ballots.contains { $0.userId == me }
-        }.count
+        object["needs_vote"] = awaitingVote(slug)
         if let election = mine.first(where: { $0.isElection && $0.phase == "nominating" && $0.status == "open" }) {
             object["election"] = ["id": election.id, "phase": "nominating", "seats": election.seats,
                                   "nominations_close_at": instant(minutesFromNow: election.nominationsCloseInMinutes),
@@ -2114,6 +2146,7 @@ enum PreviewData {
         contactShares = [:]
         hiddenMemberships = []
         preferenceRows = [:]
+        clubRoster = freshClubRoster
     }
 
     private static func sharesCount(_ slug: String) -> Int {
@@ -2353,6 +2386,258 @@ enum PreviewData {
         return #"{"status":"ok"}"#
     }
 
+    // MARK: Patch admin
+
+    /// The Film Club's membership, which a `--preview-admin` launch keeps:
+    /// two members and a second admin, three requests waiting (two with a
+    /// note), one invitation out, one person removed and one follower. The
+    /// reader's own admin row is added from `held`, so the club's roster and
+    /// the membership index never disagree. Every write below mutates this,
+    /// and is decided by the server's rule in its order and its words.
+    private struct ClubRow {
+        let id: String
+        let userId: String
+        let username: String
+        let name: String
+        var role: String
+        var status: String
+        var minutesAgo: Int
+        var message = ""
+    }
+    private static var freshClubRoster: [ClubRow] {
+        [
+            ClubRow(id: "fc01", userId: "u-juno", username: "juno", name: "Juno Park", role: "admin", status: "active", minutesAgo: 200 * 24 * 60),
+            ClubRow(id: "fc02", userId: "u-lena", username: "lena", name: "Lena Fox", role: "member", status: "active", minutesAgo: 90 * 24 * 60),
+            ClubRow(id: "fc03", userId: "u-ollie", username: "ollie", name: "Ollie Grant", role: "member", status: "active", minutesAgo: 40 * 24 * 60),
+            ClubRow(id: "fc04", userId: "u-max", username: "max", name: "Max Stone", role: "member", status: "banned", minutesAgo: 30 * 24 * 60),
+            ClubRow(id: "fc05", userId: "u-priya", username: "priya", name: "Priya Nair", role: "member", status: "pending", minutesAgo: 2 * 24 * 60,
+                    message: "I run the projector at the library and would love to help on screening nights."),
+            ClubRow(id: "fc06", userId: "u-tom", username: "tom", name: "Tom Reyes", role: "member", status: "pending", minutesAgo: 5 * 60,
+                    message: "Saw the poster at the Repair Cafe."),
+            ClubRow(id: "fc07", userId: "u-bea", username: "bea", name: "Bea Cole", role: "member", status: "pending", minutesAgo: 30),
+            ClubRow(id: "fc08", userId: "u-ivy", username: "ivy", name: "Ivy Chen", role: "member", status: "invited", minutesAgo: 3 * 24 * 60),
+            ClubRow(id: "fc09", userId: "u-rue", username: "rue", name: "Rue Bianchi", role: "follower", status: "active", minutesAgo: 10 * 24 * 60),
+        ]
+    }
+    private static var clubRoster: [ClubRow] = freshClubRoster
+    /// Accounts an admin may invite who hold nothing on the club yet.
+    private static let invitable: [(userId: String, username: String, name: String)] = [
+        ("u-noor", "noor", "Noor Haddad"), ("rc2", "kofi", "Kofi Adu"), ("u2", "imani", "Imani Osei"),
+    ]
+
+    /// The club as the server's tables hold it: the fixture rows and the
+    /// reader's own, oldest first (`ORDER BY m.id`).
+    private static var clubRows: [ClubRow] {
+        var rows = clubRoster
+        if let mine = held[adminSlug] {
+            rows.insert(ClubRow(id: "fc00", userId: (accountFields["id"] as? String) ?? me,
+                                username: (accountFields["username"] as? String) ?? "samplereader", name: myName,
+                                role: mine.role, status: mine.status, minutesAgo: 60 * 24 * 60), at: 0)
+        }
+        return rows
+    }
+
+    private static func clubJSON(_ row: ClubRow, message: Bool) -> [String: Any] {
+        var object: [String: Any] = [
+            "id": row.id, "user_id": row.userId, "node_id": adminSlug, "role": row.role, "status": row.status,
+            "joined_at": stamp(minutesAgo: row.minutesAgo), "username": row.username, "display_name": row.name, "avatar_url": "",
+        ]
+        if message && !row.message.isEmpty { object["join_message"] = row.message }
+        return object
+    }
+
+    /// `GET nodes/{slug}/members` on the club, by `ListMembers`' rules:
+    /// `pending` and `banned` only for its admins (everyone else is quietly
+    /// given the active list), the membership unless followers are asked for
+    /// by name, `join_message` only on the queue, the count of the whole
+    /// listing under its status, and `invited` for the patch's admins only.
+    private static func clubMembers(_ query: [URLQueryItem]) -> String {
+        let value = { (name: String) in query.first { $0.name == name }?.value ?? "" }
+        let admin = role(adminSlug) == "admin"
+        var status = value("status")
+        if !["pending", "banned"].contains(status) || !admin { status = "active" }
+        let followers = value("role") == "follower"
+        let listed = clubRows.filter { $0.status == status && (followers ? $0.role == "follower" : $0.role != "follower") }
+        let (rows, next) = page(listed, id: \.id, query: query)
+        let all = clubRows.filter { $0.status == status }
+        var payload: [String: Any] = [
+            "items": rows.map { clubJSON($0, message: status == "pending") }, "next_cursor": next,
+            "member_count": all.filter { $0.role != "follower" }.count,
+            "follower_count": all.filter { $0.role == "follower" }.count, "public_member_list": "everyone",
+        ]
+        if admin {
+            payload["invited"] = clubRows.filter { $0.status == "invited" }.map { row -> [String: Any] in
+                ["id": row.id, "user_id": row.userId, "username": row.username, "display_name": row.name,
+                 "avatar_url": "", "invited_at": stamp(minutesAgo: row.minutesAgo)]
+            }
+        }
+        return serialize(payload)
+    }
+
+    /// The suggestions waiting on a patch, as `ListNodeEventSubmissions`
+    /// serves them: newest first, the submitter beside each, and the four
+    /// columns its query does not read left blank.
+    private static func submissions(_ slug: String) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        guard role(slug) == "admin" || (accountFields["role"] as? String) == "admin" else {
+            throw APIError.message("insufficient permissions", status: 403)
+        }
+        let rows = everyEvent.reversed().compactMap { entry -> [String: Any]? in
+            guard var event = (try? JSONSerialization.jsonObject(with: Data(entry.json.utf8))) as? [String: Any],
+                  event["status"] as? String == "pending_review", event["node_slug"] as? String == slug else { return nil }
+            for key in ["timezone", "image_url", "image_alt", "event_url"] { event[key] = "" }
+            let by = people.first { $0.id == (event["created_by"] as? String) }
+            event["submitter_username"] = by?.username ?? ""
+            event["submitter_display_name"] = by?.name ?? ""
+            return event
+        }
+        return serialize(["items": rows])
+    }
+
+    private static func adminRead(_ path: String, query: [URLQueryItem]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count == 3, parts[0] == "nodes" else { return nil }
+        if parts[1] == adminSlug && parts[2] == "members" { return clubMembers(query) }
+        if parts[2] == "event-submissions" { return try submissions(parts[1]) }
+        return nil
+    }
+
+    /// The writes a patch's admin makes: a member's status, an invitation
+    /// sent or taken back, and a suggestion reviewed.
+    private static func adminWrite(_ method: String, _ path: String, fields: [String: Any]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        if method == "PATCH", parts.count == 3, parts[0] == "events", parts[2] == "review" {
+            return try review(parts[1], fields: fields)
+        }
+        guard parts.count >= 3, parts[0] == "nodes" else { return nil }
+        let slug = parts[1]
+        switch (method, parts.count, parts[2]) {
+        case ("PATCH", 4, "members"):
+            return try updateMember(slug, userId: parts[3], fields: fields)
+        case ("POST", 3, "invitations"):
+            return try invite(slug, fields: fields)
+        case ("DELETE", 4, "invitations"):
+            guard signedIn else { throw APIError.unauthenticated }
+            guard slug == adminSlug, role(slug) == "admin" else { throw APIError.message("not found", status: 404) }
+            guard let index = clubRoster.firstIndex(where: { $0.userId == parts[3] && $0.status == "invited" }) else {
+                throw APIError.message("no invitation to rescind", status: 404)
+            }
+            clubRoster.remove(at: index)
+            return #"{"status":"rescinded"}"#
+        default:
+            return nil
+        }
+    }
+
+    /// `UpdateMember`'s status half, in its order.
+    private static func updateMember(_ slug: String, userId: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        guard holdable.contains(where: { $0.slug == slug }) else { throw APIError.message("node not found", status: 404) }
+        guard role(slug) == "admin" || (accountFields["role"] as? String) == "admin" else {
+            throw APIError.message("insufficient permissions", status: 403)
+        }
+        let mine = (accountFields["id"] as? String) ?? me
+        guard slug == adminSlug, let row = clubRows.first(where: { $0.userId == userId }) else {
+            throw APIError.message("membership not found", status: 404)
+        }
+        // The reader's own row is `held`'s; every other is the roster's.
+        func set(_ status: String) {
+            if userId == mine { held[adminSlug]?.status = status; return }
+            if let index = clubRoster.firstIndex(where: { $0.userId == userId }) {
+                clubRoster[index].status = status
+                if status != "pending" { clubRoster[index].message = "" }
+            }
+        }
+        // The app sends no role change: those stay on the website.
+        guard let status = fields["status"] as? String else { throw APIError.message("invalid request body", status: 400) }
+        switch status {
+        case "active":
+            guard row.status == "pending" else { throw APIError.message("can only approve pending members", status: 400) }
+            set("active")
+        case "banned":
+            guard row.status == "active" else { throw APIError.message("can only ban active members", status: 400) }
+            guard userId != mine else { throw APIError.message("cannot ban yourself", status: 400) }
+            if row.role == "admin", clubRows.filter({ $0.role == "admin" && $0.status == "active" }).count <= 1 {
+                throw APIError.message("cannot ban the last admin", status: 409)
+            }
+            set("banned")
+        case "left":
+            guard row.status == "pending" || row.status == "banned" else {
+                throw APIError.message("can only reject pending or reinstate banned members", status: 400)
+            }
+            set("left")
+        default:
+            throw APIError.message("invalid status value", status: 400)
+        }
+        var answer = clubJSON(clubRows.first { $0.userId == userId } ?? row, message: false)
+        for key in ["username", "display_name", "avatar_url"] { answer[key] = nil }
+        return serialize(answer)
+    }
+
+    /// `InviteMember`, in its order and its words.
+    private static func invite(_ slug: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        guard slug == adminSlug, role(slug) == "admin" else { throw APIError.message("not found", status: 404) }
+        var username = ((fields["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if username.hasPrefix("@") { username.removeFirst() }
+        guard !username.isEmpty else { throw APIError.message("username is required", status: 400) }
+        let known = clubRows.map { ($0.userId, $0.username, $0.name) } + invitable.map { ($0.userId, $0.username, $0.name) }
+        guard let person = known.first(where: { $0.1 == username }) else {
+            throw APIError.message("no account with that username", status: 404)
+        }
+        if let row = clubRows.first(where: { $0.userId == person.0 }) {
+            switch row.status {
+            case "active": throw APIError.message("already in this patch", status: 409)
+            case "pending": throw APIError.message("they have already asked to join: approve their request instead", status: 409)
+            case "invited": throw APIError.message("already invited", status: 409)
+            case "banned": throw APIError.message("removed from this patch: reinstate them first", status: 409)
+            default:
+                if let index = clubRoster.firstIndex(where: { $0.userId == person.0 }) {
+                    clubRoster[index].status = "invited"
+                    clubRoster[index].role = "member"
+                    clubRoster[index].minutesAgo = 0
+                    clubRoster[index].message = ""
+                }
+            }
+        } else {
+            clubRoster.append(ClubRow(id: "fc\(10 + clubRoster.count)", userId: person.0, username: person.1, name: person.2,
+                                      role: "member", status: "invited", minutesAgo: 0))
+        }
+        let id = clubRoster.first { $0.userId == person.0 }?.id ?? ""
+        return "{\"status\":\"invited\",\"membership_id\":\"\(id)\",\"user_id\":\"\(person.0)\"}"
+    }
+
+    /// `ReviewEventSubmission`, in its order and its words. Approving
+    /// publishes the suggestion; declining deletes it.
+    private static func review(_ id: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        let action = (fields["action"] as? String) ?? ""
+        guard action == "approve" || action == "reject" else {
+            throw APIError.message("action must be 'approve' or 'reject'", status: 400)
+        }
+        guard let found = everyEvent.first(where: { $0.id == id }),
+              let event = (try? JSONSerialization.jsonObject(with: Data(found.json.utf8))) as? [String: Any] else {
+            throw APIError.message("event not found", status: 404)
+        }
+        guard event["status"] as? String == "pending_review" else {
+            throw APIError.message("event is not awaiting review", status: 400)
+        }
+        let slug = (event["node_slug"] as? String) ?? ""
+        let instanceAdmin = (accountFields["role"] as? String) == "admin"
+        let allowed = (event["node_status"] as? String) == "unclaimed" ? instanceAdmin : (instanceAdmin || role(slug) == "admin")
+        guard allowed else { throw APIError.message("insufficient permissions", status: 403) }
+        if action == "approve" {
+            eventEdits[id, default: [:]]["status"] = "active"
+        } else {
+            deletedEvents.insert(id)
+            lastDeclineNote = (fields["note"] as? String) ?? ""
+        }
+        return #"{"status":"ok"}"#
+    }
+    /// What the last decline said to its submitter, so a test can see the
+    /// note travelled.
+    static var lastDeclineNote = ""
+
     // MARK: People
 
     /// Everybody the other fixtures name with a username — the members
@@ -2403,6 +2688,17 @@ enum PreviewData {
                       memberships: [(memberSlug, "admin")]),
         FixturePerson(id: "rc2", username: "kofi", name: "Kofi Adu", memberships: [(memberSlug, "member")],
                       contact: [("handle", "kofi on the Repair Cafe group chat", "")], sharedInto: [memberSlug]),
+        // The Film Club's, for the admin's queues (see `clubRoster`).
+        FixturePerson(id: "u-juno", username: "juno", name: "Juno Park", bio: "Picks the films.", memberships: [(adminSlug, "admin")]),
+        FixturePerson(id: "u-lena", username: "lena", name: "Lena Fox", memberships: [(adminSlug, "member")]),
+        FixturePerson(id: "u-ollie", username: "ollie", name: "Ollie Grant", memberships: [(adminSlug, "member")]),
+        FixturePerson(id: "u-max", username: "max", name: "Max Stone"),
+        FixturePerson(id: "u-priya", username: "priya", name: "Priya Nair", bio: "Projectionist at the library."),
+        FixturePerson(id: "u-tom", username: "tom", name: "Tom Reyes"),
+        FixturePerson(id: "u-bea", username: "bea", name: "Bea Cole"),
+        FixturePerson(id: "u-ivy", username: "ivy", name: "Ivy Chen"),
+        FixturePerson(id: "u-rue", username: "rue", name: "Rue Bianchi"),
+        FixturePerson(id: "u-noor", username: "noor", name: "Noor Haddad"),
         FixturePerson(id: "steward", username: "samplesteward", name: "Sample Steward",
                       bio: "Keeps the lights on and answers the email.", since: "2025-09-01T10:00:00Z",
                       memberships: [("extra-0", "member")]),
@@ -2478,6 +2774,7 @@ enum PreviewData {
         let fields = (try? JSONSerialization.jsonObject(with: body ?? Data())) as? [String: Any] ?? [:]
         if let answer = try invitationWrite(method, path) { return answer }
         if let answer = try claimWrite(method, path, fields: fields) { return answer }
+        if let answer = try adminWrite(method, path, fields: fields) { return answer }
         if let answer = try eventWrite(method, path, fields: fields) { return answer }
         if let answer = try peopleWrite(method, path, fields: fields) { return answer }
         if let answer = try notificationWrite(method, path) { return answer }
@@ -2570,7 +2867,7 @@ enum PreviewData {
         let withheldOverview = #"{"rules":{"decision_method":"admin","leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":true,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"invite_only","member_count":8,"document_count":0,"open_proposals":0,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
         let record = #"{"items":[{"kind":"vote","at":"2026-08-14T12:00:00Z","title":"Amend the studio hours","link":"/patches/common-thread/governance/demo-proposal-3","outcome":"carried"},{"kind":"vote","at":"2026-06-08T12:00:00Z","title":"Buy a second kiln","outcome":"lapsed"},{"kind":"direct","at":"2026-04-02T12:00:00Z","title":"Publish the charter","outcome":"applied","actor":"Rowan Hale"}],"public_governance_record":"everyone"}"#
         let json: String
-        if let governed = try governanceRead(path, query: query) ?? noticeboardRead(path, query: query) ?? peopleRead(path, query: query) ?? personRead(path) ?? claimRead(path) { json = governed } else {
+        if let governed = try adminRead(path, query: query) ?? governanceRead(path, query: query) ?? noticeboardRead(path, query: query) ?? peopleRead(path, query: query) ?? personRead(path) ?? claimRead(path) { json = governed } else {
         switch path {
         case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York","latitude":40.04,"longitude":-76.3},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true,"email_enabled":true}"#
         case "label": json = ###"{"published":true,"stewards":[{"username":"samplesteward","display_name":"Sample Steward","avatar_url":"","blurb":"Keeps the lights on and answers the email."}],"prose":"## Why this exists\n\nThis quilt is fictional, and so is everything on this page. It is here so the app has something to draw.\n\nThe figures below are **made up**, and *nobody* is billed for them. Even `code` and ***both at once*** are only here to be looked at.\n\n- No real money changes hands.\n- No real person is named.","cost_items":[{"service":"Sample Hosting","purpose":"the server (where all this lives)","why":"invented, for the preview","amount_minor":1200,"period":"monthly"},{"service":"Sample Domain","purpose":"the address","why":"also invented","amount_minor":1800,"period":"yearly"}],"currency":"USD","total_monthly_minor":1350,"stale":true,"stated_on":"2026-01-01","version":"v0.0.0-preview","federation":false,"multi_quilt":false,"support_url":"https://example.org/support","feedback_url":"https://example.org/feedback","seamripped_from_name":"","seamripped_from_url":""}"###
