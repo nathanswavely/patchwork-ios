@@ -174,13 +174,23 @@ struct PatchSheet: View {
         .overlay(alignment: .bottom) { Color.pwBorder.frame(height: PatchworkCard.hairline) }
     }
     /// The web's `.profile-cover`: the design cropped the way the card's
-    /// strip crops it, a scrim from 75% black at the foot through 30% to
-    /// nothing at the top, and the name set on it. It grows with a long
-    /// name rather than clipping the title it exists to show.
+    /// strip crops it, a scrim under the name and the counts, and the name
+    /// set on it. It grows with a long name rather than clipping the title
+    /// it exists to show.
+    ///
+    /// The scrim is measured from the text, not the band: at least 60%
+    /// black wherever there are words, which is what keeps white text at
+    /// AA over the palest cloth, rising to 80% at the foot and fading out
+    /// only across the room left above the name. The web's fade (75% to
+    /// 30% to nothing over the whole band) left the counts short of AA on
+    /// a light cloth, and a large text size, which makes the words fill the
+    /// band, left the name on bare cloth.
+    /// The room above the name: the discs and the sheet's handle sit in it.
+    private static let coverHeadroom: CGFloat = 64
     private var coverBand: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(patch.name).font(Font.pw.displayTitle).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
-            Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(.white.opacity(0.9))
+            Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(.white)
             // The acts on their own line under the counts they change, never
             // beside the name: a name gets the whole width, and a button
             // never wraps mid-word to make room for one.
@@ -190,7 +200,7 @@ struct PatchSheet: View {
         }
         // Room above the name for the close and overflow discs and the
         // sheet's own handle, since the band now starts at the sheet's top.
-        .padding(.horizontal, 20).padding(.top, 64).padding(.bottom, 16)
+        .padding(.horizontal, 20).padding(.top, Self.coverHeadroom).padding(.bottom, 16)
         .frame(maxWidth: .infinity, minHeight: 160, alignment: .bottomLeading)
         // The cloth and its scrim are the band's background, so the name and
         // the acts sit on the scrim rather than under it: glass over a scrim
@@ -199,18 +209,21 @@ struct PatchSheet: View {
             ZStack {
                 TileMiniature(patch: patch, tagMotifs: session.tagMotifs, fit: .cover, side: 420)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                LinearGradient(stops: [
-                    .init(color: .black.opacity(0.75), location: 0),
-                    .init(color: .black.opacity(0.3), location: 0.45),
-                    .init(color: .clear, location: 1),
-                ], startPoint: .bottom, endPoint: .top)
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: Self.coverHeadroom)
+                    LinearGradient(colors: [.black.opacity(0.6), .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
+                }
             }
         }
         .background(Color(UIColor(hex: QuiltTheme.palette(for: patch).bg) ?? .black))
-        .overlay(alignment: .topLeading) { closeDisc.padding(.leading, 12).padding(.top, 18) }
-        .overlay(alignment: .topTrailing) { coverActs.padding(.trailing, 12).padding(.top, 18) }
+        // Each disc is drawn at 34pt inside a 44pt target, so the 5pt of
+        // target round it comes off the inset that places it.
+        .overlay(alignment: .topLeading) { closeDisc.padding(.leading, 7).padding(.top, 13) }
+        .overlay(alignment: .topTrailing) { coverActs.padding(.trailing, 7).padding(.top, 13) }
         .clipped()
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("patchCover")
     }
     /// The way out, at the top-left where a sheet's close belongs, as a glass
     /// disc on the cover rather than a word in a bar.
@@ -221,6 +234,8 @@ struct PatchSheet: View {
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
                 .modifier(GlassDisc())
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
         .accessibilityLabel("Close")
         .accessibilityIdentifier("closePatch")
@@ -237,6 +252,8 @@ struct PatchSheet: View {
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
                 .modifier(GlassDisc())
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
         .accessibilityLabel("More")
         .accessibilityIdentifier("profileOverflow")
@@ -298,12 +315,12 @@ struct PatchSheet: View {
                     Task { await session.openFromProfile(slug: slug) }
                 }
             } label: {
-                Text(claimInProgress ? "Your claim is in progress" : "If it's yours, claim it").font(Font.pw.subheadline).inkRow(fills: false)
+                Text(claimInProgress ? "Your claim is in progress" : "If it's yours, claim it").font(Font.pw.subheadline).inkRow(fills: false).tapTarget()
             }
             .accessibilityIdentifier("claimDoor")
         } else {
             Button { signingIn = true } label: {
-                Text("If it's yours, claim it").font(Font.pw.subheadline).inkRow(fills: false)
+                Text("If it's yours, claim it").font(Font.pw.subheadline).inkRow(fills: false).tapTarget()
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("claimDoor")
@@ -381,7 +398,7 @@ struct PatchSheet: View {
                 // a glimpse rather than let the two numbers fight.
                 if moreEvents > 0 {
                     NavigationLink { PatchCalendar(quilt: session.quilt, patch: patch, close: close) } label: {
-                        Text("\(moreEvents) more upcoming").font(Font.pw.subheadline).inkRow()
+                        Text("\(moreEvents) more upcoming").font(Font.pw.subheadline).inkRow().tapTarget()
                     }
                 }
             } else { Text("Pull up to see what’s coming.").foregroundStyle(Color.pwTextMuted) }
@@ -574,13 +591,14 @@ private struct SheetTopKey: PreferenceKey {
 
 
 /// A round glass button for the cover's corner; a material where the system
-/// has no glass.
+/// has no glass. The glass is smoked, because the corner is above the
+/// scrim: over a pale cloth, clear glass left the white glyph barely there.
 private struct GlassDisc: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
-            content.glassEffect(.regular, in: Circle())
+            content.glassEffect(.regular.tint(.black.opacity(0.35)), in: Circle())
         } else {
-            content.background(.regularMaterial, in: Circle())
+            content.background(Color.black.opacity(0.35), in: Circle())
         }
     }
 }

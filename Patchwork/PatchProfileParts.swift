@@ -37,24 +37,28 @@ struct PersonRow: View {
     let avatar: URL?
     var role: String? = nil
     var detail: String? = nil
+    @Environment(\.dynamicTypeSize) private var textSize
     var body: some View {
         HStack(spacing: 12) {
             AvatarMark(initial: initial, avatar: avatar)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                 if let detail { Text(detail).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted) }
+                // Under the name at the accessibility sizes, where beside
+                // it the chip would break the name mid-word.
+                if textSize.isAccessibilitySize { roleChip }
             }
             Spacer(minLength: 8)
-            if let role, !role.isEmpty {
-                Text(role.capitalized)
-                    .font(Font.pw.caption2Semibold)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color(.secondarySystemFill), in: Capsule())
-                    .foregroundStyle(Color.pwTextMuted)
-                    .accessibilityLabel("Role: \(role)")
-            }
+            if !textSize.isAccessibilitySize { roleChip }
         }
         .padding(.vertical, 2)
+    }
+    @ViewBuilder private var roleChip: some View {
+        if let role, !role.isEmpty {
+            Text(role.capitalized)
+                .chipFace()
+                .accessibilityLabel("Role: \(role)")
+        }
     }
 }
 
@@ -77,7 +81,11 @@ struct AvatarMark: View {
     private var placeholder: some View {
         ZStack {
             Color(.tertiarySystemFill)
-            Text(initial).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwTextMuted)
+            // Ink, not the muted grey: on the fill, grey fell short of AA.
+            // It grows with the text size but shrinks to stay inside its
+            // circle, which at the largest sizes it overflowed.
+            Text(initial).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
+                .lineLimit(1).minimumScaleFactor(0.3).padding(4)
         }
     }
 }
@@ -89,16 +97,13 @@ struct OutcomeBadge: View {
     let proposal: Proposal
     var body: some View {
         Text(proposal.outcome)
-            .font(Font.pw.caption2Semibold)
             .textCase(.uppercase)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(tint.opacity(0.15), in: Capsule())
-            .foregroundStyle(tint)
+            .chipFace(fill: fill)
     }
-    private var tint: Color {
-        if proposal.outcomeIsDecision { return .red }
-        if proposal.outcomeIsOpen { return .pwAccent }
-        return .secondary
+    private var fill: Color {
+        if proposal.outcomeIsDecision { return .red.opacity(0.15) }
+        if proposal.outcomeIsOpen { return .pwAccent.opacity(0.15) }
+        return Color(.secondarySystemFill)
     }
 }
 

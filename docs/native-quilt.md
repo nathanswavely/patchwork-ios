@@ -183,10 +183,10 @@ extension in `Palette.swift`: `pwGround` (`#F4F0E8` / `#151820` — `--lt-canvas
 raw cotton and raw denim, which is also `--color-bg`), `pwSurface` (`#FAF6EE` /
 `#1C2028`), `pwBorder` (`#DDD8CC` / `#2A2E38`, the unbleached-thread family the
 quilt's own `QuiltInk.thread` draws from), `pwText` (`#2A2520` / `#E0DBD4`) and
-`pwTextMuted` (`#6B655C` / `#9B958C`). `AccentColor` was already the web's
+`pwTextMuted` (`#57514A` / `#ADA79E`; `#6B655C` / `#9B958C` until the accessibility pass). `AccentColor` was already the web's
 `--color-primary` (`#0272B5` / `#39B4F6`) and stays the only tint. Body text
-measures 13.4:1 light and 12.9:1 dark against the ground, muted 5.1:1 and
-6.0:1, accent-as-text 4.8:1 and 7.0:1 — AA at both ends, with Increase Contrast
+measures 13.4:1 light and 12.9:1 dark against the ground, muted 6.9:1 and
+7.4:1, accent-as-text 4.8:1 and 7.0:1 — AA at both ends, with Increase Contrast
 only ever moving further from the ground. Nothing branches on the setting: the
 asset catalog answers it. The ground reaches the quilt canvas (which had been
 `systemGroupedBackground` under a quilt whose ink was taken from this very

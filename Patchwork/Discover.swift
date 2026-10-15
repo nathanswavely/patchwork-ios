@@ -7,6 +7,9 @@ import SwiftUI
 struct Discover: View {
     @EnvironmentObject private var session: QuiltSession
     @Environment(\.colorScheme) private var colorScheme
+    /// At the accessibility sizes the pinned acts would take half the
+    /// screen from the tags they act on, so they follow the tags instead.
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var picked = Set<String>()
     @State private var answering = false
     @State private var showAll = false
@@ -75,29 +78,35 @@ struct Discover: View {
                 if !picked.isEmpty {
                     Text("\(picked.count) selected").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 }
+                if textSize.isAccessibilitySize { askActs.padding(.top, 8) }
             }.frame(maxWidth: .infinity, alignment: .leading).padding()
         }
         .background(Color.pwGround.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 10) {
-                // The tint fills the control and nothing else on this screen.
-                if picked.isEmpty {
-                    Button { answering = true } label: {
-                        Text("Pick at least one").font(Font.pw.headline).frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered).controlSize(.large).tint(.gray)
-                    .foregroundStyle(Color.pwText)
-                } else {
-                    Button { answering = true } label: {
-                        Text("Show me patches").font(Font.pw.headline).frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
-                    .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
+            if !textSize.isAccessibilitySize { askActs.padding().background(.bar) }
+        }
+    }
+    private var askActs: some View {
+        VStack(spacing: 10) {
+            // The tint fills the control and nothing else on this screen.
+            if picked.isEmpty {
+                Button { answering = true } label: {
+                    Text("Pick at least one").font(Font.pw.headline).frame(maxWidth: .infinity)
                 }
-                Button("Show me everything instead") { picked = []; answering = true }
-                    .font(Font.pw.subheadline)
-                    .foregroundStyle(Color.pwText)
-            }.padding().background(.bar)
+                .buttonStyle(.bordered).controlSize(.large).tint(.gray)
+                .foregroundStyle(Color.pwText)
+            } else {
+                Button { answering = true } label: {
+                    Text("Show me patches").font(Font.pw.headline).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
+            }
+            Button { picked = []; answering = true } label: {
+                Text("Show me everything instead").tapTarget()
+            }
+            .font(Font.pw.subheadline)
+            .foregroundStyle(Color.pwText)
         }
     }
     /// The answer is a stack of cards on the quilt's ground, the way List mode

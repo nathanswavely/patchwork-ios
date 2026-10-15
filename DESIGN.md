@@ -12,8 +12,8 @@ colors:
   border-dark: "#2A2E38"
   text-light: "#2A2520"
   text-dark: "#E0DBD4"
-  text-muted-light: "#6B655C"
-  text-muted-dark: "#9B958C"
+  text-muted-light: "#57514A"
+  text-muted-dark: "#ADA79E"
 typography:
   display:
     fontFamily: "Shantell Sans, SF Pro Display, -apple-system, sans-serif"
@@ -76,6 +76,8 @@ The app is native but not anonymous. Its six colours are the site's, not iOS's d
 
 - **AccentColor light** (`{colors.accent-light}`) and **AccentColor dark** (`{colors.accent-dark}`): the web's `--color-accent`, a rust that belongs to the same fabric wall as the tiles (Rust `#A0430A`, Safety Orange `#E3480B`). It replaced the site's primary blue, because a blue tint on a white-ish list is indistinguishable from stock iOS however carefully it is chosen. Read it as `Color.pwAccent`, which names the asset: `Color.accentColor` answers with whatever tint the environment is carrying, and until something sets it that is the system's own blue — the app was drawing iOS blue for exactly that reason.
 
+- **pwOnAccent**: the word on an accent fill — white on the light rust, black on the dark one, where white measures 3:1. **pwDestructive** is the red for what cannot be taken back (deleting, declining, leaving): a deeper red than the system's in light mode, where the system's is 3.4:1 as words and 3.6:1 under white, and the system's own in dark. Chips (a role, a notice's state, an outcome, a vote) keep their colour in the fill and set the word in ink, through `chipFace()`.
+
 **The tint is for controls, not for words.** It marks a selected segment, a toggle, a prominent button, the follow heart, a chip standing for a live state. Interactive *text* is ink in all three of its forms: a link reads as `pwText` with a small exit arrow (`View.exitLink()`), a text door within the app reads as ink with the platform's chevron (`View.inkRow()`), an act that is neither — "Try again", "Load more", "Show all tags", "Show the rest of the quilt" — reads as ink with its own leading glyph (`View.inkAction(_:)`), and a link inside prose is underlined rather than coloured. `exitLink` and `inkRow` take `fills: false` where the word shares its line with something else. Colouring every tappable phrase is what made the app read as a web page in iOS clothing, and a page full of coloured phrases stops saying anything at all.
 
 ### Neutral
@@ -92,7 +94,7 @@ Each is lifted from a web token, so a reader who knows the site recognises the a
 
 The ground reaches the quilt canvas, List, Events, Discover, the quilt picker, the info stack and the docked profile; the surface is what a card, a row and the profile's head are made of. Increase Contrast moves each further from the ground (light `#F7F4ED` / `#FFFFFF` / `#A9A294` / `#1A1510` / `#4E483F`; dark `#0E1016` / `#242A33` / `#4A5060` / `#F5F2EC` / `#BAB4AA`), which is the asset catalog's job rather than a branch in code.
 
-Contrast (WCAG, against the ground): text 13.4:1 light and 12.9:1 dark; muted 5.1:1 light and 6.0:1 dark; accent as text on the surface 4.8:1 light and 7.0:1 dark — AA for body text at both ends. The hairline is decorative and is not asked to carry meaning.
+Contrast (WCAG, against the ground): text 13.4:1 light and 12.9:1 dark; muted 6.9:1 light and 7.4:1 dark (they were `#6B655C` and `#9B958C`, 5.1:1 and 6.0:1, until the accessibility audit found the text face's thin strokes reading lighter than their colour); accent as text on the surface 4.8:1 light and 7.0:1 dark — AA for body text at both ends. The hairline is decorative and is not asked to carry meaning.
 
 System materials stay system: the top bar's glass controls, the corner view switcher, sheets and the tab bar are the platform's, and semantic colours stay wherever a system component owns them (`.separator` on a system list's own rules, `.red` on an error, the system's own selection).
 
