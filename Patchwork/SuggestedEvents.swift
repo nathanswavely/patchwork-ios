@@ -92,17 +92,16 @@ struct SuggestedEventsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Text("Suggested by \(submission.submitter)").font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
-            HStack(spacing: 16) {
+            ActsRow(spacing: 16) {
                 Button { Task { await queue.review(submission, approve: true, session: session) } } label: {
-                    Text("Approve").font(Font.pw.subheadlineSemibold).foregroundStyle(.white)
+                    Text("Approve").font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwOnAccent).frame(minHeight: 30)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.pwAccent)
-                .controlSize(.small)
                 .accessibilityLabel("Approve \(event.title)")
                 .accessibilityIdentifier("suggestionApprove-\(event.id)")
                 Button { queue.declining = submission } label: {
-                    Text("Decline").font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                    Text("Decline").font(Font.pw.subheadline).foregroundStyle(Color.pwText).tapTarget()
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Decline \(event.title)")
@@ -159,9 +158,10 @@ struct DeclineSuggestionSheet: View {
                     dismiss()
                 } label: {
                     Text("Decline").font(Font.pw.headline).frame(maxWidth: .infinity, minHeight: 28)
+                        .foregroundStyle(Color.pwOnAccent)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(.systemRed))
+                .tint(Color.pwDestructive)
                 .controlSize(.large)
                 .accessibilityIdentifier("declineConfirm")
                 .padding(.horizontal, 20)

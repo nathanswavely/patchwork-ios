@@ -53,8 +53,73 @@ enum PWType {
     /// metrics it grows by. `size` is the style's own size at the Large
     /// content size, so the result matches the system's rhythm before Dynamic
     /// Type moves both of them together.
+    ///
+    /// Set by name and `relativeTo:` its style, so it grows the way a system
+    /// style does: live, the moment the reader changes their text size. A
+    /// `Font` made from a scaled `UIFont` is fixed at the size it was made
+    /// at, and kept that size on every screen that did not happen to redraw
+    /// (the accessibility audit flagged each such run).
     static func font(_ face: Face, size: CGFloat, weight: CGFloat, style: UIFont.TextStyle) -> Font {
-        Font(uiFont(face, size: size, weight: weight, style: style))
+        guard let name = instanceName(face, weight: weight) else {
+            return Font(uiFont(face, size: size, weight: weight, style: style))
+        }
+        return .custom(name, size: size, relativeTo: textStyle(style))
+    }
+
+    /// The name of a weight on a face's axis, registered for this process as a
+    /// font of its own. `Font.custom` takes only a name, and Core Text names
+    /// a variable font's weights only at its named stops (Space Grotesk has
+    /// no SemiBold), so each weight the scale asks for is cut from the
+    /// variable font once — every other axis left at its default, as
+    /// `baseFont` leaves it — and registered under the name Core Text gives
+    /// the cut. Nil when the face is missing or the cut will not register.
+    static func instanceName(_ face: Face, weight: CGFloat) -> String? {
+        guard isAvailable(face) else { return nil }
+        let clamped = min(max(weight, face.weights.lowerBound), face.weights.upperBound)
+        return instances.name(face, clamped) {
+            guard let base = CTFontCopyGraphicsFont(CTFontCreateWithName(face.postScriptName as CFString, 12, nil), nil)
+                .copy(withVariations: ["Weight": clamped] as CFDictionary),
+                  let name = base.postScriptName as String? else { return nil }
+            // A cut at a named stop (or at the default) already resolves.
+            if UIFont(name: name, size: 12)?.fontName != name {
+                var error: Unmanaged<CFError>?
+                _ = CTFontManagerRegisterGraphicsFont(base, &error)
+            }
+            return UIFont(name: name, size: 12)?.fontName == name ? name : nil
+        }
+    }
+
+    /// Each weight's name, cut once. Fonts are asked for from any view's
+    /// body, so the table takes a lock rather than an actor.
+    private final class Instances: @unchecked Sendable {
+        private let lock = NSLock()
+        private var names: [String: String?] = [:]
+        func name(_ face: Face, _ weight: CGFloat, cut: () -> String?) -> String? {
+            lock.lock(); defer { lock.unlock() }
+            let key = "\(face.postScriptName)-\(weight)"
+            if let known = names[key] { return known }
+            let made = cut()
+            names[key] = made
+            return made
+        }
+    }
+    private static let instances = Instances()
+
+    /// The SwiftUI style a UIKit style grows with.
+    private static func textStyle(_ style: UIFont.TextStyle) -> Font.TextStyle {
+        switch style {
+        case .largeTitle: .largeTitle
+        case .title1: .title
+        case .title2: .title2
+        case .title3: .title3
+        case .headline: .headline
+        case .subheadline: .subheadline
+        case .callout: .callout
+        case .footnote: .footnote
+        case .caption1: .caption
+        case .caption2: .caption2
+        default: .body
+        }
     }
 
     /// The same, as a `UIFont`, for the UIKit surfaces that draw their own

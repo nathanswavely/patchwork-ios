@@ -329,12 +329,20 @@ struct DiscoveryToolbar: ViewModifier {
             .onAppear { DispatchQueue.main.async { focused = true } }
         } else {
             Button { session.searching = true } label: {
+                // The words in ink, the glyph muted: on glass over the quilt
+                // the muted grey fell short of AA. Where the whole phrase
+                // will not fit — a narrow bar, a large text size — the field
+                // says the one word rather than half a sentence.
                 HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                    Text("Search patches and events").lineLimit(1)
+                    Image(systemName: "magnifyingglass").foregroundStyle(Color.pwTextMuted)
+                    ViewThatFits(in: .horizontal) {
+                        Text("Search patches and events")
+                        Text("Search")
+                    }
+                    .lineLimit(1)
+                    .foregroundStyle(Color.pwText)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(Color.pwTextMuted)
                 .modifier(FieldChrome(width: fieldWidth))
             }
             .buttonStyle(.plain)

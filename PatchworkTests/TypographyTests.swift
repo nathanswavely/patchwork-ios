@@ -48,6 +48,26 @@ final class TypographyTests: XCTestCase {
                              "The accessibility sizes must reach this face too")
     }
 
+    /// The scale is set by name, so SwiftUI grows it with the text size
+    /// live; each weight is a cut of its own, registered under its own name
+    /// and carrying its own coordinate. A weight that fell back to a named
+    /// stop would draw SemiBold as Medium.
+    func testEachWeightIsANamedCutOnTheAxis() {
+        var names = Set<String>()
+        for weight: CGFloat in [300, 400, 500, 600, 700] {
+            guard let name = PWType.instanceName(.text, weight: weight), let font = UIFont(name: name, size: 17) else {
+                return XCTFail("No cut of Space Grotesk at \(weight)")
+            }
+            names.insert(name)
+            let variation = CTFontCopyVariation(font as CTFont) as? [NSNumber: NSNumber]
+            // The default instance carries no coordinate: it is Light.
+            let wght = variation?[NSNumber(value: 0x77676874)]?.doubleValue ?? 300
+            XCTAssertEqual(wght, Double(weight), accuracy: 1, name)
+        }
+        XCTAssertEqual(names.count, 5, "five weights, five cuts")
+        XCTAssertNotNil(PWType.instanceName(.display, weight: 700), "the display face is cut the same way")
+    }
+
     // MARK: - Emphasis inside a block
 
     /// The shear a font draws its glyphs through; zero for an upright.

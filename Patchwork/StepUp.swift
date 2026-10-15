@@ -418,7 +418,7 @@ struct StepUpSheet: View {
             NavigationLink {
                 RecoveryCodesPage(api: api) { onFinish(.signOut) }
             } label: {
-                Text("Make recovery codes").font(Font.pw.headline).foregroundStyle(Color.white).frame(maxWidth: .infinity, minHeight: 28)
+                Text("Make recovery codes").font(Font.pw.headline).foregroundStyle(Color.pwOnAccent).frame(maxWidth: .infinity, minHeight: 28)
             }
             .buttonStyle(.borderedProminent)
             .tint(Color.pwAccent)
@@ -449,12 +449,12 @@ struct StepUpSheet: View {
     private func primary(_ title: String, identifier: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Group {
-                if busy { ProgressView().tint(.white) } else { Text(title).font(Font.pw.headline) }
+                if busy { ProgressView().tint(Color.pwOnAccent) } else { Text(title).font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
             // The app's root sets ink on everything; a filled control's label
             // is the design's white (DESIGN.md, primary-action).
-            .foregroundStyle(Color.white)
+            .foregroundStyle(Color.pwOnAccent)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)
@@ -579,7 +579,7 @@ struct RecoveryCodesSection: View {
                         Text("Now sign out, then sign back in with one of these codes: you arrive confirmed, and the rest of the set can confirm from then on.")
                             .font(Font.pw.subheadline).foregroundStyle(Color.pwText)
                         Button { onSignOut() } label: {
-                            Text("Sign out").font(Font.pw.headline).foregroundStyle(Color.white).frame(maxWidth: .infinity, minHeight: 28)
+                            Text("Sign out").font(Font.pw.headline).foregroundStyle(Color.pwOnAccent).frame(maxWidth: .infinity, minHeight: 28)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(Color.pwAccent)
@@ -607,6 +607,7 @@ struct RecoveryCodesSection: View {
                     Spacer(minLength: 0)
                     if busy { ProgressView() }
                 }
+                .tapTarget()
             }
             .disabled(busy)
             .accessibilityIdentifier("recoveryCodesGenerate")

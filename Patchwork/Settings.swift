@@ -196,7 +196,7 @@ struct SettingsIndex: View {
                     NavigationLink { DeleteAccountSettings(onExit: onExit) } label: {
                         Label("Delete account", systemImage: "trash")
                             .font(Font.pw.body)
-                            .foregroundStyle(Color(.systemRed))
+                            .foregroundStyle(Color.pwDestructive)
                     }
                     .accessibilityIdentifier("settingsDelete")
                 }
@@ -528,6 +528,7 @@ struct SecuritySettings: View {
                         if sessions.contains(where: { !$0.isCurrent }) {
                             Button(role: .destructive) { confirmOthers = true } label: {
                                 Text("Sign out other devices").font(Font.pw.body)
+                                    .frame(maxWidth: .infinity, alignment: .leading).tapTarget()
                             }
                             .disabled(busy)
                             .accessibilityIdentifier("sessionsSignOutOthers")
@@ -576,7 +577,9 @@ struct SecuritySettings: View {
             // not a row's.
             if !row.isCurrent {
                 Button { Task { await revoke(row) } } label: {
-                    Text("Sign out").font(Font.pw.footnote).inkAction("xmark.circle")
+                    // The account menu's own sign-out glyph: an ✕ in a
+                    // circle stood apart to VoiceOver as a 13pt "Close".
+                    Text("Sign out").font(Font.pw.footnote).inkAction("rectangle.portrait.and.arrow.right").tapTarget()
                 }
                 .buttonStyle(.borderless)
                 .disabled(busy)
@@ -748,13 +751,13 @@ struct DeleteAccountSettings: View {
                 }
                 Button(role: .destructive) { asking = true } label: {
                     Group {
-                        if deleting { ProgressView().tint(.white) } else { Text("Delete my account").font(Font.pw.headline) }
+                        if deleting { ProgressView().tint(Color.pwOnAccent) } else { Text("Delete my account").font(Font.pw.headline) }
                     }
                     .frame(maxWidth: .infinity, minHeight: 28)
-                    .foregroundStyle(matches ? Color.white : Color.pwTextMuted)
+                    .foregroundStyle(matches ? Color.pwOnAccent : Color.pwTextMuted)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(.systemRed))
+                .tint(Color.pwDestructive)
                 .controlSize(.large)
                 .disabled(!matches || deleting)
                 .accessibilityIdentifier("deleteAccount")

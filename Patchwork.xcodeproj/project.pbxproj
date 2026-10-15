@@ -87,6 +87,7 @@
 		B067E3063F1A3647C9BF4F72 /* PatchCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1CE19D520C26DFAB2758DE /* PatchCalendar.swift */; };
 		B48B197D80C62EB28FE1EC9B /* DiscoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 113D37454395617A11072AE8 /* DiscoverTests.swift */; };
 		B5090C2DB1C8BD4391A929EA /* EventEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DAA50C86CF281FFD894C7E /* EventEditing.swift */; };
+		B523949F0609A220EFCD36D0 /* AccessibilityAuditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6A75075FA97DDDD2C101EC /* AccessibilityAuditTests.swift */; };
 		B9E735AC26656A6B85F469D8 /* MapPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D1BBC55D6424C8522478089 /* MapPlacement.swift */; };
 		BA4385AB910F5ED96FC0A620 /* PatchGovernance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A665F8F6905212C2452DE92A /* PatchGovernance.swift */; };
 		BC21BA1B3590DD6B8468885E /* Passkeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51EF6559341A0C7017F81FC /* Passkeys.swift */; };
@@ -169,6 +170,7 @@
 		34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		36F289D04BA1DDF3EF45FE89 /* Welcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Welcome.swift; sourceTree = "<group>"; };
 		3EFC7ACE15046E1958924BFE /* QuiltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSession.swift; sourceTree = "<group>"; };
+		3F6A75075FA97DDDD2C101EC /* AccessibilityAuditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityAuditTests.swift; sourceTree = "<group>"; };
 		41A7515238A35D73C8309066 /* QuiltSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSwitcher.swift; sourceTree = "<group>"; };
 		44033C62C60DE5758C6859B4 /* PatchAdmin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchAdmin.swift; sourceTree = "<group>"; };
 		4510113B947EAF0DB94F046F /* QuiltCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltCanvas.swift; sourceTree = "<group>"; };
@@ -262,6 +264,7 @@
 		8DA894D257C605874758C8D3 /* PatchworkUITests */ = {
 			isa = PBXGroup;
 			children = (
+				3F6A75075FA97DDDD2C101EC /* AccessibilityAuditTests.swift */,
 				6C97C54F89DB98069B689C7E /* AccountTests.swift */,
 				DBAA546CA1C556D90F3EEA7C /* BrowsingTests.swift */,
 				32C4A6B576ED752A74140651 /* EventEditingFlowTests.swift */,
@@ -662,6 +665,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B523949F0609A220EFCD36D0 /* AccessibilityAuditTests.swift in Sources */,
 				2AEFDCF323D7EA2EB4C9CFD5 /* AccountTests.swift in Sources */,
 				A647F17C9C3224259E0B39BC /* BrowsingTests.swift in Sources */,
 				50677A35139C76F0A8A322C2 /* EventEditingFlowTests.swift in Sources */,
