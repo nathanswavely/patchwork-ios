@@ -174,23 +174,40 @@ struct PatchSheet: View {
         .overlay(alignment: .bottom) { Color.pwBorder.frame(height: PatchworkCard.hairline) }
     }
     /// The web's `.profile-cover`: the design cropped the way the card's
-    /// strip crops it, a scrim under the name and the counts, and the name
-    /// set on it. It grows with a long name rather than clipping the title
-    /// it exists to show.
+    /// strip crops it, and the name set on it. It grows with a long name
+    /// rather than clipping the title it exists to show.
     ///
-    /// The scrim is measured from the text, not the band: at least 60%
-    /// black wherever there are words, which is what keeps white text at
-    /// AA over the palest cloth, rising to 80% at the foot and fading out
-    /// only across the room left above the name. The web's fade (75% to
-    /// 30% to nothing over the whole band) left the counts short of AA on
-    /// a light cloth, and a large text size, which makes the words fill the
-    /// band, left the name on bare cloth.
-    /// The room above the name: the discs and the sheet's handle sit in it.
-    private static let coverHeadroom: CGFloat = 64
+    /// The cloth stays the patch's own: the only darkening is a band behind
+    /// the name and the counts, rising from clear over the 40pt above the
+    /// name to 55% black under the words and falling away again under the
+    /// counts. The numbers are for the palest cloth there is, white: 55%
+    /// black over it composites to sRGB 0.45, relative luminance 0.17,
+    /// so white text on it measures (1.05 / 0.22) 4.7:1, past the 4.5:1 the
+    /// counts' small type needs; the name, large type, needs 3:1 and gets
+    /// the same 4.7. Every real cloth is darker than white, so it only does
+    /// better. Above the name and round the acts the cloth is untouched:
+    /// the acts ride smoked glass, which carries its own contrast. (The web
+    /// darkens the whole band, 75% to 30% to nothing; a first pass here
+    /// darkened it 60% to 80% under everything, which turned a red cloth
+    /// maroon.)
+    private static let scrim: Double = 0.55
     private var coverBand: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(patch.name).font(Font.pw.displayTitle).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
-            Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(patch.name).font(Font.pw.displayTitle).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+                Text(patch.countsLabel).font(Font.pw.subheadline).foregroundStyle(.white)
+            }
+            .background {
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black.opacity(Self.scrim)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 40)
+                    Color.black.opacity(Self.scrim)
+                    LinearGradient(colors: [.black.opacity(Self.scrim), .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 12)
+                }
+                // Edge to edge, and past the words above and below.
+                .padding(.horizontal, -20).padding(.top, -40).padding(.bottom, -12)
+            }
             // The acts on their own line under the counts they change, never
             // beside the name: a name gets the whole width, and a button
             // never wraps mid-word to make room for one.
@@ -200,21 +217,11 @@ struct PatchSheet: View {
         }
         // Room above the name for the close and overflow discs and the
         // sheet's own handle, since the band now starts at the sheet's top.
-        .padding(.horizontal, 20).padding(.top, Self.coverHeadroom).padding(.bottom, 16)
+        .padding(.horizontal, 20).padding(.top, 64).padding(.bottom, 16)
         .frame(maxWidth: .infinity, minHeight: 160, alignment: .bottomLeading)
-        // The cloth and its scrim are the band's background, so the name and
-        // the acts sit on the scrim rather than under it: glass over a scrim
-        // reads as glass, glass under one reads as mud.
         .background {
-            ZStack {
-                TileMiniature(patch: patch, tagMotifs: session.tagMotifs, fit: .cover, side: 420)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
-                        .frame(height: Self.coverHeadroom)
-                    LinearGradient(colors: [.black.opacity(0.6), .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
-                }
-            }
+            TileMiniature(patch: patch, tagMotifs: session.tagMotifs, fit: .cover, side: 420)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color(UIColor(hex: QuiltTheme.palette(for: patch).bg) ?? .black))
         // Each disc is drawn at 34pt inside a 44pt target, so the 5pt of

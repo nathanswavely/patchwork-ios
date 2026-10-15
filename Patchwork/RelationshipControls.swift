@@ -469,12 +469,13 @@ private struct ActButton: ViewModifier {
     let onCover: Bool
     func body(content: Content) -> some View {
         // A word on the rust is pwOnAccent; on the cover, the clear glass is
-        // smoked, since over a pale cloth white on clear glass all but
-        // disappeared.
+        // smoked as dark as the scrim behind the name (55%), since the acts
+        // sit on the bare cloth below it and white on clear glass over a
+        // pale cloth all but disappeared.
         if onCover {
             if #available(iOS 26, *) {
                 if prominent { content.buttonStyle(.glassProminent).tint(Color.pwAccent).foregroundStyle(Color.pwOnAccent) }
-                else { content.buttonStyle(.glass).tint(.black.opacity(0.35)).foregroundStyle(.white) }
+                else { content.buttonStyle(.glass).tint(.black.opacity(0.55)).foregroundStyle(.white) }
             } else {
                 if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent).foregroundStyle(Color.pwOnAccent) }
                 else { content.buttonStyle(.bordered).tint(.white).foregroundStyle(.white) }
@@ -487,15 +488,16 @@ private struct ActButton: ViewModifier {
 }
 
 /// The standing mark's capsule: a hairline of thread inline, smoked glass on
-/// the cover, where white on clear glass over a pale cloth was barely there.
+/// the cover (55%, the name's scrim), where white on clear glass over a
+/// pale cloth was barely there.
 private struct MarkChrome: ViewModifier {
     let onCover: Bool
     func body(content: Content) -> some View {
         if onCover {
             if #available(iOS 26, *) {
-                content.glassEffect(.regular.tint(.black.opacity(0.35)), in: Capsule())
+                content.glassEffect(.regular.tint(.black.opacity(0.55)), in: Capsule())
             } else {
-                content.background(Color.black.opacity(0.35), in: Capsule())
+                content.background(Color.black.opacity(0.55), in: Capsule())
             }
         } else {
             content.overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
