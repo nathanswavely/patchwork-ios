@@ -1428,6 +1428,11 @@ enum PreviewData {
         var abstainers: Set<String> = []
         /// An admin of an admin-decides patch asked the members first.
         var advisory = false
+        /// Who declined it, by name (`declined_by`), and when it was made
+        /// official. A direct change is stamped at its own creation; nil
+        /// leaves a voted change applied a day after it was raised.
+        var declinedBy = ""
+        var appliedMinutesAgo: Int?
         var isElection: Bool { seats > 0 }
     }
 
@@ -1505,6 +1510,24 @@ enum PreviewData {
                 ballots: [FixtureBallot(userId: "l1", name: "Dee Ramos", username: "dee", value: "approve"),
                           FixtureBallot(userId: "l2", name: "Ade Bello", username: "ade", value: "approve")],
                 eligible: 5, quorum: 0),
+            // The Film Club's admins decide (a `--preview-admin` launch is
+            // one of them): a member's request waiting on the maintainer,
+            // and a vote the members carried before the club handed its
+            // decisions to its admins, waiting to be made official.
+            FixtureProposal(
+                id: "club-proposal-1", slug: adminSlug, nodeId: adminSlug, title: "Subtitles at every screening",
+                body: "Half of us watch with the subtitles on at home. The projector can show them.",
+                author: "Lena Fox", authorId: "u-lena", state: "awaiting_admin",
+                createdMinutesAgo: 2 * day, endsInMinutes: nil, eligible: 4, quorum: 0, method: "admin"),
+            FixtureProposal(
+                id: "club-proposal-2", slug: adminSlug, nodeId: adminSlug, title: "Move screenings to the library",
+                body: "The library’s back room is free on Fridays and has a screen.",
+                author: "Ollie Grant", authorId: "u-ollie", status: "approved", state: "approved",
+                createdMinutesAgo: 20 * day, endsInMinutes: -17 * day,
+                ballots: [FixtureBallot(userId: "u-juno", name: "Juno Park", username: "juno", value: "approve"),
+                          FixtureBallot(userId: "u-lena", name: "Lena Fox", username: "lena", value: "approve"),
+                          FixtureBallot(userId: "u-ollie", name: "Ollie Grant", username: "ollie", value: "approve")],
+                eligible: 4, quorum: 0),
         ]
     }
 
@@ -1587,10 +1610,19 @@ enum PreviewData {
         ] as [String: Any]
         fields["tenure_days"] = 0
         fields["vote_eligible_at"] = ""
-        fields["applied_at"] = p.state == "in_effect" ? stamp(minutesAgo: max(0, p.createdMinutesAgo - day)) : ""
-        fields["advisory"] = p.advisory
-        fields["can_decide"] = false
-        fields["declined_by"] = ""
+        // A direct change is stamped applied at the instant it was made, as
+        // `settleApplied` is handed the creation time; anything else later.
+        if let applied = p.appliedMinutesAgo {
+            fields["applied_at"] = stamp(minutesAgo: applied)
+        } else if p.state == "in_effect" {
+            fields["applied_at"] = p.ballots.isEmpty ? fields["created_at"]! : stamp(minutesAgo: max(0, p.createdMinutesAgo - day))
+        } else {
+            fields["applied_at"] = ""
+        }
+        // Both from the proposal's frozen terms, as `GetProposal` answers.
+        fields["advisory"] = p.method == "admin"
+        fields["can_decide"] = p.method == "admin" && p.status == "open" && role(p.slug) == "admin"
+        fields["declined_by"] = p.declinedBy
         return fields
     }
 
@@ -1788,6 +1820,51 @@ enum PreviewData {
                 p.candidates.removeAll { $0.userId == me }
                 proposals[index] = p
                 return ""
+            case ("POST", ["decide"]):
+                // `DecideProposal`: the body first, then `maintainerDecidable`.
+                let decision = (fields["decision"] as? String) ?? ""
+                guard ["approve", "decline"].contains(decision) else {
+                    throw APIError.message("decision must be approve or decline", status: 400)
+                }
+                try maintainerDecidable(p)
+                if decision == "approve" {
+                    (p.status, p.state, p.appliedMinutesAgo) = ("approved", "in_effect", 0)
+                } else {
+                    (p.status, p.state, p.declinedBy) = ("rejected", "rejected", myName)
+                }
+                p.endsInMinutes = p.endsInMinutes.map { min($0, 0) }
+                proposals[index] = p
+                return decision == "approve" ? #"{"status":"approved","state":"in_effect"}"# : #"{"status":"rejected","state":"rejected"}"#
+            case ("POST", ["open-vote"]):
+                try maintainerDecidable(p)
+                guard p.state == "awaiting_admin" else { throw APIError.message("a vote is already open on this proposal", status: 409) }
+                guard p.endsInMinutes == nil else {
+                    throw APIError.message("the members have already been asked; the tally is on the proposal", status: 409)
+                }
+                var hours = (fields["duration_hours"] as? Int) ?? 0
+                if hours <= 0 { hours = fixtureRules[p.slug]?.hours ?? 0 }
+                if hours <= 0 { hours = 72 }
+                p.state = "voting"
+                p.endsInMinutes = hours * 60
+                p.advisory = true
+                proposals[index] = p
+                return #"{"status":"ok","state":"voting"}"#
+            case ("POST", ["apply"]):
+                // `ApplyProposal`, in its order and words.
+                guard role(p.slug) == "admin" else {
+                    throw APIError.message("only this patch's admins can make proposals official", status: 403)
+                }
+                let approved = p.state == "approved" || p.status == "approved"
+                let maintainers = p.method == "admin" && p.status == "open" && ["voting", "awaiting_admin"].contains(p.state)
+                guard approved || maintainers else {
+                    if p.status == "open" {
+                        throw APIError.message("this patch decides proposals by vote; wait for the window to close", status: 409)
+                    }
+                    throw APIError.message("proposal cannot be applied in its current state", status: 400)
+                }
+                (p.status, p.state, p.appliedMinutesAgo) = ("approved", "in_effect", 0)
+                proposals[index] = p
+                return #"{"status":"ok","state":"in_effect"}"#
             case ("POST", ["comments"]):
                 guard readable(p) else { throw APIError.message("proposal not found", status: 404) }
                 try mayDiscuss(p.slug)
@@ -1844,6 +1921,22 @@ enum PreviewData {
             return #"{"status":"ok"}"#
         default:
             throw APIError.status(405)
+        }
+    }
+
+    /// `maintainerDecidable`'s refusals, in its order and words.
+    private static func maintainerDecidable(_ p: FixtureProposal) throws {
+        guard role(p.slug) == "admin" else {
+            throw APIError.message("only this patch's admins can decide its proposals", status: 403)
+        }
+        guard p.method == "admin" else {
+            throw APIError.message("this patch decides proposals by vote, not by its admins", status: 409)
+        }
+        guard !p.isElection else {
+            throw APIError.message("an election is closed by the electorate, not by an admin (docs/adr/051)", status: 409)
+        }
+        guard p.status == "open", ["voting", "awaiting_admin"].contains(p.state) else {
+            throw APIError.message("this proposal is not open for a decision", status: 409)
         }
     }
 

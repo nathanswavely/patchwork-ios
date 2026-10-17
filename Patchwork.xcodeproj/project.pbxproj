@@ -23,6 +23,7 @@
 		2180112E9E680A9F657DC682 /* Orientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9FDB4B0FEECCD81AC0E3F0 /* Orientation.swift */; };
 		21CD31BA85978397F79F6603 /* GovernanceFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82C8B28434034C4CB0F843D2 /* GovernanceFlowTests.swift */; };
 		224BE2E32065E7056BEEC2B0 /* SpaceGrotesk-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0AEC650C112BD2B8F7DB70EA /* SpaceGrotesk-Variable.ttf */; };
+		240B531C71DD33397894D9B0 /* ProposalDeciding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB49EEA66F6218D23D37384 /* ProposalDeciding.swift */; };
 		2532D000906F08D56268FEED /* PatchSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 021DA98B07564FF9A6AFBDED /* PatchSettings.swift */; };
 		25A5AED1E33D75FAE0A2B477 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13104ECF5B23C48E73CC0571 /* Notifications.swift */; };
 		2A2B3F83254CB96CED59D650 /* MyPatches.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E55DE3EFB5510AEE052A819 /* MyPatches.swift */; };
@@ -197,6 +198,7 @@
 		648BEEA637812310BB0E269B /* ProposalDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalDetail.swift; sourceTree = "<group>"; };
 		66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
 		66E8D7BA2E9B728451A4B94B /* QuiltOnboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltOnboarding.swift; sourceTree = "<group>"; };
+		6AB49EEA66F6218D23D37384 /* ProposalDeciding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalDeciding.swift; sourceTree = "<group>"; };
 		6C97C54F89DB98069B689C7E /* AccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTests.swift; sourceTree = "<group>"; };
 		6F1AEA837177256C32A178DA /* PatchMembers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchMembers.swift; sourceTree = "<group>"; };
 		73236C64CF82F56019DF7AC1 /* Relationship.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Relationship.swift; sourceTree = "<group>"; };
@@ -343,6 +345,7 @@
 				7383BF37670A958AB4682100 /* PersonProfile.swift */,
 				CC491BDA8B532F53F22BCE42 /* PreviewData.swift */,
 				34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */,
+				6AB49EEA66F6218D23D37384 /* ProposalDeciding.swift */,
 				648BEEA637812310BB0E269B /* ProposalDetail.swift */,
 				5F9489A74FAF68B68C6D0D25 /* ProposalForm.swift */,
 				3475E4A053C83424DD2469A3 /* ProposalPosting.swift */,
@@ -614,6 +617,7 @@
 				359CF528C8718835B0E86873 /* People.swift in Sources */,
 				883A58CBD707E3418365DC93 /* PersonProfile.swift in Sources */,
 				F22887B76A0A581F1DBBE60B /* PreviewData.swift in Sources */,
+				240B531C71DD33397894D9B0 /* ProposalDeciding.swift in Sources */,
 				5400B1EF49111AA53A455DF3 /* ProposalDetail.swift in Sources */,
 				7A0D1F5F707EDC552B765B70 /* ProposalForm.swift in Sources */,
 				078B942DF4D383554FF5438C /* ProposalPosting.swift in Sources */,

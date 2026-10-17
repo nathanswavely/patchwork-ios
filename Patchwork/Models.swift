@@ -789,14 +789,39 @@ struct Proposal: Decodable, Identifiable, Hashable {
     var declinedBy: String? = nil
     /// Every ballot ever cast, counted or not. Only the detail carries it.
     var voters: [Ballot]? = nil
+    // An amendment's texts (the detail only): what it would replace and
+    // what it proposes. Both are withheld, and `docTextHidden` set, where
+    // the document is members only and the reader is not in the room.
+    var currentDocContent: String? = nil
+    var proposedBody: String? = nil
+    var proposedTitle: String? = nil
+    var docTextHidden: Bool? = nil
+    /// The document was adopted at a meeting after this was drafted, so its
+    /// diff compares against a text that has moved (web ADR 053).
+    var groundMoved: Bool? = nil
+    var groundMovedAt: String? = nil
     var ballots: Int { (approveCount ?? 0) + (rejectCount ?? 0) + (abstainCount ?? 0) }
     /// Born applied under admin-decides rules: a direct change, not a vote
     /// nobody turned up to (web ADR 041). The detail says so off its voter
     /// list, which is the whole record (web ADR 044); a list row carries no
     /// voters, so it falls back to an approved row with no ballots, which is
     /// the web list's own test.
+    ///
+    /// A member's request the maintainer approved without asking anybody is
+    /// also in effect with nobody on the voter list, and it is not a direct
+    /// change: its author did not apply it. A direct change is stamped
+    /// applied the instant it was made (`settleApplied` is handed the
+    /// creation time), and a decision is stamped later, so where the detail
+    /// carries both times they tell the two apart. The web reads the voter
+    /// list alone and calls the request "Applied by" its author.
     var isDirectChange: Bool {
-        if let voters { return VoteRules.effectiveState(self) == "in_effect" && voters.isEmpty && !isElection }
+        if let voters {
+            guard VoteRules.effectiveState(self) == "in_effect", voters.isEmpty, !isElection else { return false }
+            if let applied = appliedAt.flatMap(PatchworkEvent.parseDate), let created = createdAt.flatMap(PatchworkEvent.parseDate) {
+                return abs(applied.timeIntervalSince(created)) < 1
+            }
+            return true
+        }
         return status == "approved" && ballots == 0
     }
     var isElection: Bool { (seatsContested ?? 0) > 0 || !(electionPhase ?? "").isEmpty }
