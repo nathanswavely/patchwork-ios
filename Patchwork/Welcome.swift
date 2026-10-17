@@ -152,7 +152,7 @@ struct WelcomeView: View {
                             .font(Font.pw.body).foregroundStyle(Color.pwText)
                             .fixedSize(horizontal: false, vertical: true)
                         NavigationLink { AboutQuiltView() } label: {
-                            Text("What is Patchwork?").font(Font.pw.subheadline).inkRow(fills: false)
+                            Text("What is Patchwork?").font(Font.pw.subheadline).inkRow(fills: false).tapTarget()
                         }
                     }
                     if let label, label.published == true { labelPanel(label) }
@@ -161,7 +161,7 @@ struct WelcomeView: View {
                         Button(action: buildYourQuilt) {
                             Text("Build your quilt").font(Font.pw.headline)
                                 .frame(maxWidth: .infinity, minHeight: 28)
-                                .foregroundStyle(Color.white)
+                                .foregroundStyle(Color.pwOnAccent)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(Color.pwAccent)
@@ -169,9 +169,9 @@ struct WelcomeView: View {
                         .accessibilityIdentifier("welcomeBuild")
                         Button(action: exploreOnMyOwn) {
                             Text("I'll explore on my own").font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                                .tapTarget()
                         }
                         .buttonStyle(.plain)
-                        .frame(minHeight: 44)
                         .accessibilityIdentifier("welcomeSkip")
                     }
                     .padding(.top, 4)
@@ -200,7 +200,7 @@ struct WelcomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             NavigationLink { LabelView() } label: {
-                Text("Read the Label").font(Font.pw.subheadlineMedium).inkRow(fills: false)
+                Text("Read the Label").font(Font.pw.subheadlineMedium).inkRow(fills: false).tapTarget()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -228,7 +228,7 @@ struct WelcomeView: View {
             .accessibilityIdentifier("welcomeExpectations")
             NavigationLink { LiningView() } label: {
                 Text("Every patch starts from the lining, the shared baseline behind these.")
-                    .font(Font.pw.subheadline).multilineTextAlignment(.leading).inkRow(fills: false)
+                    .font(Font.pw.subheadline).multilineTextAlignment(.leading).inkRow(fills: false).tapTarget()
             }
         }
         .environment(\.openURL, OpenURLAction { url in

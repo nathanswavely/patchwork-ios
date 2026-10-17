@@ -153,6 +153,7 @@ struct QuiltBrowser: View {
                     // The order is a menu, not a link: ink, with the control's
                     // own glyph doing the work the colour used to.
                     .foregroundStyle(Color.pwText)
+                    .tapTarget()
             }
             .accessibilityIdentifier("patchOrder")
         }
@@ -219,7 +220,7 @@ private struct ViewSwitcher: View {
                     } label: {
                         Image(systemName: glyph(view, filled: chosen))
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(chosen ? Color.white : Color.pwText)
+                            .foregroundStyle(chosen ? Color.pwOnAccent : Color.pwText)
                             .frame(width: 44, height: 44)
                             .background { if chosen { Circle().fill(Color.accentColor) } }
                             .contentShape(Circle())

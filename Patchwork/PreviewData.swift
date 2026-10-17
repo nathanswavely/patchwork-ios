@@ -973,16 +973,7 @@ enum PreviewData {
         guard isRequest || isAct || isEdit else { return nil }
         guard signedIn else { throw APIError.unauthenticated }
 
-        if isEdit {
-            let slug = parts[1]
-            guard role(slug) == "admin" else { throw APIError.message("insufficient permissions", status: 403) }
-            var edits = nodeEdits[slug] ?? [:]
-            for key in ["name", "description", "address", "website", "latitude", "longitude", "appearance", "tags"] {
-                if let value = fields[key] { edits[key] = value }
-            }
-            nodeEdits[slug] = edits
-            return #"{"status":"ok"}"#
-        }
+        if isEdit { return try updateNode(parts[1], fields: fields) }
 
         if isRequest {
             _ = browserStandIn
@@ -1076,6 +1067,69 @@ enum PreviewData {
             throw APIError.status(404)
         }
     }
+
+    /// `UpdateNode`, in its order and its words: the patch's admin only, the
+    /// checks that make a bad value a 400 rather than the database's 500,
+    /// the question about events that follow the zone, and then every
+    /// allowed field written over the fixture row. `null` clears.
+    private static func updateNode(_ slug: String, fields: [String: Any]) throws -> String {
+        guard holdable.contains(where: { $0.slug == slug }) || madePatches.contains(where: { $0.slug == slug }) else {
+            throw APIError.message("node not found", status: 404)
+        }
+        guard role(slug) == "admin" || (accountFields["role"] as? String) == "admin" else {
+            throw APIError.message("insufficient permissions", status: 403)
+        }
+        var edits = nodeEdits[slug] ?? [:]
+        if let raw = fields["timezone"] {
+            let zone = ((raw as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !zone.isEmpty && (TimeZone(identifier: zone) == nil || !zone.contains("/")) {
+                throw APIError.message("timezone must be an IANA zone name for a place, like America/New_York or Europe/Berlin — a fixed-offset name like EST is an hour wrong for half the year", status: 400)
+            }
+            let stored = (edits["timezone"] as? String) ?? "America/New_York"
+            // The club's calendar follows its zone, so a change asks first.
+            let following = everyEvent.filter { $0.json.contains("\"node_slug\":\"\(slug)\"") && !deletedEvents.contains($0.id) }.count
+            let mode = (fields["timezone_events"] as? String) ?? ""
+            if zone != stored, following > 0, mode != "keep_clock", mode != "keep_instant" {
+                let subject = following == 1 ? "event follows" : "events follow"
+                throw refuse(409, "\(following) \(subject) this patch's timezone and would read as a different time. Say whether to keep their clock times or leave them where they are.",
+                             code: "timezone_events_undecided")
+            }
+        }
+        if let raw = fields["visibility"], !["public", "private"].contains((raw as? String) ?? "") {
+            throw APIError.message("visibility must be one of public, private", status: 400)
+        }
+        if let raw = fields["notice_posting"], !["admins", "members"].contains((raw as? String) ?? "") {
+            throw APIError.message("notice_posting must be admins or members", status: 400)
+        }
+        if let raw = fields["notice_replies_default"], !(raw is Bool) {
+            throw APIError.message("notice_replies_default must be true or false", status: 400)
+        }
+        if fields["image_url"] != nil || fields["image_alt"] != nil {
+            let url = (fields["image_url"] as? String) ?? (edits["image_url"] as? String) ?? ""
+            let alt = (fields["image_alt"] as? String) ?? (edits["image_alt"] as? String) ?? ""
+            if let problem = EventPosting.imageProblem(url: url, alt: alt) { throw APIError.message(problem, status: 400) }
+        }
+        if let tags = fields["tags"] {
+            guard let names = tags as? [String] else { throw APIError.message("tags must be an array of tag names", status: 400) }
+            if let unknown = names.first(where: { !vocabulary.contains($0) }) { throw APIError.message("unknown tag: \(unknown)", status: 400) }
+        }
+        let allowed = ["name", "description", "latitude", "longitude", "address", "timezone", "website", "links", "visibility",
+                       "appearance", "accept_event_suggestions", "notice_posting", "notice_replies_default",
+                       "public_member_list", "public_governance_record", "image_url", "image_alt", "tags"]
+        let written = allowed.filter { fields[$0] != nil }
+        guard !written.isEmpty || fields["suggest_tags"] != nil else { throw APIError.message("no valid fields to update", status: 400) }
+        for key in written {
+            let value = fields[key]!
+            // An empty zone clears it back to the quilt's.
+            if key == "timezone", (value as? String)?.isEmpty == true { edits[key] = NSNull() } else { edits[key] = value }
+        }
+        nodeEdits[slug] = edits
+        lastNodeEdit = fields
+        return #"{"status":"ok"}"#
+    }
+    /// The last `PATCH nodes/{slug}` body, so a test can see only what
+    /// changed travelled.
+    static var lastNodeEdit: [String: Any] = [:]
 
     // MARK: Account invite links
 
@@ -1889,10 +1943,21 @@ enum PreviewData {
         let createdMinutesAgo: Int
     }
 
-    private static let boards: [String: (nodeId: String, posting: String, repliesDefault: Bool)] = [
+    private static let fixedBoards: [String: (nodeId: String, posting: String, repliesDefault: Bool)] = [
         "common-thread": ("demo-patch", "members", true),
         memberSlug: (memberSlug, "admins", true),
+        adminSlug: (adminSlug, "members", true),
     ]
+    /// The boards as `PATCH nodes/{slug}` has left them: the two settings
+    /// live on the patch's row, so an edit there is what the board reads.
+    private static var boards: [String: (nodeId: String, posting: String, repliesDefault: Bool)] {
+        fixedBoards.reduce(into: [:]) { result, entry in
+            let edits = nodeEdits[entry.key] ?? [:]
+            result[entry.key] = (entry.value.nodeId,
+                                 (edits["notice_posting"] as? String) ?? entry.value.posting,
+                                 (edits["notice_replies_default"] as? Bool) ?? entry.value.repliesDefault)
+        }
+    }
 
     /// Newest first, the order the server serves them in. One was put up
     /// by the reader, one has its replies switched off with one kept, and
@@ -1918,6 +1983,17 @@ enum PreviewData {
                       title: "Soldering irons are back",
                       body: "Both irons are back from repair and on the bench by the window.\n\nPlease switch them off at the wall when you finish.",
                       membersTold: true, createdMinutesAgo: 9 * day),
+        // The Film Club's board, which its admin keeps on a
+        // `--preview-admin` launch: one notice reported, and one whose
+        // reply was.
+        FixtureNotice(id: "notice-f2", slug: adminSlug, authorId: "u-lena", authorName: "Lena Fox", authorUsername: "lena",
+                      title: "Cheap DVDs, message me",
+                      body: "Boxes of them. Five for a tenner, collection only.",
+                      createdMinutesAgo: 5 * 60),
+        FixtureNotice(id: "notice-f1", slug: adminSlug, authorId: "u-juno", authorName: "Juno Park", authorUsername: "juno",
+                      title: "Projector bulb ordered",
+                      body: "The bulb went during the second reel on Friday. A new one arrives on Wednesday.",
+                      createdMinutesAgo: 3 * day),
     ]
 
     /// Oldest first, as the server serves them.
@@ -1930,9 +2006,110 @@ enum PreviewData {
                      body: "I can drive over and collect the part if that is quicker.", createdMinutesAgo: 90),
         FixtureReply(id: "reply-r1", noticeId: "notice-r1", authorId: "rc2", authorName: "Kofi Adu", authorUsername: "kofi",
                      body: "Good news. I will bring the spare tips on Saturday.", createdMinutesAgo: 8 * day),
+        FixtureReply(id: "reply-f1", noticeId: "notice-f1", authorId: "u-ollie", authorName: "Ollie Grant", authorUsername: "ollie",
+                     body: "Typical. Whoever broke it should be made to pay for it.", createdMinutesAgo: 2 * day),
     ]
     private static var noticeSerial = 100
     private static var reportSerial = 0
+
+    /// The Film Club's report queue (`content_reports` with its `node_id`):
+    /// three waiting — one about a notice, one about a reply, and one about
+    /// a notice its author has since taken down — and one each already
+    /// resolved and dismissed.
+    private struct FixtureReport {
+        let id: String
+        let entityType: String
+        let entityId: String
+        let reason: String
+        let details: String
+        let reporterId: String
+        let reporterName: String
+        var status = "pending"
+        var note = ""
+        let minutesAgo: Int
+    }
+    private static var freshReports: [FixtureReport] {
+        [
+            FixtureReport(id: "report-f1", entityType: "notice", entityId: "notice-f2", reason: "Spam or scam",
+                          details: "The same post is on three other boards.", reporterId: "u-juno", reporterName: "Juno Park",
+                          minutesAgo: 3 * 60),
+            FixtureReport(id: "report-f2", entityType: "reply", entityId: "reply-f1", reason: "Harassment or intimidation",
+                          details: "", reporterId: "u-lena", reporterName: "Lena Fox", minutesAgo: day),
+            FixtureReport(id: "report-f3", entityType: "notice", entityId: "notice-f0", reason: "Something else",
+                          details: "It had the wrong date on it.", reporterId: "u-ollie", reporterName: "Ollie Grant",
+                          minutesAgo: 2 * day),
+            FixtureReport(id: "report-f4", entityType: "notice", entityId: "notice-f1", reason: "Something else",
+                          details: "No date for the next screening.", reporterId: "u-ollie", reporterName: "Ollie Grant",
+                          status: "resolved", note: "Asked Juno to add the date.", minutesAgo: 6 * day),
+            FixtureReport(id: "report-f5", entityType: "reply", entityId: "reply-f1", reason: "Spam or scam",
+                          details: "", reporterId: "u-juno", reporterName: "Juno Park", status: "dismissed", minutesAgo: 7 * day),
+        ]
+    }
+    private static var reports: [FixtureReport] = freshReports
+
+    /// A queue row as `ListPatchReports` serves it, with the reported thing
+    /// quoted from the board as it stands now.
+    private static func reportJSON(_ r: FixtureReport) -> [String: Any] {
+        var target = ""
+        var noticeId = ""
+        var gone = true
+        if r.entityType == "notice", let n = notices.first(where: { $0.id == r.entityId }) {
+            target = n.title; noticeId = n.id; gone = false
+        } else if r.entityType == "reply", let reply = noticeReplies.first(where: { $0.id == r.entityId }) {
+            target = reply.body; noticeId = reply.noticeId; gone = false
+        } else if r.entityType == "notice" {
+            noticeId = r.entityId
+        }
+        return [
+            "id": r.id, "reporter_id": r.reporterId, "entity_type": r.entityType, "entity_id": r.entityId,
+            "reason": r.reason, "details": r.details, "status": r.status, "resolution_note": r.note,
+            "created_at": stamp(minutesAgo: r.minutesAgo), "updated_at": stamp(minutesAgo: r.minutesAgo),
+            "node_id": adminSlug, "reporter_name": r.reporterName, "target": target, "notice_id": noticeId, "gone": gone,
+        ]
+    }
+
+    /// `ListPatchReports`: the patch's own admin only — an instance admin
+    /// with no role here is answered 404, like the room.
+    private static func reportsRead(_ slug: String, query: [URLQueryItem]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        guard role(slug) == "admin" else { throw APIError.message("not found", status: 404) }
+        let status = query.first { $0.name == "status" }?.value.flatMap { $0.isEmpty ? nil : $0 } ?? "pending"
+        let rows = slug == adminSlug ? reports.filter { $0.status == status } : []
+        let answer = page(rows, id: \.id, query: query)
+        return serialize(["items": answer.rows.map(reportJSON), "next_cursor": answer.next])
+    }
+
+    /// `UpdatePatchReport`, in its order and its words.
+    private static func reportAct(_ slug: String, id: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        guard role(slug) == "admin" else { throw APIError.message("not found", status: 404) }
+        guard slug == adminSlug, let index = reports.firstIndex(where: { $0.id == id }) else {
+            throw APIError.message("report not found", status: 404)
+        }
+        guard reports[index].status == "pending" else { throw APIError.message("this report has already been reviewed", status: 400) }
+        let report = reports[index]
+        var status = "resolved"
+        switch (fields["action"] as? String) ?? "" {
+        case "dismiss":
+            status = "dismissed"
+        case "remove":
+            if report.entityType == "notice" {
+                notices.removeAll { $0.id == report.entityId }
+                noticeReplies.removeAll { $0.noticeId == report.entityId }
+            } else {
+                noticeReplies.removeAll { $0.id == report.entityId }
+            }
+        case "close_replies":
+            let noticeId = report.entityType == "reply"
+                ? noticeReplies.first { $0.id == report.entityId }?.noticeId ?? report.entityId : report.entityId
+            if let n = notices.firstIndex(where: { $0.id == noticeId }) { notices[n].repliesOpen = false }
+        default:
+            throw APIError.message("action must be dismiss, remove, or close_replies", status: 400)
+        }
+        reports[index].status = status
+        reports[index].note = (fields["resolution_note"] as? String) ?? ""
+        return "{\"status\":\"\(status)\"}"
+    }
 
     private static func noticeJSON(_ n: FixtureNotice) -> [String: Any] {
         [
@@ -2498,6 +2675,7 @@ enum PreviewData {
         let parts = path.split(separator: "/").map(String.init)
         guard parts.count == 3, parts[0] == "nodes" else { return nil }
         if parts[1] == adminSlug && parts[2] == "members" { return clubMembers(query) }
+        if parts[2] == "reports" { return try reportsRead(parts[1], query: query) }
         if parts[2] == "event-submissions" { return try submissions(parts[1]) }
         return nil
     }
@@ -2514,6 +2692,8 @@ enum PreviewData {
         switch (method, parts.count, parts[2]) {
         case ("PATCH", 4, "members"):
             return try updateMember(slug, userId: parts[3], fields: fields)
+        case ("PATCH", 4, "reports"):
+            return try reportAct(slug, id: parts[3], fields: fields)
         case ("POST", 3, "invitations"):
             return try invite(slug, fields: fields)
         case ("DELETE", 4, "invitations"):
@@ -2548,7 +2728,9 @@ enum PreviewData {
                 if status != "pending" { clubRoster[index].message = "" }
             }
         }
-        // The app sends no role change: those stay on the website.
+        if let role = fields["role"] as? String {
+            return try changeRole(row, to: role, mine: mine)
+        }
         guard let status = fields["status"] as? String else { throw APIError.message("invalid request body", status: 400) }
         switch status {
         case "active":
@@ -2570,6 +2752,31 @@ enum PreviewData {
             throw APIError.message("invalid status value", status: 400)
         }
         var answer = clubJSON(clubRows.first { $0.userId == userId } ?? row, message: false)
+        for key in ["username", "display_name", "avatar_url"] { answer[key] = nil }
+        return serialize(answer)
+    }
+
+    /// `UpdateMember`'s role half, in its order and its words. The club is
+    /// run by a maintainer, so a promotion is honoured; the governance
+    /// refusals the server makes elsewhere (decided elsewhere, ratified by
+    /// proposal, an elected council) are read from the rules by the app
+    /// before it offers the act at all.
+    private static func changeRole(_ row: ClubRow, to role: String, mine: String) throws -> String {
+        guard ["member", "follower", "admin"].contains(role) else { throw APIError.message("invalid role value", status: 400) }
+        if row.status == "invited" { throw APIError.message("they have not accepted the invitation yet", status: 400) }
+        if row.role == "follower" && role != "follower" {
+            throw APIError.message("they follow this patch: invite them to join, or let them become a member themselves", status: 409)
+        }
+        if row.role == "admin" && role != "admin",
+           clubRows.filter({ $0.role == "admin" && $0.status == "active" }).count <= 1 {
+            throw APIError.message("cannot demote the last admin", status: 409)
+        }
+        if row.userId == mine {
+            held[adminSlug]?.role = role
+        } else if let index = clubRoster.firstIndex(where: { $0.userId == row.userId }) {
+            clubRoster[index].role = role
+        }
+        var answer = clubJSON(clubRows.first { $0.userId == row.userId } ?? row, message: false)
         for key in ["username", "display_name", "avatar_url"] { answer[key] = nil }
         return serialize(answer)
     }

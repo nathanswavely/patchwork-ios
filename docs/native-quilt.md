@@ -183,10 +183,10 @@ extension in `Palette.swift`: `pwGround` (`#F4F0E8` / `#151820` — `--lt-canvas
 raw cotton and raw denim, which is also `--color-bg`), `pwSurface` (`#FAF6EE` /
 `#1C2028`), `pwBorder` (`#DDD8CC` / `#2A2E38`, the unbleached-thread family the
 quilt's own `QuiltInk.thread` draws from), `pwText` (`#2A2520` / `#E0DBD4`) and
-`pwTextMuted` (`#6B655C` / `#9B958C`). `AccentColor` was already the web's
+`pwTextMuted` (`#57514A` / `#ADA79E`; `#6B655C` / `#9B958C` until the accessibility pass). `AccentColor` was already the web's
 `--color-primary` (`#0272B5` / `#39B4F6`) and stays the only tint. Body text
-measures 13.4:1 light and 12.9:1 dark against the ground, muted 5.1:1 and
-6.0:1, accent-as-text 4.8:1 and 7.0:1 — AA at both ends, with Increase Contrast
+measures 13.4:1 light and 12.9:1 dark against the ground, muted 6.9:1 and
+7.4:1, accent-as-text 4.8:1 and 7.0:1 — AA at both ends, with Increase Contrast
 only ever moving further from the ground. Nothing branches on the setting: the
 asset catalog answers it. The ground reaches the quilt canvas (which had been
 `systemGroupedBackground` under a quilt whose ink was taken from this very
@@ -1940,3 +1940,80 @@ Not verified: a live server, VoiceOver on the map picker (it cannot be
 panned by VoiceOver; a suggested point can still be confirmed), Dynamic Type
 at the accessibility sizes on the form, and the recovery-code ending of an
 invite on a quilt without mail (the fixture quilt sends mail).
+
+## Patch settings — 2026-10-17
+
+The rest of what a patch's admin keeps, from the phone. Reference: the
+web's `PatchSettingsNoticeboard.svelte`, `PatchSettingsMembers.svelte`,
+`PatchSettingsInfo.svelte` and `PatchSettingsAppearance.svelte`; the
+server's `ListPatchReports`, `UpdatePatchReport`, `UpdateMember` and
+`UpdateNode` (origin/main e821255); and web ADRs 007, 045, 051, 052, 081,
+100 and 117.
+
+- **The report queue.** The web keeps it under the board's settings, so here
+  it is a door at the head of the board, drawn for the patch's own admin
+  only — the server's `patchAdminOnly` answers a quilt admin with no role
+  404, because a queue that quotes the room is the room. Pending, Resolved
+  and Dismissed are a segmented control. A row says what it is, when, and
+  who reported it (the server always names the reporter to the admins), then
+  what was reported as a door to its notice — a reported reply opens the
+  notice it sits under — or "Already taken down." where it is gone, then the
+  reason and details. **Review** is a sheet rather than the web's inline
+  form: the three actions as cards, each saying what it does and that the
+  reporter hears "reviewed" and nothing more, and the note. Removing asks
+  once more ("Yes, remove it", the web's `ConfirmAction` label). Something
+  already gone can only be dismissed. The row leaves the queue at once and
+  comes back with the server's sentence on a refusal. Open reports are a
+  Dashboard ask beside requests and suggestions; the queue has no total, so
+  a full page reads "20+". `notice.reported` links to the settings page and
+  now opens the queue for an admin and the board for anybody else.
+- **The board's settings.** Who puts up notices (a segmented control) and
+  whether new notices take replies (a switch), each saved the moment it
+  changes with the web's sentence, and put back on a refusal. The board
+  reads the policy again on return, so its hint says who posts.
+- **Roles.** Promote to admin and Make member join Remove on a row's swipe
+  and long press. The server refuses a promotion where the patch chooses its
+  admins elsewhere, ratifies them by proposal or elects its council, each
+  with a sentence pointing at the mechanism instead; the room reads the
+  governance overview and offers the act only where none of those holds,
+  and says why under the roster where one does (the web's council note, in
+  its three cases, for an elected patch). Rules that could not be read offer
+  nothing. Demotion is offered on every admin's row, the reader's own
+  included, as the web's control is; the last-admin floor is the server's
+  sentence. Moving somebody to follower stays on the website, where its
+  consequence — their contact shares go — is beside the control. A role
+  change notifies nobody, and the confirmation says so.
+- **Edit patch.** In the cover's ⋯ for the patch's admin, where the web's
+  Settings button sits. It is the create form in an edit mode, read fresh
+  from `nodes/{slug}` and diffed against what it opened with, so a save
+  sends only what changed; nothing changed sends nothing. Policy, template
+  and the lining are not shown (the membership policy changes by a rules
+  proposal; `PATCH nodes` refuses it). The Info page's other fields are
+  added: timezone, with the web's place-zone check and the server's 409 about
+  events that follow the zone asked as a dialog with the web's two answers;
+  the image pair; links, saved with the form rather than one at a time;
+  visibility with the web's consequence copy; and the suggestions switch.
+  The tile is shown and left alone where the patch wears a drafted block or
+  a bundle: the form knows curated blocks and pre-cut palettes only, and a
+  save would have thrown the drafted work away. Founded date, moved-to,
+  Sources, Notifications, Verification and Danger stay on the website, and
+  the form's foot links to Patch Settings there.
+- **The map picker.** It used to open under the form's pinned act on a short
+  phone, so "Use this spot" took the bar's tap; the form now scrolls the
+  picker into view whenever it appears, in create, setup and edit alike.
+
+**Offline.** The Film Club (`--preview-admin`) has a board with two
+notices, three reports waiting (a notice, a reply, a notice already gone)
+and one each resolved and dismissed; `PATCH nodes/{slug}` is now the
+server's `UpdateNode` — its checks, the zone question for a patch whose
+calendar follows its zone, and every allowed field written back — and the
+members fixture takes role changes in `UpdateMember`'s order and words.
+
+**Verification.** Unit tests in `PatchSettingsTests`; UI flows in
+`PatchSettingsFlowTests`: review reports from the Dashboard, change who puts
+up notices, promote and demote a member, edit the patch, and the map picker
+above the bar.
+
+Not verified: a live server, the elected and meritocratic notes on a real
+patch (the fixtures' patches are all a maintainer's), and VoiceOver on the
+review sheet.

@@ -50,6 +50,22 @@ struct AdminPersonHead: View {
     }
 }
 
+/// Things that sit side by side — a person and the act beside them, or two
+/// acts — until the text is at the accessibility sizes, where on one line
+/// they broke the name and the acts' words mid-word; then one under the
+/// other.
+struct ActsRow<Content: View>: View {
+    var spacing: CGFloat = 12
+    @ViewBuilder let content: Content
+    @Environment(\.dynamicTypeSize) private var textSize
+    var body: some View {
+        let layout = textSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: spacing))
+        layout { content }
+    }
+}
+
 /// A confirmation waiting to be answered: the act, on whom.
 private struct PendingAct: Identifiable {
     let act: PatchAdmin.MemberAct
@@ -168,17 +184,18 @@ struct JoinRequestsView: View {
                     .accessibilityLabel("Their note: \(message)")
                     .accessibilityIdentifier("joinMessage-\(member.username ?? member.id)")
             }
-            HStack(spacing: 16) {
+            ActsRow(spacing: 16) {
+                // A regular button around a 30pt label: 44pt to press, which
+                // a small one is not.
                 Button { confirming = PendingAct(act: .approve, member: member) } label: {
-                    Text("Approve").font(Font.pw.subheadlineSemibold).foregroundStyle(.white)
+                    Text("Approve").font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwOnAccent).frame(minHeight: 30)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.pwAccent)
-                .controlSize(.small)
                 .accessibilityLabel("Approve \(member.name)")
                 .accessibilityIdentifier("joinApprove-\(member.username ?? member.id)")
                 Button { confirming = PendingAct(act: .reject, member: member) } label: {
-                    Text("Reject").font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                    Text("Reject").font(Font.pw.subheadline).foregroundStyle(Color.pwText).tapTarget()
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Reject \(member.name)")
@@ -255,7 +272,10 @@ struct InviteMembersView: View {
                     Section { WebsiteOnlyNote(text: "Only this patch’s admins invite people into it.") }
                 } else {
                     Section {
-                        HStack(spacing: 10) {
+                        // The button goes under the field at the
+                        // accessibility sizes, where the two cannot share a
+                        // line.
+                        ActsRow(spacing: 10) {
                             TextField("Username", text: $username)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
@@ -268,12 +288,11 @@ struct InviteMembersView: View {
                                 .accessibilityIdentifier("inviteUsername")
                             Button { Task { await invite() } } label: {
                                 if inviting { ProgressView() } else {
-                                    Text("Invite").font(Font.pw.subheadlineSemibold).foregroundStyle(.white)
+                                    Text("Invite").font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwOnAccent).frame(minHeight: 30)
                                 }
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(Color.pwAccent)
-                            .controlSize(.small)
                             .disabled(inviting || PatchAdmin.inviteBody(username) == nil)
                             .accessibilityIdentifier("inviteSend")
                         }
@@ -313,11 +332,11 @@ struct InviteMembersView: View {
     }
 
     private func row(_ person: InvitedPerson) -> some View {
-        HStack(spacing: 12) {
+        ActsRow {
             AdminPersonHead(name: person.name, username: person.username, avatar: person.avatar,
                             detail: PatchAdmin.invitedLine(person.invitedAt)) { self.person = $0 }
             Button { rescinding = person } label: {
-                Text("Rescind").font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                Text("Rescind").font(Font.pw.subheadline).foregroundStyle(Color.pwText).tapTarget()
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Rescind \(person.name)’s invitation")
@@ -406,11 +425,11 @@ struct RemovedMembersView: View {
                     if !removed.isEmpty {
                         Section {
                             ForEach(removed) { member in
-                                HStack(spacing: 12) {
+                                ActsRow {
                                     AdminPersonHead(name: member.name, username: member.username, avatar: member.avatar,
                                                     detail: "Removed") { person = $0 }
                                     Button { confirming = PendingAct(act: .reinstate, member: member) } label: {
-                                        Text("Reinstate").font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                                        Text("Reinstate").font(Font.pw.subheadline).foregroundStyle(Color.pwText).tapTarget()
                                     }
                                     .buttonStyle(.borderless)
                                     .accessibilityLabel("Reinstate \(member.name)")

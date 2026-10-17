@@ -222,7 +222,7 @@ struct MyPatchesSettings: View {
                     NavigationLink {
                         ClaimPatchView(slug: claim.slug, name: claim.name) { onExit(.dock($0)) }
                     } label: {
-                        Text(claim.ready ? "Set up patch" : "View claim").font(Font.pw.subheadline).inkRow(fills: false)
+                        Text(claim.ready ? "Set up patch" : "View claim").font(Font.pw.subheadline).inkRow(fills: false).tapTarget()
                     }
                     .accessibilityIdentifier("myPatchesClaim-\(claim.slug)")
                 }
@@ -325,19 +325,18 @@ struct MyPatchesSettings: View {
             if let state = MyPatchesRules.stateNote(row) {
                 Text(state.detail).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
             }
-            HStack(spacing: 12) {
+            ActsRow {
                 if let join = MyPatchesRules.rung(row) {
                     Button { joining = row } label: {
-                        if busy == row.slug { ProgressView() } else { Text(MyPatchesRules.rungTitle(join)).font(Font.pw.subheadlineSemibold).foregroundStyle(.white) }
+                        if busy == row.slug { ProgressView() } else { Text(MyPatchesRules.rungTitle(join)).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwOnAccent).frame(minHeight: 30) }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(Color.pwAccent)
-                    .controlSize(.small)
                     .disabled(busy != nil)
                     .accessibilityIdentifier("myPatchesJoin-\(row.slug)")
                 }
                 Button { confirming = row } label: {
-                    Text("Unfollow").font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                    Text("Unfollow").font(Font.pw.subheadline).foregroundStyle(Color.pwText).tapTarget()
                 }
                 .buttonStyle(.borderless)
                 .disabled(busy != nil)
@@ -507,7 +506,7 @@ struct MyPatchDetail: View {
                         Section {
                             Button(role: .destructive) { confirmingLeave = true } label: {
                                 if leaving { ProgressView() } else {
-                                    Text("Leave \(row.name)").font(Font.pw.body).foregroundStyle(Color(.systemRed))
+                                    Text("Leave \(row.name)").font(Font.pw.body).foregroundStyle(Color.pwDestructive)
                                 }
                             }
                             .disabled(leaving)

@@ -378,7 +378,7 @@ struct SignInSheet: View {
             // Quiet and secondary: most people have their email, and the
             // code path is for the ones who do not, or who kept a code.
             Button { model.flow.apply(.useRecoveryCode) } label: {
-                Text("Use a recovery code instead").font(Font.pw.subheadline).inkAction("key")
+                Text("Use a recovery code instead").font(Font.pw.subheadline).inkAction("key").tapTarget()
             }
             .buttonStyle(.plain)
             .padding(.top, 2)
@@ -415,7 +415,7 @@ struct SignInSheet: View {
                 Task { await model.recover() }
             }
             Button { model.flow.apply(.useEmailInstead) } label: {
-                Text("Use email instead").font(Font.pw.subheadline).inkAction("arrow.uturn.backward")
+                Text("Use email instead").font(Font.pw.subheadline).inkAction("arrow.uturn.backward").tapTarget()
             }
             .buttonStyle(.plain)
             .padding(.top, 2)
@@ -439,13 +439,13 @@ struct SignInSheet: View {
             primary("Continue", identifier: "signInContinue", enabled: model.flow.canVerify) {
                 Task { await model.verify() }
             }
-            HStack(spacing: 20) {
+            ActsRow(spacing: 20) {
                 Button { Task { await model.resendCode() } } label: {
-                    Text("Send a new code").font(Font.pw.subheadline).inkAction("arrow.clockwise")
+                    Text("Send a new code").font(Font.pw.subheadline).inkAction("arrow.clockwise").tapTarget()
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("signInResend")
                 Button { model.flow.apply(.useDifferentEmail) } label: {
-                    Text("Use a different email").font(Font.pw.subheadline).inkAction("arrow.uturn.backward")
+                    Text("Use a different email").font(Font.pw.subheadline).inkAction("arrow.uturn.backward").tapTarget()
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("signInDifferentEmail")
             }
@@ -519,12 +519,12 @@ struct SignInSheet: View {
     private func primary(_ title: String, identifier: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Group {
-                if model.flow.busy { ProgressView().tint(.white) } else { Text(title).font(Font.pw.headline) }
+                if model.flow.busy { ProgressView().tint(Color.pwOnAccent) } else { Text(title).font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
             // The app's root sets ink on everything; a filled control's label
             // is the design's white (DESIGN.md, primary-action).
-            .foregroundStyle(Color.white)
+            .foregroundStyle(Color.pwOnAccent)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)

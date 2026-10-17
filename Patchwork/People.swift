@@ -253,11 +253,16 @@ struct PersonName: View {
 
     var body: some View {
         if let handle = People.door(username) {
+            // A name sits in a line of other words, so its 44pt target
+            // reaches past the line above and below and the layout is given
+            // back: the byline does not move, and the tap is still a tap.
             Button { open(handle) } label: {
                 Text(name).font(font).multilineTextAlignment(.leading).inkRow(fills: false)
+                    .padding(.vertical, 13)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .padding(.vertical, -13)
             .accessibilityLabel(name)
             .accessibilityHint("Opens their profile")
             .accessibilityIdentifier("personDoor-\(handle)")

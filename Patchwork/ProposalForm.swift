@@ -206,7 +206,7 @@ struct ProposalFormSheet: View {
         Button(action: submit) {
             Text(ProposalPosting.submitLabel(outcome, busy: busy)).font(Font.pw.headline)
                 .frame(maxWidth: .infinity, minHeight: 28)
-                .foregroundStyle(ready ? Color.white : Color.pwTextMuted)
+                .foregroundStyle(ready ? Color.pwOnAccent : Color.pwTextMuted)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)

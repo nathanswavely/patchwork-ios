@@ -18,6 +18,9 @@ import SwiftUI
 /// are patches, and a patch is the one thing in this app that is a card.
 struct Dashboard: View {
     @EnvironmentObject private var session: QuiltSession
+    /// At the accessibility sizes the rows' glyphs give their width to the
+    /// words, which otherwise broke mid-word ("notificatio-ns").
+    @Environment(\.dynamicTypeSize) private var textSize
     /// The door out of the empty state, which belongs to the shell.
     var openDiscover: () -> Void = {}
 
@@ -28,6 +31,9 @@ struct Dashboard: View {
     /// Dashboard does not count these; the list is unpaged, so it costs one
     /// read, and somebody is waiting on the answer.
     @State private var suggested: [String: Int] = [:]
+    /// Noticeboard reports waiting on a patch the reader runs (web ADR 081).
+    /// The queue is paged with no total, so a full page is "20+".
+    @State private var reports: [String: Badge] = [:]
     @State private var proposals: [String: Badge] = [:]
     /// Open proposals on each patch that still wait on this reader's ballot
     /// — the server's `awaiting_your_vote`, the same count the governance
@@ -98,8 +104,10 @@ struct Dashboard: View {
     private var unreadRow: some View {
         Button { notifications = true } label: {
             HStack(spacing: 8) {
-                Image(systemName: "bell.fill").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
-                    .accessibilityHidden(true)
+                if !textSize.isAccessibilitySize {
+                    Image(systemName: "bell.fill").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                        .accessibilityHidden(true)
+                }
                 Text("\(session.unread) unread notification\(session.unread == 1 ? "" : "s")")
                     .font(Font.pw.subheadlineSemibold).inkRow()
             }
@@ -118,16 +126,19 @@ struct Dashboard: View {
 
     /// One thing somebody is waiting on the reader for, on one patch.
     struct Ask: Identifiable, Equatable {
-        enum Kind: String { case requests, suggestions, votes }
+        enum Kind: String { case requests, suggestions, reports, votes }
         let kind: Kind
         let slug: String
         let name: String
         let count: Int
+        /// The count is a page's worth, with more behind it.
+        var more = false
         var id: String { "\(kind.rawValue)-\(slug)" }
         var label: String {
             switch kind {
             case .requests: return PatchAdmin.requestsLabel(count)
             case .suggestions: return PatchAdmin.suggestionsLabel(count)
+            case .reports: return NoticeReports.askLabel(count, more: more)
             case .votes: return PatchGovernanceHome.needsVoteLine(count)
             }
         }
@@ -135,14 +146,16 @@ struct Dashboard: View {
             switch kind {
             case .requests: return "person.crop.circle.badge.questionmark"
             case .suggestions: return "calendar.badge.exclamationmark"
+            case .reports: return "flag"
             case .votes: return "checkmark.circle"
             }
         }
     }
 
     /// The asks in the web's order — requests, then votes — with the
-    /// suggestions between them, beside the requests they are kin to; each
-    /// kind A to Z by patch, as the groups below read.
+    /// suggestions and the noticeboard's reports between them, beside the
+    /// requests they are kin to; each kind A to Z by patch, as the groups
+    /// below read.
     private var asks: [Ask] {
         let rows = sections.managing + sections.member
         func asks(_ kind: Ask.Kind, _ counts: [String: Int], in rows: [Membership]) -> [Ask] {
@@ -151,8 +164,13 @@ struct Dashboard: View {
                 return Ask(kind: kind, slug: row.slug, name: row.name, count: count)
             }
         }
+        let reported = sections.managing.compactMap { row -> Ask? in
+            guard let badge = reports[row.slug], badge.count > 0 else { return nil }
+            return Ask(kind: .reports, slug: row.slug, name: row.name, count: badge.count, more: badge.more)
+        }
         return asks(.requests, requests, in: sections.managing)
             + asks(.suggestions, suggested, in: sections.managing)
+            + reported
             + asks(.votes, votes, in: rows)
     }
 
@@ -163,8 +181,10 @@ struct Dashboard: View {
                 ForEach(asks) { ask in
                     NavigationLink { destination(ask) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Image(systemName: ask.symbol).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
-                                .frame(width: 20).accessibilityHidden(true)
+                            if !textSize.isAccessibilitySize {
+                                Image(systemName: ask.symbol).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                                    .frame(width: 20).accessibilityHidden(true)
+                            }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ask.label).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
                                 Text(ask.name).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
@@ -194,6 +214,7 @@ struct Dashboard: View {
         switch ask.kind {
         case .requests: JoinRequestsView(slug: ask.slug)
         case .suggestions: SuggestedEventsView(slug: ask.slug)
+        case .reports: NoticeReportsView(slug: ask.slug)
         case .votes: GovernanceBySlug(slug: ask.slug)
         }
     }
@@ -230,9 +251,9 @@ struct Dashboard: View {
                         DashboardEvents(events: events, more: moreEvents)
                     } label: {
                         Text("See all \(events.count)\(moreEvents ? "+" : "")").font(Font.pw.subheadline).inkRow()
+                            .tapTarget()
                     }
                     .buttonStyle(.plain)
-                    .padding(.vertical, 8)
                     .accessibilityIdentifier("dashboardAllUpcoming")
                 }
             }
@@ -383,6 +404,13 @@ struct Dashboard: View {
             }
         }
         suggested = waiting
+        var flagged: [String: Badge] = [:]
+        for row in rows.managing {
+            if let page = try? await session.api.noticeReports(slug: row.slug, status: .pending), !page.items.isEmpty {
+                flagged[row.slug] = Badge(count: page.items.count, more: !page.nextCursor.isEmpty)
+            }
+        }
+        reports = flagged
         var open: [String: Badge] = [:]
         var owed: [String: Int] = [:]
         for row in rows.managing + rows.member {

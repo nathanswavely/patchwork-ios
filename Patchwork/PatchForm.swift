@@ -103,6 +103,49 @@ struct NewPatchSheet: View {
     }
 }
 
+/// "Edit patch", from the profile's ⋯ for the patch's own admin: the
+/// create form, filled from the patch as the quilt holds it now — read
+/// fresh, because the profile's copy may be a tree row without the fields
+/// the form edits.
+struct EditPatchSheet: View {
+    @EnvironmentObject private var session: QuiltSession
+    @Environment(\.dismiss) private var dismiss
+    let slug: String
+    var onSaved: () -> Void = {}
+    @State private var node: Patch?
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let node {
+                    PatchFormView(mode: .edit(slug: slug, original: PatchDraft(editing: node),
+                                              appearanceLocked: PatchEditing.appearanceLocked(node.appearance)),
+                                  draft: PatchDraft(editing: node), onFinished: { _ in onSaved() })
+                } else if failed {
+                    ContentUnavailableView("That could not be opened just now.", systemImage: "exclamationmark.circle")
+                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+                } else {
+                    ProgressView()
+                }
+            }
+        }
+        .task {
+            guard node == nil else { return }
+            do {
+                let answer: PatchResponse = try await session.api.get("nodes/\(slug)")
+                node = answer.node
+            } catch APIError.unauthenticated {
+                session.signedOut()
+                dismiss()
+            } catch {
+                failed = true
+            }
+        }
+        .onChange(of: session.me == nil) { _, gone in if gone { dismiss() } }
+    }
+}
+
 /// The Dashboard's "Add a patch", the web's quick action: one ink row on a
 /// card, opening the fork.
 struct AddPatchDoor: View {
@@ -131,6 +174,10 @@ struct PatchFormView: View {
         /// The claim being spent, the patch's address, and when the right
         /// to set it up runs out.
         case setup(claimID: String, slug: String, expiresAt: String?)
+        /// An admin's edit of a live patch (web Patch Settings → Info and
+        /// Appearance): the draft it was opened with, so only what changed is
+        /// sent, and whether the tile is the website's to change.
+        case edit(slug: String, original: PatchDraft, appearanceLocked: Bool)
     }
     let mode: Mode
     var suggestInstead: (() -> Void)? = nil
@@ -154,6 +201,12 @@ struct PatchFormView: View {
     @State private var lookingUp = false
     @State private var lastLookedUp = ""
     @FocusState private var addressFocused: Bool
+    /// The server's question about the events that follow the patch's zone,
+    /// in its own sentence, waiting for an answer.
+    @State private var zoneQuestion: String?
+    /// The link being added in the edit form.
+    @State private var newLinkURL = ""
+    @State private var newLinkLabel = ""
 
     init(mode: Mode, draft: PatchDraft, suggestInstead: (() -> Void)? = nil, onFinished: @escaping (String) -> Void = { _ in }) {
         self.mode = mode
@@ -163,12 +216,26 @@ struct PatchFormView: View {
     }
 
     private var setup: Bool { if case .setup = mode { return true } else { return false } }
+    private var editing: Bool { if case .edit = mode { return true } else { return false } }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) { form }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        // The map's buttons arrive under the pinned act at the foot when the
+        // picker opens low on a short phone, so the form scrolls the picker
+        // into view the moment it appears.
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) { form }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .onChange(of: picking) { _, now in
+                guard now else { return }
+                Task {
+                    // After the keyboard has gone and the picker has laid out.
+                    try? await Task.sleep(for: .milliseconds(350))
+                    withAnimation { proxy.scrollTo(PlacePicker.anchor, anchor: .bottom) }
+                }
+            }
         }
         .background(Color.pwGround.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
@@ -176,17 +243,29 @@ struct PatchFormView: View {
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) } }
         .safeAreaInset(edge: .bottom) { foot }
         .interactiveDismissDisabled(busy)
+        .confirmationDialog(zoneQuestion ?? "", isPresented: Binding(get: { zoneQuestion != nil }, set: { if !$0 { zoneQuestion = nil } }),
+                            titleVisibility: .visible) {
+            let count = PatchEditing.zoneEventCount(zoneQuestion ?? "")
+            Button(PatchEditing.keepClockTitle(count)) { answerZone("keep_clock") }
+                .accessibilityIdentifier("zoneKeepClock")
+            Button(PatchEditing.keepInstantTitle(count)) { answerZone("keep_instant") }
+                .accessibilityIdentifier("zoneKeepInstant")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(PatchEditing.zoneExplainer)
+        }
     }
 
     // MARK: Fields, in the web's order
 
     @ViewBuilder private var form: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(setup ? "Set up your patch" : "Create Patch")
+            Text(editing ? "Edit patch" : (setup ? "Set up your patch" : "Create Patch"))
                 .font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("patchFormHeading")
-            Text(setup ? "Complete this patch's details to activate it." : "Start a new community, collective, venue, or group.")
+            Text(editing ? "How this patch describes itself, where it is, and how it looks on the quilt."
+                 : (setup ? "Complete this patch's details to activate it." : "Start a new community, collective, venue, or group."))
                 .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
                 .fixedSize(horizontal: false, vertical: true)
             if case .setup(_, _, let expiresAt) = mode, let day = MyPatchesRules.day(expiresAt) {
@@ -195,7 +274,7 @@ struct PatchFormView: View {
             }
             if let suggestInstead {
                 Button(action: suggestInstead) {
-                    Text("Not yours to run? Suggest it instead").font(Font.pw.subheadline)
+                    Text("Not yours to run? Suggest it instead").font(Font.pw.subheadline).tapTarget()
                 }
                 .buttonStyle(.plain)
                 .inkAction("arrow.uturn.right")
@@ -224,12 +303,17 @@ struct PatchFormView: View {
                 .accessibilityIdentifier("patchDescription")
         }
         addressField
+        if editing { timezoneField }
         field("Website") {
             TextField(text: $draft.website, prompt: Text(verbatim: "https://...")) { Text("Website") }
                 .keyboardType(.URL).textContentType(.URL)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                 .fieldStyle()
                 .accessibilityIdentifier("patchWebsite")
+        }
+        if editing {
+            imageField
+            linksField
         }
         field("Tags", hint: nil) {
             VStack(alignment: .leading, spacing: 10) {
@@ -239,15 +323,38 @@ struct PatchFormView: View {
                 TagPicker(picked: $draft.tags, suggested: $draft.suggestTags, vocabulary: session.tagTerms, allowSuggesting: true)
             }
         }
-        AppearancePicker(draft: $draft, tagMotifs: session.tagMotifs)
-        lining
-        field("Members and governance") {
-            Text("Your member list and your proposals start out visible to members only. Events, your description and your tile are public. You can publish either one later in Patch Settings.")
-                .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
-                .fixedSize(horizontal: false, vertical: true)
+        if case .edit(_, _, true) = mode {
+            field("Appearance") {
+                Text(PatchEditing.appearanceLockedNote).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("appearanceLocked")
+            }
+        } else {
+            AppearancePicker(draft: $draft, tagMotifs: session.tagMotifs)
         }
-        policyField
-        templateField
+        if case .edit(let slug, _, _) = mode {
+            visibilityField
+            suggestionsField
+            field("On the website") {
+                VStack(alignment: .leading, spacing: 8) {
+                    WebsiteOnlyNote(text: PatchEditing.websiteNote).fixedSize(horizontal: false, vertical: true)
+                    Link(destination: session.api.webURL("patches/\(slug)/settings")) {
+                        Text("Open Patch Settings").font(Font.pw.subheadline).tapTarget()
+                    }
+                    .exitLink(fills: false)
+                    .accessibilityIdentifier("openPatchSettings")
+                }
+            }
+        } else {
+            lining
+            field("Members and governance") {
+                Text("Your member list and your proposals start out visible to members only. Events, your description and your tile are public. You can publish either one later in Patch Settings.")
+                    .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            policyField
+            templateField
+        }
         if let failure {
             Label { Text(failure).font(Font.pw.footnote) } icon: {
                 Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
@@ -290,7 +397,7 @@ struct PatchFormView: View {
                 } else if lookingUp {
                     Text("Looking for this address...").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                 } else if picking {
-                    PlacePicker(seed: suggestion?.point ?? fallbackCenter,
+                    PlacePicker(seed: suggestion?.point ?? draft.point ?? fallbackCenter,
                                 provisional: suggestion?.point != nil,
                                 label: suggestion?.label) { point in
                         withAnimation { draft.point = point; picking = false; suggestion = nil }
@@ -299,7 +406,7 @@ struct PatchFormView: View {
                     }
                 } else {
                     Button { withAnimation { picking = true } } label: {
-                        Text("Put it on the map").font(Font.pw.subheadline)
+                        Text("Put it on the map").font(Font.pw.subheadline).tapTarget()
                     }
                     .buttonStyle(.plain)
                     .inkAction("mappin.and.ellipse")
@@ -336,6 +443,124 @@ struct PatchFormView: View {
         withAnimation { picking = true }
     }
 
+    // MARK: Editing only: the Info page's other fields
+
+    /// Where the patch keeps time (web ADR 045), beside where it is. Every
+    /// event it hosts inherits it, so a blank is not neutral: it is the
+    /// quilt's zone, and the hint says which.
+    private var timezoneField: some View {
+        field("Timezone", hint: zoneHint) {
+            TextField(text: $draft.timezone, prompt: Text(verbatim: session.instance?.geography.timezone ?? "America/New_York")) {
+                Text("Timezone")
+            }
+            .textInputAutocapitalization(.never).autocorrectionDisabled()
+            .fieldStyle()
+            .accessibilityIdentifier("patchTimezone")
+        }
+    }
+    private var zoneHint: String {
+        let quilt = (session.instance?.geography.timezone ?? "").replacingOccurrences(of: "_", with: " ")
+        return "An IANA place name. Leave it empty to follow the quilt" + (quilt.isEmpty ? "." : ", which keeps time in \(quilt).")
+    }
+
+    /// The image and its description, which are valid only as a pair (web
+    /// ADR 007), so they are saved together.
+    private var imageField: some View {
+        field("Image", hint: "Link a picture you already have online. Patchwork points at it and never keeps a copy, so it stays yours.") {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(text: $draft.imageURL, prompt: Text(verbatim: "https://...")) { Text("Image address") }
+                    .keyboardType(.URL).textContentType(.URL)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .fieldStyle()
+                    .accessibilityIdentifier("patchImageURL")
+                if !draft.imageURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                    TextField("Describe the image", text: $draft.imageAlt)
+                        .fieldStyle()
+                        .accessibilityIdentifier("patchImageAlt")
+                }
+            }
+        }
+    }
+
+    /// The patch's links, each removable, and one more to add. They save
+    /// with the rest of the form rather than one at a time as on the web.
+    private var linksField: some View {
+        field("Links") {
+            VStack(alignment: .leading, spacing: 8) {
+                if draft.links.isEmpty {
+                    Text("No links added.").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                }
+                ForEach(Array(draft.links.enumerated()), id: \.offset) { index, link in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(link.label.isEmpty ? link.url : link.label).font(Font.pw.subheadline).foregroundStyle(Color.pwText)
+                            if !link.label.isEmpty {
+                                Text(link.url).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+                            }
+                        }
+                        Spacer(minLength: 8)
+                        Button("Remove") { withAnimation { _ = draft.links.remove(at: index) } }
+                            .font(Font.pw.subheadlineSemibold)
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(Color.pwText)
+                            .underline()
+                            .accessibilityLabel("Remove \(link.label.isEmpty ? link.url : link.label)")
+                            .accessibilityIdentifier("removeLink-\(index)")
+                    }
+                    .frame(minHeight: 44)
+                }
+                TextField(text: $newLinkURL, prompt: Text(verbatim: "https://...")) { Text("Link address") }
+                    .keyboardType(.URL).textContentType(.URL)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .fieldStyle()
+                    .accessibilityIdentifier("newLinkURL")
+                TextField("Label (optional)", text: $newLinkLabel)
+                    .fieldStyle()
+                    .accessibilityIdentifier("newLinkLabel")
+                Button {
+                    let url = newLinkURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !url.isEmpty else { return }
+                    withAnimation {
+                        draft.links.append(PatchLink(url: url, label: newLinkLabel.trimmingCharacters(in: .whitespacesAndNewlines)))
+                        newLinkURL = ""; newLinkLabel = ""
+                    }
+                } label: {
+                    Text("Add link").font(Font.pw.subheadline).tapTarget()
+                }
+                .buttonStyle(.plain)
+                .inkAction("plus")
+                .disabled(newLinkURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("addLink")
+            }
+        }
+    }
+
+    /// Public or private, each with what it does (the web's options).
+    private var visibilityField: some View {
+        field("Visibility") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(PatchEditing.visibilities, id: \.value) { option in
+                    ChoiceCard(title: option.title, detail: option.detail, selected: draft.visibility == option.value,
+                               identifier: "visibility-\(option.value)") { draft.visibility = option.value }
+                }
+            }
+        }
+    }
+
+    /// Whether people outside the patch may suggest events to it (web ADR 026).
+    private var suggestionsField: some View {
+        Toggle(isOn: $draft.acceptSuggestions) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Let non-members suggest events to this patch").font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
+                Text("Suggestions wait in the events queue until an admin approves them.")
+                    .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Color.pwAccent)
+        .accessibilityIdentifier("acceptSuggestions")
+    }
+
     // MARK: The lining
 
     private var lining: some View {
@@ -345,7 +570,7 @@ struct PatchFormView: View {
                     .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     .fixedSize(horizontal: false, vertical: true)
                 NavigationLink { LiningView() } label: {
-                    Text("Read the lining").font(Font.pw.subheadline).inkRow(fills: false)
+                    Text("Read the lining").font(Font.pw.subheadline).inkRow(fills: false).tapTarget()
                 }
                 .accessibilityIdentifier("readLining")
             }
@@ -395,9 +620,13 @@ struct PatchFormView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 2) {
                 Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
-                if required { Text("*").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted).accessibilityLabel("required") }
+                if required { Text("*").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted) }
             }
-            .accessibilityElement(children: .combine)
+            // One element that says the word the asterisk stands for: a
+            // child labelled "required" over a one-glyph frame read to the
+            // audit as clipped text.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(required ? "\(title), required" : title)
             .accessibilityAddTraits(.isHeader)
             content()
             if let hint {
@@ -412,11 +641,11 @@ struct PatchFormView: View {
     private var foot: some View {
         Button { if finished { dismiss() } else { submit() } } label: {
             Group {
-                if busy { ProgressView().tint(.white) }
-                else { Text(finished ? "Done" : (setup ? "Finish setup" : "Create Patch")).font(Font.pw.headline) }
+                if busy { ProgressView().tint(Color.pwOnAccent) }
+                else { Text(finished ? "Done" : (editing ? "Save changes" : (setup ? "Finish setup" : "Create Patch"))).font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
-            .foregroundStyle(busy ? Color.pwTextMuted : Color.white)
+            .foregroundStyle(busy ? Color.pwTextMuted : Color.pwOnAccent)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)
@@ -431,14 +660,47 @@ struct PatchFormView: View {
     private func submit() {
         guard !busy else { return }
         failure = nil
-        if let problem = draft.problem() { failure = problem; return }
+        if let problem = editing ? draft.editProblem() : draft.problem() { failure = problem; return }
         busy = true
         Task {
             defer { busy = false }
             switch mode {
             case .create: await create()
             case .setup(let claimID, let slug, _): await finishSetup(claimID: claimID, slug: slug)
+            case .edit: await saveEdit()
             }
+        }
+    }
+
+    /// `PATCH nodes/{slug}` with only what changed; nothing changed is
+    /// nothing sent. A zone change that would move events is asked about
+    /// in the server's own sentence and sent again with the answer.
+    private func saveEdit(zoneAnswer: String? = nil) async {
+        guard case .edit(let slug, let original, let locked) = mode else { return }
+        var body = draft.changes(from: original, appearanceLocked: locked)
+        if body.isEmpty { dismiss(); return }
+        body.timezoneEvents = zoneAnswer
+        do {
+            try await session.api.editPatch(slug: slug, body)
+            await session.loadTree(refreshingWhole: true)
+            session.adminChanged()
+            onFinished(slug)
+            dismiss()
+        } catch APIError.unauthenticated {
+            session.signedOut()
+        } catch let error as APIError where error.code == PatchEditing.zoneQuestionCode {
+            zoneQuestion = sentenceCased(error.localizedDescription)
+        } catch {
+            failure = sentenceCased(ProposalDetailView.sentence(error, fallback: PatchEditing.failed))
+        }
+    }
+
+    private func answerZone(_ mode: String) {
+        zoneQuestion = nil
+        busy = true
+        Task {
+            defer { busy = false }
+            await saveEdit(zoneAnswer: mode)
         }
     }
 
@@ -574,6 +836,9 @@ struct PlacePicker: View {
         _center = State(initialValue: seed)
     }
 
+    /// Where the form scrolls to when the picker appears.
+    static let anchor = "placePicker"
+
     static func readout(_ point: MapPoint) -> String {
         String(format: "%.5f, %.5f", point.latitude, point.longitude)
     }
@@ -619,7 +884,7 @@ struct PlacePicker: View {
             HStack(spacing: 12) {
                 Button { if let center, center.isValid { onSave(center) } } label: {
                     Text(provisional ? "Use this spot" : "Save location").font(Font.pw.subheadlineSemibold)
-                        .foregroundStyle(center == nil ? Color.pwTextMuted : Color.white)
+                        .foregroundStyle(center == nil ? Color.pwTextMuted : Color.pwOnAccent)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.pwAccent)
@@ -632,6 +897,7 @@ struct PlacePicker: View {
                     .accessibilityIdentifier("cancelPlacement")
             }
         }
+        .id(Self.anchor)
     }
 }
 
@@ -729,7 +995,7 @@ struct TagPicker: View {
                 Text(text).font(Font.pw.footnoteSemibold)
                 Image(systemName: symbol).font(.caption2.weight(.bold)).accessibilityHidden(true)
             }
-            .foregroundStyle(filled ? Color.white : Color.pwText)
+            .foregroundStyle(filled ? Color.pwOnAccent : Color.pwText)
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(filled ? Color.pwAccent : Color.pwSurface, in: Capsule())
             .overlay(Capsule().strokeBorder(filled ? Color.clear : Color.pwBorder, style: StrokeStyle(lineWidth: 1, dash: dashed ? [3, 2] : [])))
@@ -880,7 +1146,7 @@ private struct MotifSwatch: View {
                 Image(uiImage: image).renderingMode(.template).resizable().frame(width: 18, height: 18)
             }
         }
-        .foregroundStyle(selected ? Color.white : Color.pwText)
+        .foregroundStyle(selected ? Color.pwOnAccent : Color.pwText)
         .frame(width: 40, height: 40)
         .background(selected ? Color.pwAccent : Color.pwSurface, in: Circle())
         .overlay(Circle().strokeBorder(selected ? Color.clear : Color.pwBorder, lineWidth: 1))

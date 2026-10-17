@@ -181,6 +181,7 @@ struct DiscoveryToolbar: ViewModifier {
     /// How the reader left Settings, acted on once the sheet has gone.
     @State private var settingsExit: SettingsExit?
     @FocusState private var focused: Bool
+    @Environment(\.dynamicTypeSize) private var textSize
     private var fieldWidth: CGFloat { min(420, max(200, UIScreen.main.bounds.width - (session.searching ? 108 : 150))) }
     func body(content: Content) -> some View {
         content
@@ -329,12 +330,17 @@ struct DiscoveryToolbar: ViewModifier {
             .onAppear { DispatchQueue.main.async { focused = true } }
         } else {
             Button { session.searching = true } label: {
+                // The words in ink, the glyph muted: on glass over the quilt
+                // the muted grey fell short of AA. At the accessibility text
+                // sizes the field says the one word rather than a sliver of
+                // the sentence.
                 HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                    Text("Search patches and events").lineLimit(1)
+                    Image(systemName: "magnifyingglass").foregroundStyle(Color.pwTextMuted)
+                    Text(textSize.isAccessibilitySize ? "Search" : "Search patches and events")
+                        .lineLimit(1)
+                        .foregroundStyle(Color.pwText)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(Color.pwTextMuted)
                 .modifier(FieldChrome(width: fieldWidth))
             }
             .buttonStyle(.plain)

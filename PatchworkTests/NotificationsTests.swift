@@ -55,8 +55,7 @@ final class NotificationsTests: XCTestCase {
     /// The surfaces this client has not built are exits, not stubs — the same
     /// rule the rest of the app follows about the website's own pages.
     func testWhatThisClientDoesNotDrawIsAnExitToTheWebsite() {
-        for path in ["/patches/common-thread/settings/noticeboard",
-                     "/patches/common-thread/settings/sources",
+        for path in ["/patches/common-thread/settings/sources",
                      "/submit",
                      "/sources",
                      "/admin/reports",
@@ -76,14 +75,14 @@ final class NotificationsTests: XCTestCase {
     /// The noticeboard is a native room now (web ADR 081): the board, and a
     /// notice on it by id. The web's compose page is a sheet over the board
     /// here, so its address opens the board. The board's settings — where a
-    /// report sends a patch's admins — are still the website's.
+    /// report sends a patch's admins — open the native report queue.
     func testNoticeLinksOpenTheBoardAndTheNotice() {
         XCTAssertEqual(NotificationLink.route("/patches/common-thread/noticeboard"), .noticeboard(slug: "common-thread"))
         XCTAssertEqual(NotificationLink.route("/patches/common-thread/noticeboard/019f-n"),
                        .notice(slug: "common-thread", id: "019f-n"))
         XCTAssertEqual(NotificationLink.route("/patches/common-thread/noticeboard/new"), .noticeboard(slug: "common-thread"))
         XCTAssertEqual(NotificationLink.route("/patches/common-thread/settings/noticeboard"),
-                       .website(path: "/patches/common-thread/settings/noticeboard"))
+                       .noticeReports(slug: "common-thread"))
     }
 
     /// An exit has to arrive with its query intact and without a slash the

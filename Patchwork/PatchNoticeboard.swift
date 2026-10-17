@@ -13,11 +13,7 @@ import SwiftUI
 struct NoticePill: View {
     let text: String
     var body: some View {
-        Text(text)
-            .font(Font.pw.caption2Semibold)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Color(.secondarySystemFill), in: Capsule())
-            .foregroundStyle(Color.pwTextMuted)
+        Text(text).chipFace()
     }
 }
 
@@ -50,6 +46,10 @@ struct PatchNoticeboard: View {
     @State private var stale = false
     /// A notice's author, opened from the row's menu.
     @State private var person: String?
+    /// The pending reports, for the admin's door: a page's worth, and
+    /// whether there are more than that.
+    @State private var reportCount = 0
+    @State private var reportsMore = false
 
     private struct Opened: Hashable {
         let notice: Notice
@@ -58,12 +58,17 @@ struct PatchNoticeboard: View {
 
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     private var signedIn: Bool { quilt.url == session.quilt.url && session.me != nil }
+    /// The board's admin doors are the patch's own admin's (web Patch
+    /// Settings → Noticeboard): never a quilt admin's, whom the queue
+    /// answers 404 like the room.
+    private var runs: Bool { signedIn && PatchAdmin.runs(session.standing(for: patch.slug)) }
 
     var body: some View {
         List {
             // One Group so every section's rows take the card surface: the
             // modifier does not reach them from the List itself.
             Group {
+            if loaded && !outside && runs { adminSection }
             if loaded && !outside {
                 Section {
                     Text(Noticeboard.hint(posting: posting))
@@ -170,6 +175,38 @@ struct PatchNoticeboard: View {
         .refreshable { await load() }
         // Whoever is asking changed, so what they may read did.
         .onChange(of: session.me?.id) { _, _ in Task { await load() } }
+        // A report acted on or a setting saved from a room pushed over this
+        // one: a notice may be gone, and who posts may have changed.
+        .onChange(of: session.adminRevision) { _, _ in Task { await load() } }
+    }
+
+    /// The two rooms the board's admin keeps: the reports, with what is
+    /// waiting, and the settings.
+    private var adminSection: some View {
+        Section {
+            NavigationLink { NoticeReportsView(slug: patch.slug, close: close) } label: {
+                adminDoor("Reports", symbol: "flag",
+                          count: reportCount > 0 ? DashboardGrouping.countLabel(count: reportCount, more: reportsMore) : nil)
+            }
+            .accessibilityIdentifier("noticeboardReports")
+            NavigationLink {
+                NoticeboardSettingsView(slug: patch.slug, posting: NoticeboardSettings.Posting(rawValue: posting) ?? .members,
+                                        repliesDefault: repliesDefault, close: close)
+            } label: {
+                adminDoor("Noticeboard settings", symbol: "slider.horizontal.3", count: nil)
+            }
+            .accessibilityIdentifier("noticeboardSettings")
+        }
+    }
+
+    private func adminDoor(_ title: String, symbol: String, count: String?) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                .frame(width: 22).accessibilityHidden(true)
+            Text(title).font(Font.pw.body).foregroundStyle(Color.pwText)
+            Spacer(minLength: 8)
+            if let count { Text(count).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted) }
+        }
     }
 
     private func load() async {
@@ -188,6 +225,10 @@ struct PatchNoticeboard: View {
             outside = false
             error = nil
             loaded = true
+            if runs, let reports = try? await api.noticeReports(slug: patch.slug, status: .pending) {
+                reportCount = reports.items.count
+                reportsMore = !reports.nextCursor.isEmpty
+            }
         } catch APIError.unauthenticated {
             session.signedOut()
             outside = true
@@ -399,11 +440,11 @@ struct NoticeFormSheet: View {
     private var foot: some View {
         Button(action: submit) {
             Group {
-                if busy { ProgressView().tint(.white) }
+                if busy { ProgressView().tint(Color.pwOnAccent) }
                 else { Text(isNew ? "Put up notice" : "Save").font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
-            .foregroundStyle(ready ? Color.white : Color.pwTextMuted)
+            .foregroundStyle(ready ? Color.pwOnAccent : Color.pwTextMuted)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)
