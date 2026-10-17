@@ -155,6 +155,9 @@ struct ProposalDetailView: View {
                 if detail != nil, !(proposal.targetDoc ?? "").isEmpty, !DocumentAmending.isRulesDoc(proposal.targetDoc) {
                     DocumentChangesSection(proposal: proposal)
                 }
+                if detail != nil, DocumentAmending.isRulesDoc(proposal.targetDoc) {
+                    RulesChangesSection(proposal: proposal)
+                }
                 if let error {
                     Section {
                         Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
@@ -245,7 +248,10 @@ struct ProposalDetailView: View {
                 }
                 .foregroundStyle(Color.pwTextMuted)
                 if let target = proposal.targetDoc, !target.isEmpty {
-                    Label("\(proposal.isDirectChange ? "Change" : "Amendment") to \(target)", systemImage: "doc.text")
+                    // The document's own title where the payload carries it
+                    // (the web's `docLabel`), never a bare filename.
+                    let name = DocumentAmending.isRulesDoc(target) ? "the governance rules" : ((proposal.proposedTitle ?? "").isEmpty ? target : proposal.proposedTitle!)
+                    Label("\(proposal.isDirectChange ? "Change" : "Amendment") to \(name)", systemImage: "doc.text")
                         .font(Font.pw.subheadline)
                 }
                 if let nominee = proposal.targetUserName, !nominee.isEmpty {

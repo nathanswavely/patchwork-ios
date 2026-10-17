@@ -16,9 +16,11 @@ import SwiftUI
 /// the rows here lead to; a member who owes a ballot is told so at the top,
 /// as a door into the open proposals. A member or an admin raises a proposal
 /// from the bar at the foot, here and in the proposals room; the form is
-/// what the patch's rules make it (`ProposalPosting`). Changing a document
-/// or the rules, nominating, and deciding somebody else's proposal stay the
-/// website's.
+/// what the patch's rules make it (`ProposalPosting`). The rules have their
+/// own door under how decisions are made (`RulesChangeSheet`), a document
+/// its own on the document (`DocumentAmendmentSheet`), and an admin writes
+/// a new one from the documents room. What stays the website's is named
+/// once, to the patch's admins.
 struct PatchGovernanceHome: View {
     @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
@@ -28,6 +30,7 @@ struct PatchGovernanceHome: View {
     @State private var loading = true
     @State private var error: String?
     @State private var composing = false
+    @State private var changingRules = false
     /// A proposal the form made, waiting for the form to leave before it is
     /// opened; and the one opened.
     @State private var made: Proposal?
@@ -40,6 +43,7 @@ struct PatchGovernanceHome: View {
     private var signedIn: Bool { quilt.url == session.quilt.url && session.me != nil }
     private var standing: Standing? { session.standing(for: patch.slug) }
     private var door: String? { ProposalPosting.door(signedIn: signedIn, standing: standing, rules: overview?.rules) }
+    private var rulesDoor: RulesChange.Door? { RulesChange.door(signedIn: signedIn, standing: standing, rules: overview?.rules) }
     /// The patch's own setting decides until the overview answers; then the
     /// overview does, because it is answered for this reader — a member of
     /// a patch that keeps its record to the room is in the room, and must
@@ -79,9 +83,26 @@ struct PatchGovernanceHome: View {
                         .accessibilityIdentifier("electionNominating")
                     }
                 }
-                if !overview.decisionNarrative.isEmpty {
+                if !overview.decisionNarrative.isEmpty || rulesDoor != nil {
                     Section("How decisions are made") {
-                        Text(overview.decisionNarrative).fixedSize(horizontal: false, vertical: true)
+                        if !overview.decisionNarrative.isEmpty {
+                            Text(overview.decisionNarrative).fixedSize(horizontal: false, vertical: true)
+                        }
+                        // The way into the rules sits under what they say,
+                        // as on the web's overview.
+                        switch rulesDoor {
+                        case .open(let label):
+                            Button { changingRules = true } label: {
+                                Text(label).font(Font.pw.subheadlineMedium).inkAction("slider.horizontal.3").tapTarget()
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("rulesDoor")
+                        case .note(let line):
+                            Text(line).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                                .accessibilityIdentifier("rulesDoorNote")
+                        case nil:
+                            EmptyView()
+                        }
                     }
                 }
                 Section("Leadership: \(overview.leadershipLabel)") {
@@ -144,8 +165,10 @@ struct PatchGovernanceHome: View {
                         .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
-            Section {
-                WebsiteOnlyNote(text: ProposalPosting.documentsNote)
+            if standing == .active(.admin) && overview != nil {
+                Section {
+                    WebsiteOnlyNote(text: Self.websiteNote)
+                }
             }
             }.listRows()
         }
@@ -166,6 +189,12 @@ struct PatchGovernanceHome: View {
                 stale = true
             }
         }
+        .sheet(isPresented: $changingRules, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            RulesChangeSheet(slug: patch.slug, isPatchAdmin: standing == .active(.admin)) { proposal in
+                made = proposal
+                stale = true
+            }
+        }
         .navigationDestination(item: $opened) { ProposalDetailView(quilt: quilt, initial: $0, close: close) { stale = true } }
         .task { if overview == nil { await load() } }
         .onAppear { if stale { stale = false; Task { await load() } } }
@@ -176,6 +205,9 @@ struct PatchGovernanceHome: View {
         PatchProposalList(quilt: quilt, slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [],
                           nextContestOpens: overview?.nextContestOpens, close: close) { stale = true }
     }
+    /// What an admin of the patch still does on the website: rare desk
+    /// work, each a deliberate act on the whole patch's record.
+    static let websiteNote = "Publishing a document or making it members only, recording a text a meeting adopted, and adding a council seat happen on this quilt’s website."
     /// "1 proposal needs your vote", "3 proposals need your vote".
     static func needsVoteLine(_ count: Int) -> String {
         count == 1 ? "1 proposal needs your vote" : "\(count) proposals need your vote"

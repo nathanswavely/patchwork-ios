@@ -1364,7 +1364,7 @@ enum PreviewData {
         var eligible = 5
         var leadership = "maintainer"
     }
-    private static let fixtureRules: [String: FixtureRules] = [
+    private static var fixtureRules: [String: FixtureRules] = [
         "common-thread": FixtureRules(quorum: 20, hours: 336, eligible: 12),
         "listening-room": FixtureRules(hours: 168),
         "extra-1": FixtureRules(method: "admin"),
@@ -2048,16 +2048,75 @@ enum PreviewData {
 
     /// The text an amendment would replace, as the repository holds it now.
     private static func currentText(slug: String, target: String) -> String {
-        docs.first { $0.slug == slug && ($0.filename == target || $0.title == target) }?.body ?? ""
+        if target == "governance-rules.json" || target == "Governance Rules" { return rulesText(slug) }
+        return docs.first { $0.slug == slug && ($0.filename == target || $0.title == target) }?.body ?? ""
     }
 
     /// An amendment taking effect: its document gains a version, or is
     /// written where the patch had no such document (`DirectEdit`'s rule).
     private static func applyAmendment(_ p: FixtureProposal, by author: String? = nil, message: String? = nil) {
-        guard p.type == "amendment", !p.targetDoc.isEmpty, p.targetDoc != "governance-rules.json" else { return }
+        guard p.type == "amendment", !p.targetDoc.isEmpty else { return }
+        if p.targetDoc == "governance-rules.json" { applyRules(p); return }
         let entry = (text: p.proposedBody, message: message ?? p.title, author: author ?? p.author, minutesAgo: 0)
         if let index = docs.firstIndex(where: { $0.slug == p.slug && ($0.filename == p.targetDoc || $0.title == p.targetDoc) }) {
             docs[index].versions.append(entry)
+        }
+    }
+
+    // MARK: Rules
+
+    /// Each patch's rules file, whole, as `GetGovernanceRules` answers it:
+    /// every field, the ones nobody edits included, so the rules form has
+    /// something to carry through.
+    private static var ruleFiles: [String: [String: Any]] = [:]
+
+    private static func rulesFile(_ slug: String) -> [String: Any]? {
+        if let file = ruleFiles[slug] { return file }
+        guard let rules = fixtureRules[slug] else { return nil }
+        return [
+            "decision_method": rules.method, "quorum_percent": rules.quorum, "default_vote_duration_hours": rules.hours,
+            "amendment_threshold": "majority", "amendment_auto_apply": true, "min_voting_tenure_days": 0, "subject_recusal": false,
+            "leadership_model": rules.leadership, "leadership_venue": "patchwork", "proposal_venue": rules.venue,
+            "nomination_days": 0, "succession_method": "", "succession_policy": "longest_tenure", "admin_term_months": 0,
+            "max_admins": 3, "inactivity_days": 90, "membership_policy": "open",
+            "follower_permissions": ["events": true, "proposals": true, "charters": false, "members": true],
+        ]
+    }
+
+    private static func rulesText(_ slug: String) -> String {
+        guard let file = rulesFile(slug), let data = try? JSONSerialization.data(withJSONObject: file, options: [.prettyPrinted, .sortedKeys]) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// A rules change taking effect: the file is replaced whole, and the
+    /// rules the fixtures decide by follow it (`SyncRulesToDB`).
+    private static func applyRules(_ p: FixtureProposal) {
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(p.proposedBody.utf8))) as? [String: Any] else { return }
+        ruleFiles[p.slug] = object
+        var rules = fixtureRules[p.slug] ?? FixtureRules()
+        rules.method = (object["decision_method"] as? String) ?? rules.method
+        rules.venue = (object["proposal_venue"] as? String) ?? rules.venue
+        rules.quorum = (object["quorum_percent"] as? Int) ?? rules.quorum
+        rules.hours = (object["default_vote_duration_hours"] as? Int) ?? rules.hours
+        rules.leadership = (object["leadership_model"] as? String) ?? rules.leadership
+        fixtureRules[p.slug] = rules
+    }
+
+    /// `GET nodes/{slug}/governance/rules` and `…/electorate`.
+    private static func rulesRead(_ path: String) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count == 4, parts[0] == "nodes", parts[2] == "governance" else { return nil }
+        switch parts[3] {
+        case "rules":
+            guard let file = rulesFile(parts[1]) else { throw APIError.message("node not found", status: 404) }
+            return serialize(file)
+        case "electorate":
+            guard signedIn, inRoom(parts[1]) else { throw APIError.message("only this patch's members can see who votes here", status: 403) }
+            let count = fixtureRules[parts[1]]?.eligible ?? 5
+            let tenures = (0..<count).map { max(0, 400 - $0 * 37) }
+            return serialize(["members": count, "tenure_days": tenures, "patch_age_days": 420])
+        default:
+            return nil
         }
     }
 
@@ -2162,8 +2221,13 @@ enum PreviewData {
         let isAdmin = role(slug) == "admin"
         let putToVote = (fields["put_to_vote"] as? Bool) ?? false
         let adminDecides = rules.method == "admin"
+        let rulesDoc = targetDoc == "governance-rules.json" || targetDoc == "Governance Rules"
+        if rules.venue == "elsewhere" && rulesDoc && !isAdmin {
+            throw APIError.message("this patch decides at meetings, and the governance rules are not something a meeting adopts. Ask an admin to apply the change directly (docs/adr/053).", status: 409)
+        }
         var (status, state) = ("open", "voting")
         if adminDecides && isAdmin && !putToVote { (status, state) = ("approved", "in_effect") }
+        else if rules.venue == "elsewhere" && rulesDoc { (status, state) = ("approved", "in_effect") }
         else if rules.venue == "elsewhere" { state = "elsewhere" }
         else if adminDecides && !isAdmin { state = "awaiting_admin" }
         proposalSerial += 1
@@ -2190,6 +2254,7 @@ enum PreviewData {
     /// The governance reads that are not fixed text.
     private static func governanceRead(_ path: String, query: [URLQueryItem]) throws -> String? {
         if let answer = try documentRead(path, query: query) { return answer }
+        if let answer = try rulesRead(path) { return answer }
         let parts = path.split(separator: "/").map(String.init)
         if parts.count == 2 || parts.count == 3, parts[0] == "proposals" {
             let p = proposals[try proposalIndex(parts[1])]

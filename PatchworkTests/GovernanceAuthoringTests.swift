@@ -197,5 +197,90 @@ final class GovernanceAuthoringTests: XCTestCase {
         XCTAssertEqual(DocumentHistory.rebuiltOn(versions), "2026-04-01T00:00:00Z", "the oldest rebuilt entry")
         XCTAssertEqual(PreviewData.filename("How we decide!"), "how-we-decide.md", "the server's filename rule")
     }
+
+    // MARK: - Changing the rules
+
+    /// The server's whole rule set, as `GetGovernanceRules` marshals it.
+    private let rulesJSON = #"{"decision_method":"majority","quorum_percent":20,"default_vote_duration_hours":336,"amendment_threshold":"supermajority","amendment_auto_apply":true,"min_voting_tenure_days":7,"subject_recusal":false,"leadership_model":"elected","leadership_venue":"patchwork","proposal_venue":"patchwork","nomination_days":14,"succession_method":"admin_nominate","succession_policy":"election","admin_term_months":12,"max_admins":5,"inactivity_days":60,"membership_policy":"approval_required","follower_permissions":{"events":true,"proposals":true,"charters":false,"members":true}}"#
+
+    private func rulesDocument() throws -> RulesDocument {
+        RulesDocument(decoded: try decoder().decode([String: JSONValue].self, from: Data(rulesJSON.utf8)))
+    }
+
+    func testTheRulesComeBackSpelledAsTheFileSpellsThem() throws {
+        let document = try rulesDocument()
+        XCTAssertEqual(document["default_vote_duration_hours"], .int(336), "the decoder's camel case is put back")
+        XCTAssertEqual(document["follower_permissions"]?.object?["charters"], .bool(false))
+        XCTAssertEqual(Set(document.fields.keys), Set(try JSONDecoder().decode([String: JSONValue].self, from: Data(rulesJSON.utf8)).keys),
+                       "every key, the ones the form does not edit included")
+        XCTAssertEqual(RulesDocument(json: document.text()), document, "the text sent reads back as the same file")
+        XCTAssertEqual(RulesDocument.snake("minVotingTenureDays"), "min_voting_tenure_days")
+    }
+
+    func testTheDraftLaysItsFieldsOverTheWholeFile() throws {
+        let document = try rulesDocument()
+        var draft = RulesChange.Draft(document)
+        XCTAssertEqual(draft.quorumPercent, 20)
+        XCTAssertEqual(draft.successionPolicy, "election")
+        XCTAssertFalse(draft.followerCharters)
+        XCTAssertEqual(draft.applied(to: document), document, "an untouched draft changes nothing")
+        draft.quorumPercent = 30
+        let proposed = draft.applied(to: document)
+        XCTAssertEqual(proposed["quorum_percent"], .int(30))
+        XCTAssertEqual(proposed["leadership_model"], .string("elected"), "a field the form does not edit survives")
+        XCTAssertEqual(proposed["admin_term_months"], .int(12))
+        draft.decisionMethod = "admin"
+        draft.quorumPercent = 90
+        let admin = draft.applied(to: document)
+        XCTAssertEqual(admin["quorum_percent"], .int(20), "the voting knobs are hidden, not rewritten, while the admins decide")
+        XCTAssertEqual(admin["decision_method"], .string("admin"))
+    }
+
+    func testTheDiffNamesEveryMovedKeyCurrentToProposed() throws {
+        let document = try rulesDocument()
+        var draft = RulesChange.Draft(document)
+        draft.decisionMethod = "supermajority"
+        draft.membershipPolicy = "invite_only"
+        var proposed = draft.applied(to: document)
+        proposed["max_admins"] = .int(7)
+        let diff = RulesChange.diff(current: document, proposed: proposed)
+        XCTAssertEqual(diff.rows.map(\.key), ["decision_method", "membership_policy", "max_admins"], "labelled first, then the rest")
+        XCTAssertEqual(diff.rows[0].from, "Majority vote")
+        XCTAssertEqual(diff.rows[0].to, "Supermajority (2/3)")
+        XCTAssertEqual(diff.rows[2].label, "Max admins", "an unlabelled key is named, never skipped")
+        XCTAssertEqual(diff.unchanged, document.fields.count - 3)
+        XCTAssertEqual(RulesChange.format("default_vote_duration_hours", .int(336)), "2 weeks")
+        XCTAssertEqual(RulesChange.format("follower_permissions", document["follower_permissions"]), "Events, Proposals, Members")
+        XCTAssertEqual(RulesChange.title(current: document, proposed: proposed), "Decisions by supermajority vote, invite-only membership")
+    }
+
+    func testTheRulesDoorAndWhatTheChangeWillBe() {
+        let majority = GovernanceRules(decisionMethod: "majority", proposalVenue: "patchwork")
+        let admins = GovernanceRules(decisionMethod: "admin", proposalVenue: "patchwork")
+        let meetings = GovernanceRules(decisionMethod: "majority", proposalVenue: "elsewhere")
+        XCTAssertEqual(RulesChange.door(signedIn: true, standing: .active(.member), rules: majority), .open("Propose a change to these rules"))
+        XCTAssertEqual(RulesChange.door(signedIn: true, standing: .active(.admin), rules: admins), .open("Change these rules"))
+        XCTAssertEqual(RulesChange.door(signedIn: true, standing: .active(.admin), rules: meetings), .open("Change these rules"))
+        XCTAssertEqual(RulesChange.door(signedIn: true, standing: .active(.member), rules: meetings), .note("An admin changes these rules directly."))
+        XCTAssertNil(RulesChange.door(signedIn: true, standing: .active(.follower), rules: majority))
+        XCTAssertEqual(ProposalPosting.outcome(rules: meetings, isPatchAdmin: true, putToVote: false, rulesDoc: true), .applied,
+                       "the rules are not a text a meeting adopts")
+        XCTAssertFalse(ProposalPosting.adminChooses(GovernanceRules(decisionMethod: "admin", proposalVenue: "elsewhere"), isPatchAdmin: true, rulesDoc: true))
+        XCTAssertEqual(RulesChange.consequence(.applied, hours: 72), "Saving changes these rules now. Nobody votes on it.")
+        XCTAssertTrue(RulesChange.consequence(.vote, hours: 336).contains("opens a vote for 2 weeks"))
+    }
+
+    func testWhatAQuorumAndATenureBarComeTo() {
+        let room = RulesChange.Electorate(members: 8, tenureDays: [200, 90, 60, 40, 20, 10, 3, 1], patchAgeDays: 300)
+        XCTAssertEqual(RulesChange.quorumHint(room, quorum: 50, tenureDays: 0),
+                       "4 of the 8 people who can vote today must cast a ballot, or a proposal closes with nothing decided. An abstention counts toward it.")
+        XCTAssertEqual(RulesChange.quorumHint(room, quorum: 50, tenureDays: 30)?.hasPrefix("2 of the 4 people"), true, "the bar shrinks the room")
+        XCTAssertEqual(RulesChange.tenureHint(room, tenureDays: 30),
+                       "4 of your 8 members have been here 30 days. The other 4 cannot vote yet, and are not counted toward a quorum.")
+        let young = RulesChange.Electorate(members: 3, tenureDays: [5, 5, 1], patchAgeDays: 5)
+        XCTAssertTrue(RulesChange.tenureHint(young, tenureDays: 30)!.hasPrefix("Not in force yet: this patch is 5 days old"))
+        XCTAssertNil(RulesChange.quorumHint(nil, quorum: 50, tenureDays: 0), "no sentence without the room")
+        XCTAssertEqual(RulesChange.tenureHint(nil, tenureDays: 0), "Everybody votes from the day they join.")
+    }
 }
 

@@ -215,7 +215,9 @@ enum ProposalPosting {
 
     static let nobodyToNominate = "There is nobody to nominate yet."
 
-    static let documentsNote = "To change a governance document, open it from Documents. Changing the rules happens on this quilt’s website."
+    /// Where the other two changes are made, as the web's form points to its
+    /// documents page.
+    static let documentsNote = "To change a governance document, open it from Documents. The rules have their own door in the Governance room, under How decisions are made."
 
     /// The web's lines on an elected patch where nobody can be nominated:
     /// where the way onto the council actually is (web ADR 100). Adding a

@@ -49,6 +49,7 @@
 		591E2530EDE882D5A8880697 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */; };
 		5D600B7F9841C69CCB97B0F9 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF358FEA7BC11AA077E2E5A1 /* API.swift */; };
 		5F4C31A2ABF0F64850F4BE91 /* QuiltInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F732AE521653E03A1A3514 /* QuiltInfoTests.swift */; };
+		62AE7AEC87322FB4306054FD /* RulesChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF85E7C3A60098C6DF2DEE4 /* RulesChange.swift */; };
 		65550D118F2245A37FE3B05B /* PatchProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C217C3BCE3AF77E084E40D6 /* PatchProfile.swift */; };
 		6623188FDAB4C4383325994F /* EventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 093E6D05E99D110AC6D41CED /* EventsTests.swift */; };
 		662E1C2029C64AB44E3BC7F2 /* Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C940E8CE8A3A426FFB996E40 /* Dashboard.swift */; };
@@ -93,6 +94,7 @@
 		B48B197D80C62EB28FE1EC9B /* DiscoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 113D37454395617A11072AE8 /* DiscoverTests.swift */; };
 		B5090C2DB1C8BD4391A929EA /* EventEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DAA50C86CF281FFD894C7E /* EventEditing.swift */; };
 		B523949F0609A220EFCD36D0 /* AccessibilityAuditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6A75075FA97DDDD2C101EC /* AccessibilityAuditTests.swift */; };
+		B8E2D7ED493EEEAD9D70D28F /* RulesChangeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B61AB657CE7937F8742D3C6 /* RulesChangeSheet.swift */; };
 		B9E735AC26656A6B85F469D8 /* MapPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D1BBC55D6424C8522478089 /* MapPlacement.swift */; };
 		BA4385AB910F5ED96FC0A620 /* PatchGovernance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A665F8F6905212C2452DE92A /* PatchGovernance.swift */; };
 		BC21BA1B3590DD6B8468885E /* Passkeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51EF6559341A0C7017F81FC /* Passkeys.swift */; };
@@ -178,6 +180,7 @@
 		3475E4A053C83424DD2469A3 /* ProposalPosting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalPosting.swift; sourceTree = "<group>"; };
 		34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		36F289D04BA1DDF3EF45FE89 /* Welcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Welcome.swift; sourceTree = "<group>"; };
+		3B61AB657CE7937F8742D3C6 /* RulesChangeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RulesChangeSheet.swift; sourceTree = "<group>"; };
 		3EFC7ACE15046E1958924BFE /* QuiltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSession.swift; sourceTree = "<group>"; };
 		3F6A75075FA97DDDD2C101EC /* AccessibilityAuditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityAuditTests.swift; sourceTree = "<group>"; };
 		41A7515238A35D73C8309066 /* QuiltSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltSwitcher.swift; sourceTree = "<group>"; };
@@ -273,6 +276,7 @@
 		F4E90AA0007CCFBCD3D80C16 /* Discover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discover.swift; sourceTree = "<group>"; };
 		F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
 		F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltAppearanceTests.swift; sourceTree = "<group>"; };
+		FAF85E7C3A60098C6DF2DEE4 /* RulesChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RulesChange.swift; sourceTree = "<group>"; };
 		FFBC79F3B5368C892C80F80C /* AccountInvites.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountInvites.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -373,6 +377,8 @@
 				73236C64CF82F56019DF7AC1 /* Relationship.swift */,
 				D550615CD3341F44DA6D4623 /* RelationshipControls.swift */,
 				8B63D84A048798D7CEB8109A /* RemotePatch.swift */,
+				FAF85E7C3A60098C6DF2DEE4 /* RulesChange.swift */,
+				3B61AB657CE7937F8742D3C6 /* RulesChangeSheet.swift */,
 				C282B734B4827A544F7C1F07 /* SearchResults.swift */,
 				494F967A72E9D416A797FE46 /* Settings.swift */,
 				9A5FE49A81232BB37D460D07 /* SignIn.swift */,
@@ -648,6 +654,8 @@
 				7F124D86B61A2F13BEEC25D1 /* Relationship.swift in Sources */,
 				7E8CCFE04B282D8401879320 /* RelationshipControls.swift in Sources */,
 				A63E26FF9A6F8656D3A2E168 /* RemotePatch.swift in Sources */,
+				62AE7AEC87322FB4306054FD /* RulesChange.swift in Sources */,
+				B8E2D7ED493EEEAD9D70D28F /* RulesChangeSheet.swift in Sources */,
 				4DA43DAF095AE52D063A248D /* SearchResults.swift in Sources */,
 				328D00E34B155E0CD4FD258B /* Settings.swift in Sources */,
 				DEF113A2D4B497DB90AACC40 /* SignIn.swift in Sources */,
