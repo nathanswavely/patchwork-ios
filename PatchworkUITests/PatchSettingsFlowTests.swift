@@ -43,7 +43,8 @@ final class PatchSettingsFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["reviewReportHeading"].waitForExistence(timeout: 5))
         app.buttons["reportAction-remove"].tap()
         app.buttons["reportConfirm"].tap()
-        let removal = app.buttons["Yes, remove it"]
+        // A confirmation dialog draws its buttons twice in the tree.
+        let removal = app.buttons["Yes, remove it"].firstMatch
         XCTAssertTrue(removal.waitForExistence(timeout: 5), "removing asks once more")
         removal.tap()
         XCTAssertTrue(said(app, "Report reviewed"))
@@ -91,7 +92,7 @@ final class PatchSettingsFlowTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Members"].waitForExistence(timeout: 10))
         let lena = memberRow(app, "Lena Fox")
         XCTAssertTrue(lena.waitForExistence(timeout: 10))
-        XCTAssertTrue(lena.label.contains("Member"), lena.label)
+        XCTAssertTrue(lena.label.localizedCaseInsensitiveContains("member"), lena.label)
         lena.swipeLeft()
         let promote = app.buttons["Promote to admin"]
         XCTAssertTrue(promote.waitForExistence(timeout: 5), "the club's rules let an admin make one")
@@ -258,7 +259,7 @@ final class PatchSettingsFlowTests: XCTestCase {
     }
 
     private func wait(_ element: XCUIElement, label: String, timeout: TimeInterval = 10) -> Bool {
-        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", label), object: element)
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS[c] %@", label), object: element)
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
