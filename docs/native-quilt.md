@@ -47,7 +47,7 @@ The shell was aligned with the mobile web's decisions (web CONTEXT.md "Shell & n
 
 The quilt now draws what each patch chose. No API change was needed: `nodes/tree` already carries `appearance` (palette, block as a curated slug or an inline drafted block, rotation, bundle, icon) on every patch that set one, `tags` carries each tag's `motif`, and `instance/icon` was already read. What the client had to add was the frontend-owned registries the web keeps out of the backend on purpose (docs/adr/004): the fabric wall and the 26 palettes, the twelve curated blocks, the drafted-block engine (docs/adr/029), the 34-motif set, and the web's `hashStr` — ported bit for bit and checked against node runs of the web modules in `QuiltAppearanceTests` (hash values, palette order and cut keys, drafted faces for three live Lancaster drafts, resolution order chosen → tag → quilt mark).
 
-Rendering: each tile is a unit-square `CALayer` scaled and rotated to its frame, one `CAShapeLayer` per fabric with a hairline seal stroke; seams are one deduplicated path on the board (0.6pt) with the outer edge as a 2.4pt binding, both counter-scaled on every zoom tick; corner marks are anchored on their corner and counter-scaled so the inset holds in screen points; name badges live in a screen-space layer over the canvas, clipped to the safe area, planned each scroll/zoom tick by `QuiltBadges.plan` with the web's thresholds (52/44pt, 32→26pt gap over 52→80pt, 8.5em cap, three balanced lines) and hysteresis. A tap on a badge hands the touch to the badge's patch while the pan still belongs to the scroll view.
+Rendering: each tile is a unit-square `CALayer` scaled and rotated to its frame, one `CAShapeLayer` per fabric with a hairline seal stroke; seams are one deduplicated path on the board (0.6pt) with the outer edge as a 2.4pt binding, both counter-scaled on every zoom tick; corner marks are anchored on their corner and counter-scaled so the inset holds in screen points; name badges live in a layer beside the zoomed board inside the scroll view, so they scroll with the quilt at their own point size, planned over the whole quilt on each zoom tick (never on a pan) by `QuiltBadges.plan` with the web's thresholds (52/44pt, 32→26pt gap over 52→80pt, 8.5em cap, three balanced lines) and hysteresis — see "Names pinned to their tiles" below. A tap on a badge hands the touch to the badge's patch while the pan still belongs to the scroll view.
 
 Not yet drawn, deliberately: the cloth (docs/adr/066 — the wandering lattice, block warp, bevel, doming, weave, folds, topstitch), Muted colours (docs/adr/112 — a viewer setting the app has no Display menu for), the viewer's role mark (needs sign-in), and hover dim (desktop only). Motif glyphs are Phosphor Icons' fill weight, generated into `Assets.xcassets/Motifs` from the web's dependency; MIT licence in `docs/third-party/phosphor-icons-LICENSE.txt`.
 
@@ -1940,3 +1940,43 @@ Not verified: a live server, VoiceOver on the map picker (it cannot be
 panned by VoiceOver; a suggested point can still be confirmed), Dynamic Type
 at the accessibility sizes on the form, and the recovery-code ending of an
 invite on a quilt without mail (the fixture quilt sends mail).
+
+## Names pinned to their tiles — 2026-10-17
+
+The quilt's names used to live in a screen-space layer, re-planned on every
+scroll tick against the safe area less the view switcher, and each one held
+inside the screen by sliding along the edge of its tile's visible part. On a
+pan that read as the names refusing to move with the cloth: a name ran along
+the top bar or the screen's side as its tile left, then blinked out when too
+little tile was left to hold it, and because the plan only saw what was on
+screen, a name leaving could let another pop in elsewhere. The reader asked
+for the opposite, the way a map's place names behave: names that are part of
+the quilt and move with it, changing only when the zoom does.
+
+So a badge is now pinned to its tile's centre and the screen does not enter
+the plan at all. `BadgeLayer` is a subview of the scroll view beside the
+zoomed board, framed to the board at the current zoom: UIKit scrolls it with
+the content, so a pan costs the names nothing, and because it is not itself
+scaled a pill keeps its point size. `scrollViewDidZoom` re-plans the whole
+quilt on every tick of a pinch; a pan only asks whether the badges near the
+screen exist as views. The set is the plan's — zoom and tile size, the 52/44pt
+hysteresis, the collision gap, the two- and three-line stacking all as they
+were — while the views are realised only within half a screen of the visible
+rect and kept in a pool, so a large quilt does not carry a blur per tile.
+Edges, bars and the corner view switcher now cut a name where they cut its
+tile, as they do the tile; the switcher's measured height, which existed only
+to keep names clear of it, is gone. A name that comes or goes with a zoom
+fades over 0.18s, and simply appears or goes under Reduce Motion.
+
+Considered and not taken: badges as subviews of the board, counter-scaled the
+way the corner marks are. It moves with the cloth for the same reason, but
+puts a blur under a transform that changes every zoom tick and pays the
+counter-scale on every badge every tick; the sibling layer keeps the pills at
+identity and needs only their frames.
+
+Measured on the simulator (iPhone 18 Pro, Debug build). Lancaster, 62 tiles:
+badge work per scroll tick fell from 0.42ms on average (11ms worst, a re-plan
+on each tick) to 0.01ms (2.7ms worst, a half-screen of views realised); a
+zoom tick's whole-quilt plan averages 0.47ms. A synthetic quilt of 600 tiles
+plans in about 2.5ms per zoom tick once the collision test was bucketed by
+area (11ms when it compared every placed pill).

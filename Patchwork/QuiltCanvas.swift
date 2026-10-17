@@ -10,14 +10,10 @@ struct QuiltCanvas: UIViewRepresentable {
     /// a change to this view's value, which is what makes `updateUIView` run
     /// and the tiles recut; the mode is otherwise invisible to SwiftUI.
     var colorMode: ColorMode = .standard
-    /// The height of the controls floating over the canvas's foot, above the
-    /// safe area, which the names keep clear of.
-    var footer: CGFloat = 0
     let select: (Patch) -> Void
     func makeUIView(context: Context) -> CanvasView { CanvasView() }
     func updateUIView(_ view: CanvasView, context: Context) {
         QuiltTheme.colorMode = colorMode
-        view.footer = footer
         view.update(tiles: tiles, patches: patches, tagMotifs: tagMotifs, colorMode: colorMode, select: select)
     }
 }
@@ -51,41 +47,26 @@ enum QuiltInk {
     static let markShadow = UIColor(white: 0, alpha: 0.28)
 }
 
-/// The canvas and the badge layer over it. Badges are screen-space and never
-/// scroll; a touch on one belongs to its patch, while the quilt still pans
-/// underneath it.
+/// The canvas: the scroll view that carries the quilt and its names. A touch
+/// on a badge belongs to its patch, while the quilt still pans underneath it.
 final class CanvasView: UIView, UIGestureRecognizerDelegate {
     let scroll = CanvasScrollView()
-    let badges = BadgeLayer()
+    private var badges: BadgeLayer { scroll.badges }
     private var select: ((Patch) -> Void)?
     private var patchesByID: [String: Patch] = [:]
-    var footer: CGFloat = 0 {
-        didSet { if footer != oldValue { badges.chrome.bottom = footer; updateBadges() } }
-    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         addSubview(scroll)
-        addSubview(badges)
-        scroll.onViewChange = { [weak self] in self?.updateBadges() }
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
         tap.delegate = self
         addGestureRecognizer(tap)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// The quilt runs under the bars; its names do not. The badge layer is
-    /// the safe area, and a name whose tile runs under a bar is held inside
-    /// it rather than cut by the bar's edge or left behind glass.
     override func layoutSubviews() {
         super.layoutSubviews()
         scroll.frame = bounds
-        badges.frame = bounds.inset(by: safeAreaInsets)
-        updateBadges()
-    }
-    override func safeAreaInsetsDidChange() {
-        super.safeAreaInsetsDidChange()
-        setNeedsLayout()
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -104,17 +85,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         self.select = select
         patchesByID = Dictionary(patches.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         scroll.update(tiles: tiles, patches: patches, tagMotifs: tagMotifs, colorMode: colorMode, select: select)
-        updateBadges()
-    }
-
-    func updateBadges() {
-        guard bounds.width > 0 else { return }
-        badges.apply(scroll.badgeCandidates(in: badges))
     }
 }
 
 final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
-    var onViewChange: (() -> Void)?
+    /// The quilt's names, pinned to their tiles (QuiltBadges.swift).
+    let badges = BadgeLayer()
     private let board = UIView()
     private let seams = CAShapeLayer()
     private let binding = CAShapeLayer()
@@ -151,6 +127,9 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
         }
         binding.lineCap = .square
         binding.opacity = 0.9
+        // Above the board and outside it: scrolled with the quilt, never scaled.
+        addSubview(badges)
+        badges.onTypeChange = { [weak self] in self?.planBadges(fade: false) }
         applyTheme()
         accessibilityIdentifier = "quiltCanvas"
     }
@@ -165,8 +144,11 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
         suppressSelectionUntil = Date.timeIntervalSinceReferenceDate + 0.25
     }
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { board }
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { applyZoom(); onViewChange?() }
-    func scrollViewDidScroll(_ scrollView: UIScrollView) { onViewChange?() }
+    /// A zoom is the only gesture that re-plans the names, live through the
+    /// pinch; a pan carries them along with the quilt and only asks whether
+    /// any new ones need making as views.
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { applyZoom(); planBadges(fade: true) }
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { badges.reveal(convert(bounds, to: badges)) }
 
     /// Everything that holds still on screen while the quilt scales.
     private func applyZoom() {
@@ -185,12 +167,17 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
     // The seam ink is a dynamic colour resolved by hand, so a change of
     // appearance resolves it again (registered in `init`).
 
-    /// The tiles as the badge layer sees them: screen frames, fillers left out.
-    func badgeCandidates(in view: UIView) -> [QuiltBadges.Candidate] {
-        current.compactMap { tile in
+    /// Plans the names over the whole quilt at the current zoom. The badge
+    /// layer takes the board's frame, so a tile's frame in it is the tile at
+    /// this zoom; fillers are left out.
+    func planBadges(fade: Bool) {
+        guard bounds.width > 0 else { return }
+        badges.frame = board.frame
+        let candidates: [QuiltBadges.Candidate] = current.compactMap { tile in
             guard let tileView = tileViews[tile.id], let name = tileView.patchName else { return nil }
-            return QuiltBadges.Candidate(id: tile.id, name: name, rect: board.convert(tileView.frame, to: view))
+            return QuiltBadges.Candidate(id: tile.id, name: name, rect: board.convert(tileView.frame, to: badges))
         }
+        badges.plan(candidates, visible: convert(bounds, to: badges), fade: fade)
     }
 
     /// The canvas runs under the bars, so fitting and centring use the safe
@@ -211,8 +198,10 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
             contentOffset = CGPoint(x: max(0, (contentSize.width - visible.width) / 2) - contentInset.left,
                                     y: max(0, (contentSize.height - visible.height) / 2) - contentInset.top)
             applyZoom()
+            planBadges(fade: false)
         }
         centre(in: visible)
+        badges.reveal(convert(bounds, to: badges))
     }
     private func centre(in visible: CGRect) {
         let horizontal = max(0, (visible.width - board.frame.width) / 2)
@@ -283,6 +272,7 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
             UIView.animate(withDuration: 0.3, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes) { _ in settle() }
         } else { changes(); settle() }
         needsFit = true
+        planBadges(fade: false)
         setNeedsLayout()
     }
 
