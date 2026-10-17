@@ -250,9 +250,12 @@ final class CanvasScrollView: UIScrollView, UIScrollViewDelegate {
                 if let patch {
                     view.configure(patch: patch, tagMotifs: tagMotifs, colorMode: colorMode)
                     view.removeAction(identifiedBy: UIAction.Identifier("open"), for: .touchUpInside)
+                    // `select` is captured by name: inside this closure,
+                    // `canvas.select` would be UIResponder's `select(_:)` edit
+                    // action, which a scroll view does not implement.
                     view.addAction(UIAction(identifier: UIAction.Identifier("open")) { [weak canvas = self] _ in
                         guard let canvas, canvas.canSelect else { return }
-                        canvas.select(patch)
+                        select(patch)
                     }, for: .touchUpInside)
                 } else {
                     view.configure(filler: Int(tile.id.dropFirst("filler-".count)) ?? 0, colorMode: colorMode)
