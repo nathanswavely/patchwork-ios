@@ -282,5 +282,25 @@ final class GovernanceAuthoringTests: XCTestCase {
         XCTAssertNil(RulesChange.quorumHint(nil, quorum: 50, tenureDays: 0), "no sentence without the room")
         XCTAssertEqual(RulesChange.tenureHint(nil, tenureDays: 0), "Everybody votes from the day they join.")
     }
+
+    // MARK: - A new document
+
+    func testOnlyThePatchsAdminWritesANewDocument() {
+        XCTAssertTrue(NewDocument.mayCreate(signedIn: true, standing: .active(.admin)))
+        XCTAssertFalse(NewDocument.mayCreate(signedIn: true, standing: .active(.member)))
+        XCTAssertFalse(NewDocument.mayCreate(signedIn: true, standing: nil), "a quilt admin with no role here is not offered the patch's door")
+        XCTAssertFalse(NewDocument.mayCreate(signedIn: false, standing: .active(.admin)))
+    }
+
+    func testANewDocumentStartsMembersOnlyAndIsSentTrimmed() throws {
+        XCTAssertEqual(NewDocument.defaultVisibility, "members")
+        XCTAssertEqual(try json(NewDocumentBody(title: " House rules ", body: "\n# Hi\n", visibility: "members")),
+                       #"{"body":"# Hi","title":"House rules","visibility":"members"}"#)
+        XCTAssertEqual(NewDocumentBody(title: "T", body: "", visibility: "anything").visibility, "members")
+        XCTAssertEqual(NewDocument.problem(title: "  "), "title is required")
+        XCTAssertEqual(NewDocument.templates.map(\.label), ["Blank", "Community Agreement", "Code of Conduct"], "the web's three")
+        XCTAssertTrue(NewDocument.templates[1].body.hasPrefix("# Community Agreement\n\n## Purpose"))
+        XCTAssertTrue(NewDocument.visibilityHint("public").hasPrefix("Visitors, search engines"))
+    }
 }
 

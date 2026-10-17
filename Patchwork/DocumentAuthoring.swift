@@ -438,3 +438,128 @@ struct WordDiffText: View {
         return out
     }
 }
+
+/// A new governance document (web `GovernanceEdit.svelte`), for a patch's
+/// admin: a starting point, the title, the text with Write / Preview, and
+/// who can read it — members only until the admin says otherwise, because a
+/// charter is published deliberately (web ADR 036).
+struct NewDocumentSheet: View {
+    let slug: String
+    let onDone: (GovernanceDocument) -> Void
+
+    @EnvironmentObject private var session: QuiltSession
+    @Environment(\.dismiss) private var dismiss
+    @State private var template = ""
+    @State private var title = ""
+    @State private var text = ""
+    @State private var visibility = NewDocument.defaultVisibility
+    @State private var confirmingDiscard = false
+    @State private var busy = false
+    @State private var failure: String?
+
+    private var started: Bool { !title.isEmpty || !text.isEmpty }
+    private var ready: Bool { !busy && NewDocument.problem(title: title) == nil }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("New document")
+                        .font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("newDocumentHeading")
+                    FormField(title: "Start from a template") {
+                        HStack {
+                            Picker("Start from a template", selection: $template) {
+                                ForEach(NewDocument.templates) { Text($0.label).tag($0.id) }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .tint(Color.pwText)
+                            .accessibilityIdentifier("newDocumentTemplate")
+                            Spacer(minLength: 0)
+                        }
+                        .fieldStyle()
+                    }
+                    FormField(title: "Title") {
+                        TextField("Title", text: $title)
+                            .textInputAutocapitalization(.words)
+                            .fieldStyle()
+                            .accessibilityIdentifier("newDocumentTitle")
+                    }
+                    FormField(title: "Content") {
+                        MarkdownComposer(text: $text, title: "Content",
+                                         placeholder: "Write your governance document here… Use **bold**, *italic*, and - lists.",
+                                         base: session.quilt.url, hardBreaks: false, lines: 10...40,
+                                         segmentsID: "newDocumentWritePreview", fieldID: "newDocumentBody", previewID: "newDocumentPreview")
+                    }
+                    FormField(title: "Who can read this", hint: NewDocument.visibilityHint(visibility)) {
+                        Picker("Who can read this", selection: $visibility) {
+                            Text("Members only").tag("members")
+                            Text("Anyone").tag("public")
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("newDocumentVisibility")
+                    }
+                    if let failure {
+                        Label { Text(failure).font(Font.pw.footnote) } icon: {
+                            Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
+                        }
+                        .foregroundStyle(Color.pwText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("newDocumentError")
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .disabled(busy)
+            }
+            .background(Color.pwGround.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { if started { confirmingDiscard = true } else { dismiss() } }.disabled(busy)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                SheetFootButton(title: busy ? "Saving…" : "Save", ready: ready, identifier: "newDocumentSave", action: save)
+            }
+            .confirmationDialog("Discard this document?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+                Button("Discard", role: .destructive) { dismiss() }
+                Button("Keep editing", role: .cancel) {}
+            }
+        }
+        .interactiveDismissDisabled(busy || started)
+        // A template fills the title and the text, as the web's buttons do.
+        .onChange(of: template) { _, id in
+            guard let chosen = NewDocument.templates.first(where: { $0.id == id }) else { return }
+            title = chosen.title
+            text = chosen.body
+        }
+        .onChange(of: session.me == nil) { _, gone in if gone { dismiss() } }
+    }
+
+    private func save() {
+        guard !busy else { return }
+        failure = nil
+        if let problem = NewDocument.problem(title: title) {
+            failure = EventPosting.sentenceCased(problem)
+            return
+        }
+        busy = true
+        let body = NewDocumentBody(title: title, body: text, visibility: visibility)
+        Task {
+            defer { busy = false }
+            do {
+                let made = try await session.api.createDocument(slug: slug, body: body)
+                onDone(made)
+                dismiss()
+            } catch APIError.unauthenticated {
+                session.signedOut()
+            } catch {
+                failure = ProposalDetailView.sentence(error, fallback: "Failed to save document")
+            }
+        }
+    }
+}

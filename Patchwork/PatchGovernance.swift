@@ -274,11 +274,21 @@ struct PatchGovernanceHome: View {
 /// wears is the server's. Only the profile's *glimpse* drops a pristine
 /// lining, because a row that is byte-identical on every patch on the quilt
 /// says nothing in a preview.
+///
+/// A patch's admin writes a new document from the bar at the foot, as the
+/// web's New Document button; it opens on its own screen once saved.
 struct GovernanceDocumentList: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let slug: String
     var close: (() -> Void)? = nil
     @State private var documents: [GovernanceDocument] = []
+    @State private var writing = false
+    @State private var made: GovernanceDocument?
+    @State private var opened: GovernanceDocument?
+    private var mayCreate: Bool {
+        NewDocument.mayCreate(signedIn: quilt.url == session.quilt.url && session.me != nil, standing: session.standing(for: slug))
+    }
     @State private var publishedOnly = false
     @State private var loading = true
     @State private var loaded = false
@@ -290,13 +300,14 @@ struct GovernanceDocumentList: View {
             // modifier does not reach them from the List itself.
             Group {
             ForEach(documents) { document in
-                NavigationLink { GovernanceDocumentDetail(quilt: quilt, initial: document, close: close) } label: {
+                NavigationLink { GovernanceDocumentDetail(quilt: quilt, initial: document, close: close) { Task { await load() } } } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(document.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
                         HStack(spacing: 8) {
                             if let version = document.version { Text("v\(version)") }
                             if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
                             if document.kind == "lining" { Text("The lining") }
+                            else if document.visibility == "members" { Text("Members only") }
                         }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     }.padding(.vertical, 4)
                 }.accessibilityIdentifier("documentRow")
@@ -316,7 +327,22 @@ struct GovernanceDocumentList: View {
         }
         .groundedList()
         .navigationTitle("Documents").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if mayCreate {
+                ToolbarItem(placement: .bottomBar) {
+                    ProposalDoorButton(label: "New document") { writing = true }
+                        .accessibilityIdentifier("newDocumentDoor")
+                }
+            }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
+        .sheet(isPresented: $writing, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            NewDocumentSheet(slug: slug) { document in
+                made = document
+                Task { await load() }
+            }
+        }
+        .navigationDestination(item: $opened) { GovernanceDocumentDetail(quilt: quilt, initial: $0, close: close) { Task { await load() } } }
         .overlay {
             if loaded && !loading && error == nil && documents.isEmpty {
                 ContentUnavailableView(
