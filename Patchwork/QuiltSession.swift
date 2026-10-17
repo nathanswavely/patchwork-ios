@@ -436,7 +436,7 @@ struct LaunchLens: Equatable {
 
     /// Every act ends in the same place: the index, asked again. Whatever the
     /// server actually did is then what every surface is drawing.
-    private func act(_ path: String, body: some Encodable) async throws -> String {
+    private func act(_ path: String, body: some Encodable & Sendable) async throws -> String {
         do {
             let answer: MembershipAct = try await api.post(path, body: body)
             await refreshMemberships()

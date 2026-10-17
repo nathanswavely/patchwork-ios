@@ -595,9 +595,9 @@ struct ProposalDetailView: View {
         HStack(spacing: 10) {
             Button(action: act) {
                 Group {
-                    if commentBusy { ProgressView().tint(.white) } else { Text(primary).font(Font.pw.subheadlineSemibold) }
+                    if commentBusy { ProgressView().tint(Color.pwOnAccent) } else { Text(primary).font(Font.pw.subheadlineSemibold) }
                 }
-                .foregroundStyle(enabled && !commentBusy ? Color.white : Color.pwTextMuted)
+                .foregroundStyle(enabled && !commentBusy ? Color.pwOnAccent : Color.pwTextMuted)
                 .frame(minWidth: 64, minHeight: 30)
             }
             .buttonStyle(.borderedProminent).tint(Color.pwAccent)
@@ -626,7 +626,7 @@ struct ProposalDetailView: View {
                         if commentBusy && replyingTo == nil && editing == nil { Text("Posting…") } else { Text("Comment") }
                     }
                     .font(Font.pw.subheadlineSemibold)
-                    .foregroundStyle(draftReady ? Color.white : Color.pwTextMuted)
+                    .foregroundStyle(draftReady ? Color.pwOnAccent : Color.pwTextMuted)
                     .frame(minHeight: 30)
                 }
                 .buttonStyle(.borderedProminent).tint(Color.pwAccent)
@@ -776,10 +776,10 @@ struct VoteButtons: View {
             let title = filled && pastTense ? value.past : value.present
             Button { cast(value) } label: {
                 Group {
-                    if busy { ProgressView().tint(filled ? .white : Color.pwText) }
+                    if busy { ProgressView().tint(filled ? Color.pwOnAccent : Color.pwText) }
                     else { Text(title).font(Font.pw.subheadlineSemibold).lineLimit(1).fixedSize() }
                 }
-                .foregroundStyle(filled ? Color.white : Color.pwText)
+                .foregroundStyle(filled ? Color.pwOnAccent : Color.pwText)
                 .frame(maxWidth: .infinity, minHeight: 30)
             }
             .modifier(VoteButtonStyle(filled: filled))
@@ -833,21 +833,17 @@ struct TallyBar: View {
     }
 }
 
-/// A voter's value, as a word in its colour. Data, like the bar.
+/// A voter's value, as a word on its colour. Data, like the bar.
 struct ValueBadge: View {
     let value: String
     var body: some View {
-        Text(value)
-            .font(Font.pw.caption2Semibold)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(tint.opacity(0.15), in: Capsule())
-            .foregroundStyle(tint)
+        Text(value).chipFace(fill: fill)
     }
-    private var tint: Color {
+    private var fill: Color {
         switch value {
-        case "approve": return .green
-        case "reject": return .red
-        default: return .secondary
+        case "approve": return .green.opacity(0.15)
+        case "reject": return .red.opacity(0.15)
+        default: return Color(.secondarySystemFill)
         }
     }
 }
@@ -987,7 +983,7 @@ struct ElectionPanel: View {
             Button { save(abstain: false) } label: {
                 Text(busy ? "Saving…" : (ballotIn ? "Update my ballot" : "Save my ballot"))
                     .font(Font.pw.headline)
-                    .foregroundStyle(saveEnabled ? Color.white : Color.pwTextMuted)
+                    .foregroundStyle(saveEnabled ? Color.pwOnAccent : Color.pwTextMuted)
                     .frame(maxWidth: .infinity, minHeight: 28)
             }
             .buttonStyle(.borderedProminent).tint(Color.pwAccent)
@@ -1074,7 +1070,7 @@ struct ElectionPanel: View {
                     Spacer(minLength: 8)
                     Button { run({ try await api.stand(proposal: proposal.id, statement: statement) }) { statement = "" } } label: {
                         Text(busy ? "Standing…" : "Stand for election").font(Font.pw.subheadlineSemibold)
-                            .foregroundStyle(busy ? Color.pwTextMuted : Color.white)
+                            .foregroundStyle(busy ? Color.pwTextMuted : Color.pwOnAccent)
                             .frame(minHeight: 30)
                     }
                     .buttonStyle(.borderedProminent).tint(Color.pwAccent)

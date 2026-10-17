@@ -208,6 +208,9 @@ final class BadgeLayer: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (layer: Self, _: UITraitCollection) in
+            layer.textSizeChanged()
+        }
         isUserInteractionEnabled = false
         clipsToBounds = true
     }
@@ -237,13 +240,11 @@ final class BadgeLayer: UIView {
         }
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        if previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory {
-            type = .current()
-            measurer.reset(type: type)
-            held = []
-        }
+    /// A new text size re-measures every badge: the type is the reader's.
+    private func textSizeChanged() {
+        type = .current()
+        measurer.reset(type: type)
+        held = []
     }
 }
 
@@ -257,6 +258,9 @@ final class BadgeView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: Self, _: UITraitCollection) in
+            view.applyTheme()
+        }
         isUserInteractionEnabled = false
         // Frosted, the way the web's badge is: a blur behind the tinted pill,
         // so the name earns its contrast from the reader's theme rather than
@@ -297,8 +301,6 @@ final class BadgeView: UIView {
     private func applyTheme() {
         layer.borderColor = QuiltInk.thread.resolvedColor(with: traitCollection).cgColor
     }
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        applyTheme()
-    }
+    // The border is a dynamic colour resolved by hand, so a change of
+    // appearance resolves it again.
 }

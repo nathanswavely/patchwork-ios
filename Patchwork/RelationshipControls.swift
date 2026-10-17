@@ -335,6 +335,7 @@ struct JoinSheet: View {
                         if busy { ProgressView() } else { Text(join.title).font(Font.pw.headline) }
                     }
                     .frame(maxWidth: .infinity, minHeight: 28)
+                    .foregroundStyle(Color.pwOnAccent)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.pwAccent)
@@ -467,30 +468,36 @@ private struct ActButton: ViewModifier {
     let prominent: Bool
     let onCover: Bool
     func body(content: Content) -> some View {
+        // A word on the rust is pwOnAccent; on the cover, the clear glass is
+        // smoked as dark as the scrim behind the name (55%), since the acts
+        // sit on the bare cloth below it and white on clear glass over a
+        // pale cloth all but disappeared.
         if onCover {
             if #available(iOS 26, *) {
-                if prominent { content.buttonStyle(.glassProminent).tint(Color.pwAccent) }
-                else { content.buttonStyle(.glass).foregroundStyle(.white) }
+                if prominent { content.buttonStyle(.glassProminent).tint(Color.pwAccent).foregroundStyle(Color.pwOnAccent) }
+                else { content.buttonStyle(.glass).tint(.black.opacity(0.55)).foregroundStyle(.white) }
             } else {
-                if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent) }
+                if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent).foregroundStyle(Color.pwOnAccent) }
                 else { content.buttonStyle(.bordered).tint(.white).foregroundStyle(.white) }
             }
         } else {
-            if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent) }
+            if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent).foregroundStyle(Color.pwOnAccent) }
             else { content.buttonStyle(.bordered).tint(Color.pwAccent) }
         }
     }
 }
 
-/// The standing mark's capsule: a hairline of thread inline, glass on the cover.
+/// The standing mark's capsule: a hairline of thread inline, smoked glass on
+/// the cover (55%, the name's scrim), where white on clear glass over a
+/// pale cloth was barely there.
 private struct MarkChrome: ViewModifier {
     let onCover: Bool
     func body(content: Content) -> some View {
         if onCover {
             if #available(iOS 26, *) {
-                content.glassEffect(.regular, in: Capsule())
+                content.glassEffect(.regular.tint(.black.opacity(0.55)), in: Capsule())
             } else {
-                content.background(.regularMaterial, in: Capsule())
+                content.background(Color.black.opacity(0.55), in: Capsule())
             }
         } else {
             content.overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))

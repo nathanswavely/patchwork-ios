@@ -18,6 +18,9 @@ import SwiftUI
 /// are patches, and a patch is the one thing in this app that is a card.
 struct Dashboard: View {
     @EnvironmentObject private var session: QuiltSession
+    /// At the accessibility sizes the rows' glyphs give their width to the
+    /// words, which otherwise broke mid-word ("notificatio-ns").
+    @Environment(\.dynamicTypeSize) private var textSize
     /// The door out of the empty state, which belongs to the shell.
     var openDiscover: () -> Void = {}
 
@@ -98,8 +101,10 @@ struct Dashboard: View {
     private var unreadRow: some View {
         Button { notifications = true } label: {
             HStack(spacing: 8) {
-                Image(systemName: "bell.fill").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
-                    .accessibilityHidden(true)
+                if !textSize.isAccessibilitySize {
+                    Image(systemName: "bell.fill").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                        .accessibilityHidden(true)
+                }
                 Text("\(session.unread) unread notification\(session.unread == 1 ? "" : "s")")
                     .font(Font.pw.subheadlineSemibold).inkRow()
             }
@@ -163,8 +168,10 @@ struct Dashboard: View {
                 ForEach(asks) { ask in
                     NavigationLink { destination(ask) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Image(systemName: ask.symbol).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
-                                .frame(width: 20).accessibilityHidden(true)
+                            if !textSize.isAccessibilitySize {
+                                Image(systemName: ask.symbol).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                                    .frame(width: 20).accessibilityHidden(true)
+                            }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ask.label).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
                                 Text(ask.name).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
@@ -230,9 +237,9 @@ struct Dashboard: View {
                         DashboardEvents(events: events, more: moreEvents)
                     } label: {
                         Text("See all \(events.count)\(moreEvents ? "+" : "")").font(Font.pw.subheadline).inkRow()
+                            .tapTarget()
                     }
                     .buttonStyle(.plain)
-                    .padding(.vertical, 8)
                     .accessibilityIdentifier("dashboardAllUpcoming")
                 }
             }

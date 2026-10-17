@@ -144,15 +144,24 @@ struct NoticeDetailView: View {
                 if loadedNotice != nil || !notice.createdAt.isEmpty {
                     // The author is a door where there is somebody to open;
                     // a deleted account's notice keeps the plain byline.
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        PersonName(name: notice.author, username: notice.authorUsername, font: Font.pw.subheadline,
-                                   inert: .pwTextMuted) { person = $0 }
-                        let when = NotificationTime.ago(notice.createdAt)
-                        if !when.isEmpty { Text(" · \(when)").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted) }
+                    // On one line where it fits; at the largest sizes the
+                    // time goes under the name rather than splitting it.
+                    let when = NotificationTime.ago(notice.createdAt)
+                    let author = PersonName(name: notice.author, username: notice.authorUsername, font: Font.pw.subheadline,
+                                            inert: .pwTextMuted) { person = $0 }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 0) {
+                            author
+                            if !when.isEmpty { Text(" · \(when)").font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted) }
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            author
+                            if !when.isEmpty { Text(when).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted) }
+                        }
                     }
                 }
                 if notice.membersTold || !notice.repliesOpen {
-                    HStack(spacing: 8) {
+                    ActsRow(spacing: 8) {
                         if notice.membersTold { NoticePill(text: "members told") }
                         if !notice.repliesOpen { NoticePill(text: "replies off").accessibilityIdentifier("repliesOffPill") }
                     }
@@ -323,7 +332,7 @@ struct NoticeDetailView: View {
                 Button(action: sendReply) {
                     Text(replyBusy ? "Sending…" : "Reply")
                         .font(Font.pw.subheadlineSemibold)
-                        .foregroundStyle(draftReady ? Color.white : Color.pwTextMuted)
+                        .foregroundStyle(draftReady ? Color.pwOnAccent : Color.pwTextMuted)
                         .frame(minHeight: 30)
                 }
                 .buttonStyle(.borderedProminent).tint(Color.pwAccent)
@@ -615,11 +624,11 @@ struct ReportSheet: View {
             if sent { dismiss() } else { submit() }
         } label: {
             Group {
-                if busy { ProgressView().tint(.white) }
+                if busy { ProgressView().tint(Color.pwOnAccent) }
                 else { Text(sent ? "Done" : "Submit report").font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
-            .foregroundStyle(busy ? Color.pwTextMuted : Color.white)
+            .foregroundStyle(busy ? Color.pwTextMuted : Color.pwOnAccent)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)

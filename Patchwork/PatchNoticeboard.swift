@@ -13,11 +13,7 @@ import SwiftUI
 struct NoticePill: View {
     let text: String
     var body: some View {
-        Text(text)
-            .font(Font.pw.caption2Semibold)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Color(.secondarySystemFill), in: Capsule())
-            .foregroundStyle(Color.pwTextMuted)
+        Text(text).chipFace()
     }
 }
 
@@ -399,11 +395,11 @@ struct NoticeFormSheet: View {
     private var foot: some View {
         Button(action: submit) {
             Group {
-                if busy { ProgressView().tint(.white) }
+                if busy { ProgressView().tint(Color.pwOnAccent) }
                 else { Text(isNew ? "Put up notice" : "Save").font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
-            .foregroundStyle(ready ? Color.white : Color.pwTextMuted)
+            .foregroundStyle(ready ? Color.pwOnAccent : Color.pwTextMuted)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)
