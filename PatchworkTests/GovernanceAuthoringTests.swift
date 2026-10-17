@@ -138,4 +138,64 @@ final class GovernanceAuthoringTests: XCTestCase {
         XCTAssertNil(ProposalPosting.councilNote(rules: GovernanceRules(leadershipModel: "meritocratic"), seats: [], isPatchAdmin: true, nextContestOpens: nil))
         XCTAssertEqual(ProposalPosting.nomineeHint(elected), "If this passes, they take the vacant seat and serve out its term. Nobody has to approve it afterwards.")
     }
+
+    // MARK: - Amending a document
+
+    func testTheLineDiffKeepsWhatDidNotMoveAndMarksWhatDid() {
+        let old = "# Rules\n\nDoors at seven.\nBring a chair."
+        let new = "# Rules\n\nDoors at half past seven.\nBring a chair.\nNo phones."
+        let lines = LineDiff.lines(old: old, new: new)
+        XCTAssertEqual(lines.map(\.kind), [.same, .same, .removed, .added, .same, .added])
+        XCTAssertEqual(lines[2].text, "Doors at seven.", "the old line reads before the new one")
+        XCTAssertEqual(LineDiff.summary(lines), "2 lines added, 1 removed")
+        XCTAssertEqual(LineDiff.summary(LineDiff.lines(old: old, new: old)), "No changes yet")
+        XCTAssertEqual(LineDiff.summary(LineDiff.lines(old: "a\nb", new: "a")), "1 line removed")
+        XCTAssertEqual(LineDiff.summary(LineDiff.lines(old: "", new: "a")), "1 line added")
+    }
+
+    func testUnchangedRunsFoldToACount() {
+        let old = (1...10).map { "line \($0)" }.joined(separator: "\n")
+        let new = old.replacingOccurrences(of: "line 9", with: "line nine")
+        let rows = LineDiff.rows(LineDiff.lines(old: old, new: new), context: 2)
+        XCTAssertEqual(rows.first, .folded(6), "lines 1 to 6 are out of reach of the change")
+        XCTAssertEqual(rows.count, 1 + 2 + 2 + 1, "two of context, the change, one of context to the end")
+        XCTAssertEqual(rows.last, .line(LineDiff.Line(kind: .same, text: "line 10")))
+    }
+
+    func testTheDoorOnADocumentIsWordedAsTheOutcome() {
+        let majority = GovernanceRules(decisionMethod: "majority")
+        let admins = GovernanceRules(decisionMethod: "admin")
+        XCTAssertEqual(DocumentAmending.door(signedIn: true, standing: .active(.member), rules: majority), "Propose change")
+        XCTAssertEqual(DocumentAmending.door(signedIn: true, standing: .active(.admin), rules: majority), "Propose change", "every voting method votes")
+        XCTAssertEqual(DocumentAmending.door(signedIn: true, standing: .active(.admin), rules: admins), "Change this document")
+        XCTAssertEqual(DocumentAmending.door(signedIn: true, standing: .active(.member), rules: admins), "Propose change")
+        XCTAssertNil(DocumentAmending.door(signedIn: true, standing: .active(.follower), rules: majority))
+        XCTAssertNil(DocumentAmending.door(signedIn: true, standing: .active(.member), rules: nil), "it waits for the rules")
+    }
+
+    func testAnAmendmentSendsTheWholeTextAndTheOutcomesKnobs() throws {
+        let majority = GovernanceRules(decisionMethod: "majority", defaultVoteDurationHours: 336)
+        let body = AmendmentBody(title: " Tools go back ", why: " Because. ", targetDoc: "how-we-decide.md", documentTitle: "How we decide",
+                                 proposed: "New text\n", rules: majority, isPatchAdmin: false, putToVote: false, durationHours: 336)
+        XCTAssertEqual(try json(body), #"{"body":"Because.","change_summary":"Tools go back","duration_hours":336,"proposal_type":"amendment","proposed_body":"New text\n","proposed_title":"How we decide","target_doc":"how-we-decide.md","title":"Tools go back"}"#)
+        let admins = GovernanceRules(decisionMethod: "admin", defaultVoteDurationHours: 48)
+        let direct = AmendmentBody(title: "T", why: "", targetDoc: "d.md", documentTitle: "D", proposed: "x",
+                                   rules: admins, isPatchAdmin: true, putToVote: false, durationHours: 48)
+        XCTAssertNil(direct.durationHours, "no window for a change nobody votes on")
+        XCTAssertEqual(direct.putToVote, false)
+        XCTAssertEqual(DocumentAmending.problem(title: "T", original: "a", proposed: "a"), "Change the document before you send it.")
+        XCTAssertEqual(DocumentAmending.problem(title: "  ", original: "a", proposed: "b"), "title is required")
+        XCTAssertNil(DocumentAmending.problem(title: "T", original: "a", proposed: "b"))
+    }
+
+    func testTheHistorySaysWhatItHas() {
+        XCTAssertEqual(DocumentHistory.doorLabel(3), "History (3 versions)")
+        XCTAssertEqual(DocumentHistory.doorLabel(1), "History (1 version)")
+        XCTAssertEqual(DocumentHistory.heading(1), "Version history · 1 version")
+        let versions = [DocumentVersion(sha: "c", repair: nil), DocumentVersion(sha: "b", date: "2026-05-01T00:00:00Z", repair: "rebuilt"),
+                        DocumentVersion(sha: "a", date: "2026-04-01T00:00:00Z", repair: "rebuilt")]
+        XCTAssertEqual(DocumentHistory.rebuiltOn(versions), "2026-04-01T00:00:00Z", "the oldest rebuilt entry")
+        XCTAssertEqual(PreviewData.filename("How we decide!"), "how-we-decide.md", "the server's filename rule")
+    }
 }
+

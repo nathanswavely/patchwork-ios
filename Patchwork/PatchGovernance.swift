@@ -310,14 +310,40 @@ struct GovernanceDocumentList: View {
     }
 }
 
+/// One document, its history, and — for a member or an admin — the door to
+/// changing it (`DocumentAmendmentSheet`). The door waits for the patch's
+/// rules, because they decide what the change will be, and is worded as
+/// the outcome: an admin of a patch whose admins decide changes it, anybody
+/// else proposes a change.
 struct GovernanceDocumentDetail: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let initial: GovernanceDocument
     var close: (() -> Void)? = nil
+    /// The rooms behind this screen are out of date: a change was made.
+    var changed: () -> Void = {}
     @State private var detail: GovernanceDocument?
     @State private var error: String?
+    @State private var rules: GovernanceRules?
+    @State private var amending = false
+    @State private var made: Proposal?
+    @State private var opened: Proposal?
     private var document: GovernanceDocument { detail ?? initial }
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
+    private var signedIn: Bool { quilt.url == session.quilt.url && session.me != nil }
+    /// The patch, by the document's own `node_id`: a document is opened from
+    /// a room, a glimpse and a notification alike, and only the payload
+    /// names its patch on all three.
+    private var slug: String? {
+        guard let node = document.nodeId, !node.isEmpty else { return nil }
+        if let slug = session.memberships.first(where: { $0.nodeId == node })?.nodeSlug, !slug.isEmpty { return slug }
+        return (session.wholeQuilt + session.patches).first { $0.id == node }?.slug
+    }
+    private var standing: Standing? { slug.flatMap { session.standing(for: $0) } }
+    private var door: String? {
+        guard detail != nil else { return nil }
+        return DocumentAmending.door(signedIn: signedIn, standing: standing, rules: rules)
+    }
     var body: some View {
         List {
             // One Group so every section's rows take the card surface: the
@@ -328,11 +354,19 @@ struct GovernanceDocumentDetail: View {
                 HStack(spacing: 10) {
                     if let version = document.version { Text("v\(version)") }
                     if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
+                    if document.visibility == "members", document.kind != "lining" { Text("Members only") }
                 }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                 if document.kind == "lining" {
                     Text("The shared baseline every patch on this quilt starts with.")
                         .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 }
+                NavigationLink {
+                    GovernanceVersionHistory(quilt: quilt, document: document, close: close)
+                } label: {
+                    Label(DocumentHistory.doorLabel(document.version), systemImage: "clock.arrow.circlepath")
+                        .font(Font.pw.subheadline)
+                }
+                .accessibilityIdentifier("documentHistory")
             }
             if let body = document.body, !body.isEmpty {
                 Section { DocumentBody(text: body) }
@@ -350,13 +384,39 @@ struct GovernanceDocumentDetail: View {
         }
         .groundedList()
         .navigationTitle("Document").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if let door {
+                ToolbarItem(placement: .bottomBar) {
+                    ProposalDoorButton(label: door) { amending = true }
+                        .accessibilityIdentifier("documentChangeDoor")
+                }
+            }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
+        .sheet(isPresented: $amending, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            if let slug {
+                DocumentAmendmentSheet(slug: slug, document: document, rules: rules,
+                                       isPatchAdmin: standing == .active(.admin)) { proposal in
+                    made = proposal
+                    changed()
+                    // A direct change has already rewritten the document.
+                    Task { await load() }
+                }
+            }
+        }
+        .navigationDestination(item: $opened) { ProposalDetailView(quilt: quilt, initial: $0, close: close) { changed(); Task { await load() } } }
         .task { await load() }
     }
     private func load() async {
         error = nil
         do { detail = try await api.get("governance/\(initial.id)") }
         catch { if !Task.isCancelled && (initial.body ?? "").isEmpty { self.error = error.localizedDescription } }
+        await loadRules()
+    }
+    /// The overview's rules, asked for only where the door could be drawn.
+    private func loadRules() async {
+        guard signedIn, let slug, ProposalPosting.mayPropose(signedIn: signedIn, standing: standing) else { return }
+        if let overview: GovernanceOverview = try? await api.get("nodes/\(slug)/governance/overview") { rules = overview.rules }
     }
 }
 

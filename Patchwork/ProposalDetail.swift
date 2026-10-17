@@ -152,6 +152,9 @@ struct ProposalDetailView: View {
                     // line break — what the form's preview showed its author.
                     Section { MarkdownText(source: body, base: quilt.url, hardBreaks: true) } header: { heading("Why this change") }
                 }
+                if detail != nil, !(proposal.targetDoc ?? "").isEmpty, !DocumentAmending.isRulesDoc(proposal.targetDoc) {
+                    DocumentChangesSection(proposal: proposal)
+                }
                 if let error {
                     Section {
                         Text(error).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)

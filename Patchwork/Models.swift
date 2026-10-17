@@ -562,6 +562,10 @@ struct GovernanceDocument: Decodable, Identifiable, Hashable {
     let version: Int?
     let createdAt: String?
     let updatedAt: String?
+    /// The patch it belongs to, and the file its history lives in — the
+    /// target an amendment names (`governanceFilename(title)`).
+    var nodeId: String? = nil
+    var filename: String? = nil
 }
 
 struct GovernanceDocumentPage: Decodable {

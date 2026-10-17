@@ -55,9 +55,10 @@ enum ProposalPosting {
 
     /// An admin of an admin-decides patch chooses between applying now and
     /// asking first; nobody else is offered a choice, and nobody else's
-    /// request carries `put_to_vote`.
-    static func adminChooses(_ rules: GovernanceRules?, isPatchAdmin: Bool) -> Bool {
-        adminDecides(rules) && isPatchAdmin
+    /// request carries `put_to_vote`. A rules change on a patch that decides
+    /// at meetings is applied whatever the flag says, so it offers none.
+    static func adminChooses(_ rules: GovernanceRules?, isPatchAdmin: Bool, rulesDoc: Bool = false) -> Bool {
+        adminDecides(rules) && isPatchAdmin && !(rulesDoc && decidesElsewhere(rules))
     }
 
     /// What submitting will make, by the server's own switch in its order
@@ -76,9 +77,15 @@ enum ProposalPosting {
         case discussion
     }
 
-    static func outcome(rules: GovernanceRules?, isPatchAdmin: Bool, putToVote: Bool) -> Outcome {
+    ///
+    /// `rulesDoc` is a change to `governance-rules.json`. On a patch that
+    /// decides at meetings the rules are not a text a meeting adopts, so the
+    /// server applies an admin's rules change directly (web ADR 053) and
+    /// refuses anybody else's (`mayProposeRules`).
+    static func outcome(rules: GovernanceRules?, isPatchAdmin: Bool, putToVote: Bool, rulesDoc: Bool = false) -> Outcome {
         let adminDecides = adminDecides(rules)
         if adminDecides && isPatchAdmin && !putToVote { return .applied }
+        if decidesElsewhere(rules) && rulesDoc { return .applied }
         if decidesElsewhere(rules) { return .discussion }
         if adminDecides && !isPatchAdmin { return .toMaintainer }
         if adminDecides && isPatchAdmin && putToVote { return .advisoryVote }
@@ -208,7 +215,7 @@ enum ProposalPosting {
 
     static let nobodyToNominate = "There is nobody to nominate yet."
 
-    static let documentsNote = "Changing a governance document or the rules happens on this quilt’s website."
+    static let documentsNote = "To change a governance document, open it from Documents. Changing the rules happens on this quilt’s website."
 
     /// The web's lines on an elected patch where nobody can be nominated:
     /// where the way onto the council actually is (web ADR 100). Adding a
