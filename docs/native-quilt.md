@@ -2017,3 +2017,139 @@ above the bar.
 Not verified: a live server, the elected and meritocratic notes on a real
 patch (the fixtures' patches are all a maintainer's), and VoiceOver on the
 review sheet.
+
+## Governance authoring — 2026-10-17
+
+The acts that change a patch's governance, rather than vote on it, are
+native. Reference: the web's `ProposalStatusBanner.svelte`,
+`ProposalDetail.svelte`, `ProposalForm.svelte`, `AmendmentEditor.svelte`,
+`GovernanceDetail.svelte`, `GovernanceVersionHistory.svelte`,
+`GovernanceList.svelte`, `GovernanceEdit.svelte`, `GovernanceRules.svelte`,
+`GovernanceOverview.svelte`, `RulesProposalEditor.svelte`,
+`StructuredRulesEditor.svelte`, `StructuredRulesDiff.svelte` and
+`lib/governanceRules.js`; the server's `proposal_decide.go`,
+`ApplyProposal`, `CreateProposal`, `validateNomination`,
+`CreateGovernanceDoc`, `GetGovernanceRules`, `GetGovernanceVersions`,
+`GetGovernanceDiff` and `GovernanceElectorate` (origin/main e821255); and web
+ADRs 036, 041, 044, 047, 048, 051, 053, 092, 100, 104 and 117.
+
+- **Deciding and applying.** On a patch whose admins decide, a proposal's
+  banner carries the maintainer's two verbs, **Approve** (filled) and
+  **Decline** (outlined in the destructive tint), whenever the proposal is
+  open — an advisory vote in progress included — and **Ask the members** as
+  a quieter row on a request nobody has been asked about yet; the server
+  refuses a second window, so the row goes once a window has run. On any
+  patch, a vote the members carried that the patch does not apply on its own
+  (`approved`) carries **Make this official**. The gate is the server's
+  `can_decide` beside the reader's standing in the membership index — never
+  `is_admin` — and an election is never decided here, whatever `can_decide`
+  says. Every act is confirmed; the web confirms only a decline, but
+  approving and making official change the patch's governance on the spot,
+  and asking can be done once. Approving says the members' advice so far;
+  asking names the window it opens (the proposal's own default, the empty
+  body the web sends). Afterwards the proposal is read again and the rooms
+  behind told.
+- **A decided request is not a direct change.** The web reads "in effect
+  with nobody on the voter list" as a change its author applied, so a
+  member's request the maintainer approved without asking reads "Applied by"
+  its author. A direct change is stamped applied at its own creation and a
+  decision later, so where the detail carries both times the app tells them
+  apart, and the request reads "Proposed by" with "The maintainer approved
+  this. It is in effect."
+- **Nominations.** Where the web offers the Membership type — an admin of a
+  patch whose community ratifies its admins (meritocratic, or elected with a
+  vacant seat, leadership run in Patchwork) — the form's type is Action ·
+  Membership · Other, and Membership asks for the member from every page of
+  the roster's plain members, with the web's line about what passing does,
+  and sends `target_user_id`. The web's two lines for an elected patch where
+  nobody can be nominated are carried, with adding a seat named as the
+  website's. A nomination's screen names its nominee. **Deviation:** a patch
+  whose admins decide is not offered it. `ratifyNomination` runs only when a
+  vote resolves; there a nomination is applied directly or by the
+  maintainer's decision, and neither promotes anybody.
+- **Amending a document.** A document has **Propose change** in the bar at
+  its foot for a member or an admin, or **Change this document** for the
+  admin of a patch whose admins decide (the web's door says "Propose
+  change" either way, against ADR 041). The sheet is the web's two steps on
+  one page: the text with Write / Preview, what changed (a line count —
+  "2 lines added, 1 removed" — with the changed lines and two of context a
+  tap away, unchanged runs folded to a count), the summary (starting on the
+  web's "Update {title}") and the reason, then the general form's outcome
+  switch, decision rows and window, and the act at the foot worded as the
+  outcome. It sends the whole text against the document's `filename`, with
+  the summary as `change_summary`. The web's amendment editor offers no
+  "Ask the members first" and no window; the app offers both where the
+  general form does, because the server reads `put_to_vote` and
+  `duration_hours` on an amendment like any proposal. The web keeps a draft
+  in the browser; the sheet keeps it until it is cancelled, and cancelling a
+  changed text asks first.
+- **History.** Every document has **History (n versions)**: versions newest
+  first with message, author, date and the repair marks, each opening its
+  change against the one before from the server's word-level hunks
+  (insertions on green, deletions struck through). The server sends no
+  `old_content`/`new_content`, which the web's history reads first, so the
+  web always shows the unified text instead. The web's compare-any-two tool
+  is not carried.
+- **An amendment's screen** says which document it modifies, carries the
+  web's ground-moved notice, and shows the changed lines; a members-only
+  document's text withheld from an outsider is said to be.
+- **Rules.** "How decisions are made" in the Governance room carries the
+  web overview's door: **Propose a change to these rules**, or **Change
+  these rules** for the admin of a patch whose admins decide or that decides
+  at meetings, where a member is told "An admin changes these rules
+  directly." The sheet is a native form of the fields the web's editor
+  edits, set to what is in force — decision method (with the web's hint),
+  quorum, default voting period, amendment threshold, auto-apply, recusal,
+  where admins are chosen and proposals decided (with their hints),
+  succession policy (an unknown stored value kept as itself), voting tenure,
+  membership policy and the four follower permissions — with the quorum and
+  tenure sentences worked from `governance/electorate` (ADR 104). The voting
+  knobs are hidden while the method is Admin decides, and their stored
+  values written back untouched. The rules are read whole and written back
+  whole as `governance-rules.json`: every key the server sent survives, and
+  the Changes list names every key that moved, current → proposed, with the
+  count unchanged. The summary is the web's generated title until it is
+  written over; a sentence before the act says what pressing it does, for
+  every outcome (the web's says "opens a vote" to a member whose change goes
+  to the maintainer). The outcome switch now knows a rules change on a
+  patch that decides at meetings is applied directly. A rules change's
+  proposal screen lists the same rows.
+- **A new document.** The documents room has **New document** in its bar
+  for an active admin of the patch: the web's three starting points, title,
+  Write / Preview, and who can read it (members only by default, with the
+  web's line for each), saved trimmed and opened on its own screen. The
+  list now marks members-only documents.
+- **Still the website's**, named once to a patch's admins at the foot of the
+  Governance room: publishing a document or making it members only,
+  recording a text a meeting adopted (the attestation, ADR 053), and adding
+  a council seat. Each is a deliberate act on the whole patch's public
+  record, rare, and the attestation replaces a charter wholesale with a
+  meeting's text — desk work. Revisions of a proposal, the compare tool,
+  and the rules fields the web's editor does not edit either are not
+  carried. The form's note now points to Documents and the rules door, and
+  Patch Settings' note says the membership policy is changed from the
+  Governance room.
+
+**Offline.** The Film Club (`--preview-admin`) has a member's request
+waiting on its maintainer and a vote carried before it handed decisions to
+its admins, waiting to be made official, and its members-only Screening
+rules. A `--preview-nominator` launch makes the reader an admin of Market
+Friends (`extra-5`), which votes by majority and ratifies its admins, with
+a roster of one other admin, three members and a follower. Documents are
+stateful (Common Thread's charter has three versions); an amendment that
+takes effect writes a version, and versions and diffs read it back. Each
+patch with rules serves its whole rules file and its electorate, and a
+rules change that takes effect replaces the file and the rules the fixtures
+decide by. `decide`, `open-vote`, `apply`, nominations, rules proposals on a
+patch that decides at meetings and `POST nodes/{slug}/governance` answer
+with the server's refusals in its order and words.
+
+**Verification.** Unit tests in `GovernanceAuthoringTests`; UI flows in
+`GovernanceAuthoringFlowTests`: the maintainer asks the members and then
+approves; an admin nominates a member; a member reads a document's history
+and proposes a change to it; a member proposes a rules change; an admin
+writes a new document from a template.
+
+Not verified: a live server, an elected patch's nomination and notes, Make
+this official and Decline end to end (unit-tested only), VoiceOver on the
+diffs, and Dynamic Type at the accessibility sizes on the rules form.

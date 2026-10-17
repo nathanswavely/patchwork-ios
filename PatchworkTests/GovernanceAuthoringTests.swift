@@ -295,7 +295,7 @@ final class GovernanceAuthoringTests: XCTestCase {
     func testANewDocumentStartsMembersOnlyAndIsSentTrimmed() throws {
         XCTAssertEqual(NewDocument.defaultVisibility, "members")
         XCTAssertEqual(try json(NewDocumentBody(title: " House rules ", body: "\n# Hi\n", visibility: "members")),
-                       #"{"body":"# Hi","title":"House rules","visibility":"members"}"#)
+                       ##"{"body":"# Hi","title":"House rules","visibility":"members"}"##)
         XCTAssertEqual(NewDocumentBody(title: "T", body: "", visibility: "anything").visibility, "members")
         XCTAssertEqual(NewDocument.problem(title: "  "), "title is required")
         XCTAssertEqual(NewDocument.templates.map(\.label), ["Blank", "Community Agreement", "Code of Conduct"], "the web's three")

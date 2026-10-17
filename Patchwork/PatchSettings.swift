@@ -419,7 +419,7 @@ enum PatchEditing {
 
     /// What the form leaves to Patch Settings on the website, said once at
     /// its foot.
-    static let websiteNote = "When the group was founded, a move to another quilt, the membership policy, feeds and sources, the patch’s notifications, and archiving it are in Patch Settings on the website."
+    static let websiteNote = "When the group was founded, a move to another quilt, feeds and sources, the patch’s notifications, and archiving it are in Patch Settings on the website. The membership policy is one of the patch’s rules, changed from its Governance room."
 
     static let saved = "Changes saved"
     static let failed = "Failed to save"

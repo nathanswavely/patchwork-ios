@@ -270,6 +270,8 @@ enum PreviewData {
         // The Food Share adds members by invitation only, so a
         // `--preview-invited` launch has a patch to have been asked into.
         (invitingSlug, invitingSlug, extraNames[8], "", "public", "invite_only"),
+        // Market Friends, which a `--preview-nominator` launch runs.
+        (marketSlug, marketSlug, extraNames[5], "", "public", "approval_required"),
     ]
 
     /// The membership set the writes mutate and `me/nodes`, `nodes/{slug}` and
