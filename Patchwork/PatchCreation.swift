@@ -110,6 +110,15 @@ struct PatchDraft: Equatable {
     var rotation: Int
     /// Empty means unset: the motif follows the first tag.
     var motif = ""
+    // Editing only (`PatchSettings.swift`): the Info page's fields the
+    // create form does not carry. Creation sends none of them.
+    var visibility = "public"
+    var acceptSuggestions = false
+    /// Empty follows the quilt's zone.
+    var timezone = ""
+    var imageURL = ""
+    var imageAlt = ""
+    var links: [PatchLink] = []
 
     init(palette: String, block: String, rotation: Int) {
         self.palette = palette; self.block = block; self.rotation = rotation

@@ -15,7 +15,9 @@ import SwiftUI
 /// (web `PatchSettingsMembers.svelte`): doors to the requests waiting, to
 /// inviting somebody, and to the people removed, and Remove on each row
 /// but their own — on the swipe and the long press, as Mail and Contacts
-/// keep a row's acts. Role changes stay on the website.
+/// keep a row's acts. Beside Remove are the role changes the web's control
+/// makes: Promote to admin where the patch's rules let an admin make one,
+/// and Make member on an admin's row.
 struct PatchMemberList: View {
     @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
@@ -31,6 +33,11 @@ struct PatchMemberList: View {
     @State private var invitedCount = 0
     @State private var removedCount = 0
     @State private var removing: PatchMember?
+    /// A role change waiting on its confirmation.
+    @State private var changing: PendingRole?
+    /// The patch's rules, which say whether a promotion made here would be
+    /// honoured. Read only for the patch's admin.
+    @State private var overview: GovernanceOverview?
     @State private var outcome: AdminOutcome?
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
     private var onSessionQuilt: Bool { quilt.url == session.quilt.url }
@@ -47,8 +54,8 @@ struct PatchMemberList: View {
                 Section {
                     ForEach(roster.members) { member in
                         memberRow(member)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) { removeAct(member) }
-                            .contextMenu { removeAct(member) }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) { removeAct(member); roleActs(member) }
+                            .contextMenu { roleActs(member); removeAct(member) }
                     }
                 } header: {
                     VStack(alignment: .leading, spacing: 3) {
@@ -85,7 +92,9 @@ struct PatchMemberList: View {
                 // Joining and following live in the patch's own head, where
                 // the counts they change are. An admin keeps the membership
                 // here, all but its roles, which are the website's.
-                WebsiteOnlyNote(text: runs ? PatchAdmin.roleNote : "Following and joining are on this patch’s own page.")
+                WebsiteOnlyNote(text: runs ? RoleChange.note(overview) : "Following and joining are on this patch’s own page.")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("membersRoleNote")
             }
             }.listRows()
         }
@@ -112,6 +121,15 @@ struct PatchMemberList: View {
             Button("Cancel", role: .cancel) {}
         } message: { member in
             Text(PatchAdmin.MemberAct.remove.consequence(member.name))
+        }
+        .confirmationDialog("Are you sure?",
+                            isPresented: Binding(get: { changing != nil }, set: { if !$0 { changing = nil } }),
+                            titleVisibility: .visible, presenting: changing) { asked in
+            Button(asked.change.title) { Task { await change(asked.member, asked.change) } }
+                .accessibilityIdentifier("confirmRole")
+            Button("Cancel", role: .cancel) {}
+        } message: { asked in
+            Text(asked.change.consequence(asked.member.name, isMe: asked.member.userId == session.me?.id))
         }
         .task { if !loaded { await load() } }
         .refreshable { await load() }
@@ -142,6 +160,41 @@ struct PatchMemberList: View {
             Button { removing = member } label: { Label("Remove", systemImage: "person.fill.xmark") }
                 .tint(.red)
                 .accessibilityIdentifier("memberRemove-\(member.username ?? member.id)")
+        }
+    }
+
+    /// Promote to admin, or Make member, where the patch's rules make the
+    /// change one the quilt will honour.
+    @ViewBuilder private func roleActs(_ member: PatchMember) -> some View {
+        ForEach(RoleChange.offered(member, runs: runs, rules: overview?.rules)) { change in
+            Button { changing = PendingRole(member: member, change: change) } label: {
+                Label(change.title, systemImage: change.symbol)
+            }
+            .tint(Color.pwAccent)
+            .accessibilityIdentifier("memberRole-\(change.rawValue)-\(member.username ?? member.id)")
+        }
+    }
+
+    /// The new role at once, the old one back with the quilt's sentence on a
+    /// refusal — "cannot demote the last admin" among them. Demoting
+    /// yourself reads the index again, because the doors here are yours no
+    /// longer.
+    private func change(_ member: PatchMember, _ change: RoleChange) async {
+        guard let userId = member.userId, let index = roster.members.firstIndex(of: member) else { return }
+        withAnimation { roster.members[index] = member.withRole(change.role) }
+        outcome = nil
+        do {
+            try await session.api.changeRole(slug: slug, userId: userId, change)
+            outcome = AdminOutcome(text: RoleChange.done)
+            UIAccessibility.post(notification: .announcement, argument: RoleChange.done)
+            if userId == session.me?.id { await session.refreshMemberships() }
+            session.adminChanged()
+        } catch {
+            if case APIError.unauthenticated = error { session.signedOut() }
+            if let now = roster.members.firstIndex(where: { $0.id == member.id }) {
+                withAnimation { roster.members[now] = member }
+            }
+            outcome = AdminOutcome(text: ProposalDetailView.sentence(error, fallback: RoleChange.failed), refused: true)
         }
     }
 
@@ -208,9 +261,11 @@ struct PatchMemberList: View {
                 invitedCount = page.invited?.count ?? 0
                 async let pending = try? api.memberTotal(slug: slug, status: "pending")
                 async let banned = try? api.memberTotal(slug: slug, status: "banned")
-                let (p, b) = await (pending, banned)
+                async let rules: GovernanceOverview? = try? api.get("nodes/\(slug)/governance/overview")
+                let (p, b, o) = await (pending, banned, rules)
                 pendingCount = p ?? pendingCount
                 removedCount = b ?? removedCount
+                overview = o ?? overview
             }
         } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
     }
@@ -219,4 +274,11 @@ struct PatchMemberList: View {
         if let after, !after.isEmpty { items.append(URLQueryItem(name: "after", value: after)) }
         return items
     }
+}
+
+/// A role change waiting to be confirmed: on whom, and which.
+private struct PendingRole: Identifiable {
+    let member: PatchMember
+    let change: RoleChange
+    var id: String { member.id + change.rawValue }
 }
