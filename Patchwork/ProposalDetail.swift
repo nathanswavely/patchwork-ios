@@ -245,6 +245,11 @@ struct ProposalDetailView: View {
                     Label("\(proposal.isDirectChange ? "Change" : "Amendment") to \(target)", systemImage: "doc.text")
                         .font(Font.pw.subheadline)
                 }
+                if let nominee = proposal.targetUserName, !nominee.isEmpty {
+                    Label("Nominates \(nominee) for admin", systemImage: "person.badge.plus")
+                        .font(Font.pw.subheadline)
+                        .accessibilityIdentifier("proposalNominee")
+                }
                 if let type = proposal.proposalType, !type.isEmpty, type != "other", !proposal.isElection {
                     Label(type.capitalized, systemImage: "tag").font(Font.pw.subheadline)
                 }

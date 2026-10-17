@@ -288,11 +288,17 @@ enum PreviewData {
         ]
         if governanceMember { rows["common-thread"] = (role: "member", status: "active") }
         if governanceAdmin { rows[adminSlug] = (role: "admin", status: "active") }
+        if nominatorLaunch { rows[marketSlug] = (role: "admin", status: "active") }
         return rows
     }
     /// The extra a `--preview-admin` launch makes the reader an admin of: the
     /// Film Club, whose admins decide its proposals.
     static let adminSlug = "extra-7"
+    /// The extra a `--preview-nominator` launch makes the reader an admin
+    /// of: Market Friends, which votes by majority and ratifies its admins
+    /// by nomination (the Collaborative template's leadership).
+    static let marketSlug = "extra-5"
+    private static let nominatorLaunch = ProcessInfo.processInfo.arguments.contains("--preview-nominator")
     /// The extra the fixture reader is a member of: the Repair Cafe.
     static let memberSlug = "extra-6"
     /// The invite-only extra, the Food Share, whose admins ask the reader in
@@ -1356,6 +1362,7 @@ enum PreviewData {
         var quorum = 0
         var hours = 0
         var eligible = 5
+        var leadership = "maintainer"
     }
     private static let fixtureRules: [String: FixtureRules] = [
         "common-thread": FixtureRules(quorum: 20, hours: 336, eligible: 12),
@@ -1363,6 +1370,7 @@ enum PreviewData {
         "extra-1": FixtureRules(method: "admin"),
         memberSlug: FixtureRules(venue: "elsewhere", hours: 168, eligible: 6),
         adminSlug: FixtureRules(method: "admin", hours: 48, eligible: 4),
+        marketSlug: FixtureRules(hours: 72, eligible: 4, leadership: "meritocratic"),
     ]
 
     /// The overview of a patch whose rules are only the table's.
@@ -1370,7 +1378,7 @@ enum PreviewData {
         guard let rules = fixtureRules[slug] else { return nil }
         let object: [String: Any] = [
             "rules": ["decision_method": rules.method, "quorum_percent": rules.quorum,
-                      "default_vote_duration_hours": rules.hours, "leadership_model": "maintainer",
+                      "default_vote_duration_hours": rules.hours, "leadership_model": rules.leadership,
                       "leadership_venue": "patchwork", "proposal_venue": rules.venue] as [String: Any],
             "admins": [] as [Any], "admins_withheld": true, "proposals_withheld": false, "election": NSNull(),
             "seats": [] as [Any], "next_term_end": "", "next_contest_opens": "", "membership_policy": "open",
@@ -1433,6 +1441,8 @@ enum PreviewData {
         /// leaves a voted change applied a day after it was raised.
         var declinedBy = ""
         var appliedMinutesAgo: Int?
+        /// The member a nomination is about, by name.
+        var targetName = ""
         var isElection: Bool { seats > 0 }
     }
 
@@ -1576,7 +1586,7 @@ enum PreviewData {
         let reader = signedIn ? me : ""
         let open = p.status == "open" && p.state == "voting"
         fields["target_user_id"] = ""
-        fields["target_user_name"] = ""
+        fields["target_user_name"] = p.targetName
         fields["seats_contested"] = p.seats
         fields["nominations_close_at"] = p.isElection ? (instant(minutesFromNow: p.nominationsCloseInMinutes) as? String ?? "") : ""
         fields["election_phase"] = p.isElection ? (open ? p.phase : "closed") : ""
@@ -1924,6 +1934,40 @@ enum PreviewData {
         }
     }
 
+    /// Market Friends' roster, for a `--preview-nominator` launch: the
+    /// reader and one other admin, three members and a follower.
+    private static let marketRoster: [(id: String, name: String, username: String, role: String)] = [
+        ("u-ines", "Ines Duarte", "ines", "admin"),
+        ("u-hana", "Hana Sato", "hana", "member"),
+        ("u-ravi", "Ravi Iyer", "ravi", "member"),
+        ("u-cleo", "Cleo Marsh", "cleo", "member"),
+        ("u-dot", "Dot Reyes", "dot", "follower"),
+    ]
+    private static var marketMembers: String {
+        var rows: [[String: Any]] = []
+        if let mine = held[marketSlug] {
+            rows.append(["id": "ch00", "user_id": me, "role": mine.role, "username": "samplereader", "display_name": myName])
+        }
+        rows += marketRoster.filter { $0.role != "follower" }.enumerated().map { index, row in
+            ["id": "ch0\(index + 1)", "user_id": row.id, "role": row.role, "username": row.username, "display_name": row.name]
+        }
+        return serialize(["items": rows, "next_cursor": "", "member_count": rows.count, "follower_count": 1, "public_member_list": "everyone"])
+    }
+
+    /// `validateNomination`, in its order and words, over the fixture rules
+    /// and Market Friends' roster.
+    private static func nominationProblem(slug: String, nominee: String) -> String? {
+        let rules = fixtureRules[slug] ?? FixtureRules()
+        guard rules.leadership == "meritocratic" else {
+            return "nominating an admin is the meritocratic model's mechanic; this patch fills admin seats another way"
+        }
+        guard role(slug) == "admin" else { return "only an admin of this patch can nominate someone for admin" }
+        let row = slug == marketSlug ? marketRoster.first { $0.id == nominee } : nil
+        guard let row, row.role != "follower" else { return "a nominee must be an active member of this patch" }
+        if row.role == "admin" { return "that person is already an admin of this patch" }
+        return nil
+    }
+
     /// `maintainerDecidable`'s refusals, in its order and words.
     private static func maintainerDecidable(_ p: FixtureProposal) throws {
         guard role(p.slug) == "admin" else {
@@ -1960,6 +2004,9 @@ enum PreviewData {
         if type == "membership" && target.isEmpty {
             throw APIError.message("a membership proposal has to name the person it is about", status: 400)
         }
+        if !target.isEmpty, let problem = nominationProblem(slug: slug, nominee: target) {
+            throw APIError.message(problem, status: 409)
+        }
         let rules = fixtureRules[slug] ?? FixtureRules()
         var hours = (fields["duration_hours"] as? Int) ?? 0
         if hours <= 0 { hours = rules.hours > 0 ? rules.hours : 72 }
@@ -1978,7 +2025,8 @@ enum PreviewData {
             status: status, state: state, createdMinutesAgo: 0,
             endsInMinutes: state == "voting" ? hours * 60 : nil,
             eligible: rules.eligible, quorum: rules.quorum, method: rules.method,
-            advisory: adminDecides && isAdmin && putToVote)
+            advisory: adminDecides && isAdmin && putToVote,
+            targetName: marketRoster.first { $0.id == target }?.name ?? "")
         proposals.append(p)
         var answer = listFields(p)
         answer["duration_hours"] = hours
@@ -3236,13 +3284,14 @@ enum PreviewData {
         case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":3},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6},{"name":"archive","node_count":0}]"#
         case "events": json = eventsPage(query)
         case "nodes/common-thread/members": json = members
+        case "nodes/\(marketSlug)/members": json = marketMembers
         case "nodes/listening-room/members": json = withheldMembers
         case "nodes/common-thread/governance": json = "{\"items\":[\(document),\(lining)],\"published_only\":true}"
         case "nodes/listening-room/governance": json = #"{"items":[],"published_only":true}"#
         case "nodes/common-thread/governance/overview": json = overviewJSON("common-thread", base: overview)
         case "nodes/listening-room/governance/overview": json = overviewJSON("listening-room", base: listeningOverview)
         case "nodes/extra-1/governance/overview": json = withheldOverview
-        case "nodes/\(memberSlug)/governance/overview", "nodes/\(adminSlug)/governance/overview":
+        case "nodes/\(memberSlug)/governance/overview", "nodes/\(adminSlug)/governance/overview", "nodes/\(marketSlug)/governance/overview":
             json = plainOverview(String(path.split(separator: "/")[1])) ?? "{}"
         case "nodes/extra-1/governance": json = #"{"items":[],"published_only":true}"#
         case "nodes/extra-1/governance/record": json = #"{"items":[],"public_governance_record":"nobody"}"#

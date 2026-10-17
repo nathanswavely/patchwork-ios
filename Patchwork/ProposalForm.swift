@@ -28,10 +28,12 @@ struct ProposalDoorButton: View {
 /// which is the server's own switch.
 struct ProposalFormSheet: View {
     let slug: String
-    /// The patch's rules as the governance overview states them, and its
-    /// seats, which only say whether the website would offer a nomination.
+    /// The patch's rules as the governance overview states them, its seats
+    /// and its next contest, which say whether a nomination is offered and,
+    /// on an elected patch, where the way onto the council is instead.
     let rules: GovernanceRules?
     var seats: [GovernanceSeat] = []
+    var nextContestOpens: String? = nil
     let isPatchAdmin: Bool
     /// The proposal as the server made it.
     let onDone: (Proposal) -> Void
@@ -41,11 +43,15 @@ struct ProposalFormSheet: View {
     @State private var draft: ProposalDraft
     @State private var busy = false
     @State private var failure: String?
+    /// The roster a nomination picks from, read once the type is chosen.
+    @State private var members: [PatchMember]?
 
-    init(slug: String, rules: GovernanceRules?, seats: [GovernanceSeat] = [], isPatchAdmin: Bool, onDone: @escaping (Proposal) -> Void) {
+    init(slug: String, rules: GovernanceRules?, seats: [GovernanceSeat] = [], nextContestOpens: String? = nil,
+         isPatchAdmin: Bool, onDone: @escaping (Proposal) -> Void) {
         self.slug = slug
         self.rules = rules
         self.seats = seats
+        self.nextContestOpens = nextContestOpens
         self.isPatchAdmin = isPatchAdmin
         self.onDone = onDone
         _draft = State(initialValue: ProposalDraft(durationHours: ProposalPosting.defaultDuration(rules)))
@@ -56,6 +62,7 @@ struct ProposalFormSheet: View {
         ProposalPosting.outcome(rules: rules, isPatchAdmin: isPatchAdmin, putToVote: chooses && draft.putToVote)
     }
     private var heading: String { chooses ? "New change" : "New proposal" }
+    private var mayNominate: Bool { ProposalPosting.mayNominate(rules: rules, seats: seats, isPatchAdmin: isPatchAdmin) }
     private var ready: Bool { !busy && ProposalPosting.problem(draft) == nil }
 
     var body: some View {
@@ -89,15 +96,16 @@ struct ProposalFormSheet: View {
                                          fieldID: "proposalBody", previewID: "proposalPreview")
                     }
                     typeField
+                    if draft.kind == .membership && mayNominate { nomineeField }
+                    if let note = ProposalPosting.councilNote(rules: rules, seats: seats, isPatchAdmin: isPatchAdmin, nextContestOpens: nextContestOpens) {
+                        Text(note).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("proposalCouncilNote")
+                    }
                     if chooses { decisionField }
                     if ProposalPosting.asksDuration(outcome) { durationField }
-                    VStack(alignment: .leading, spacing: 6) {
-                        if ProposalPosting.webOffersNomination(rules: rules, seats: seats, isPatchAdmin: isPatchAdmin) {
-                            WebsiteOnlyNote(text: ProposalPosting.nominationNote)
-                        }
-                        WebsiteOnlyNote(text: ProposalPosting.documentsNote)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
+                    WebsiteOnlyNote(text: ProposalPosting.documentsNote)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let failure {
                         Label { Text(failure).font(Font.pw.footnote) } icon: {
                             Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
@@ -132,7 +140,7 @@ struct ProposalFormSheet: View {
         field("Type") {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("Type", selection: $draft.kind) {
-                    ForEach(ProposalPosting.Kind.allCases) { Text($0.label).tag($0) }
+                    ForEach(ProposalPosting.kinds(mayNominate: mayNominate)) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("proposalType")
@@ -141,6 +149,44 @@ struct ProposalFormSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    /// The member a nomination is about, from the patch's roster: plain
+    /// members only, every page of them.
+    private var nomineeField: some View {
+        field("Nominate for admin", hint: members?.isEmpty == false ? ProposalPosting.nomineeHint(rules) : nil) {
+            Group {
+                if let members {
+                    let people = ProposalPosting.nominatable(members)
+                    if people.isEmpty {
+                        Text(ProposalPosting.nobodyToNominate)
+                            .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                            .accessibilityIdentifier("nobodyToNominate")
+                    } else {
+                        HStack {
+                            Picker("Nominate for admin", selection: $draft.nomineeID) {
+                                Text("Choose a member").tag("")
+                                ForEach(people, id: \.id) { Text($0.name).tag($0.userId ?? "") }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .tint(Color.pwText)
+                            .accessibilityIdentifier("nomineePicker")
+                            Spacer(minLength: 0)
+                        }
+                        .fieldStyle()
+                    }
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .task { await loadMembers() }
+        }
+    }
+
+    private func loadMembers() async {
+        guard members == nil else { return }
+        members = (try? await session.api.electionMembers(slug: slug)) ?? []
     }
 
     /// The admin's two ways, as rows that tick: each needs its sentence

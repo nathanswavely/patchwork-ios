@@ -80,4 +80,62 @@ final class GovernanceAuthoringTests: XCTestCase {
         XCTAssertFalse(decided.isDirectChange, "its author did not apply it")
         XCTAssertEqual(VoteRules.banner(decided), "The maintainer approved this. It is in effect.")
     }
+
+    // MARK: - Nominations
+
+    private func seat(_ id: String, vacant: Bool) -> GovernanceSeat {
+        GovernanceSeat(id: id, username: vacant ? nil : "rowan", displayName: nil, termEndsAt: nil, vacant: vacant, fill: nil,
+                       contestOpens: nil, contestDue: nil, contestId: nil, holderWithheld: nil)
+    }
+
+    func testAnAdminNominatesWhereTheCommunityRatifies() {
+        let meritocratic = GovernanceRules(decisionMethod: "majority", leadershipModel: "meritocratic", leadershipVenue: "patchwork")
+        XCTAssertTrue(ProposalPosting.mayNominate(rules: meritocratic, seats: [], isPatchAdmin: true))
+        XCTAssertEqual(ProposalPosting.kinds(mayNominate: true), [.action, .membership, .other], "the web's order")
+        XCTAssertEqual(ProposalPosting.kinds(mayNominate: false), [.action, .other])
+        XCTAssertFalse(ProposalPosting.mayNominate(rules: meritocratic, seats: [], isPatchAdmin: false), "admins nominate")
+        let elected = GovernanceRules(decisionMethod: "majority", leadershipModel: "elected", leadershipVenue: "patchwork")
+        XCTAssertTrue(ProposalPosting.mayNominate(rules: elected, seats: [seat("a", vacant: false), seat("b", vacant: true)], isPatchAdmin: true))
+        XCTAssertFalse(ProposalPosting.mayNominate(rules: elected, seats: [seat("a", vacant: false)], isPatchAdmin: true), "nothing to nominate into")
+        let maintainer = GovernanceRules(decisionMethod: "majority", leadershipModel: "maintainer")
+        XCTAssertFalse(ProposalPosting.mayNominate(rules: maintainer, seats: [], isPatchAdmin: true))
+        let decidedByAdmins = GovernanceRules(decisionMethod: "admin", leadershipModel: "meritocratic", leadershipVenue: "patchwork")
+        XCTAssertTrue(ProposalPosting.webOffersNomination(rules: decidedByAdmins, seats: [], isPatchAdmin: true))
+        XCTAssertFalse(ProposalPosting.mayNominate(rules: decidedByAdmins, seats: [], isPatchAdmin: true),
+                       "no vote resolves it there, so nobody would be promoted")
+    }
+
+    func testOnlyPlainMembersCanBeNominated() {
+        let rows = [
+            PatchMember(id: "1", userId: "a", username: "a", displayName: "Admin", avatarUrl: nil, role: "admin"),
+            PatchMember(id: "2", userId: "m", username: "m", displayName: "Member", avatarUrl: nil, role: "member"),
+            PatchMember(id: "3", userId: "f", username: "f", displayName: "Follower", avatarUrl: nil, role: "follower"),
+            PatchMember(id: "4", userId: "", username: "h", displayName: "Hidden", avatarUrl: nil, role: "member"),
+        ]
+        XCTAssertEqual(ProposalPosting.nominatable(rows).map(\.id), ["2"])
+    }
+
+    func testANominationNamesItsMemberAndNobodyElseSendsOne() throws {
+        let meritocratic = GovernanceRules(decisionMethod: "majority", defaultVoteDurationHours: 168, leadershipModel: "meritocratic")
+        var draft = ProposalDraft(title: "Hana for admin", kind: .membership, durationHours: 168)
+        XCTAssertEqual(ProposalPosting.problem(draft), "Choose the member this nomination is about")
+        draft.nomineeID = "u-hana"
+        XCTAssertNil(ProposalPosting.problem(draft))
+        XCTAssertEqual(try json(ProposalBody(draft, rules: meritocratic, isPatchAdmin: true)),
+                       #"{"body":"","duration_hours":168,"proposal_type":"membership","target_user_id":"u-hana","title":"Hana for admin"}"#)
+        draft.kind = .action
+        XCTAssertFalse(try json(ProposalBody(draft, rules: meritocratic, isPatchAdmin: true)).contains("target_user_id"),
+                       "a nominee left behind by a change of type is not sent")
+    }
+
+    func testTheCouncilNoteSaysWhereTheWayOntoTheCouncilIs() {
+        let elected = GovernanceRules(leadershipModel: "elected", leadershipVenue: "patchwork")
+        XCTAssertTrue(ProposalPosting.councilNote(rules: elected, seats: [], isPatchAdmin: false, nextContestOpens: nil)!.hasPrefix("Admins here hold seats"))
+        let full = ProposalPosting.councilNote(rules: elected, seats: [seat("a", vacant: false)], isPatchAdmin: true, nextContestOpens: nil)!
+        XCTAssertTrue(full.hasPrefix("Every seat on the council is held"))
+        XCTAssertTrue(full.hasSuffix("Adding a seat happens on this quilt’s website."))
+        XCTAssertNil(ProposalPosting.councilNote(rules: elected, seats: [seat("b", vacant: true)], isPatchAdmin: true, nextContestOpens: nil))
+        XCTAssertNil(ProposalPosting.councilNote(rules: GovernanceRules(leadershipModel: "meritocratic"), seats: [], isPatchAdmin: true, nextContestOpens: nil))
+        XCTAssertEqual(ProposalPosting.nomineeHint(elected), "If this passes, they take the vacant seat and serve out its term. Nobody has to approve it afterwards.")
+    }
 }

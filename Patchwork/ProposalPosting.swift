@@ -142,23 +142,37 @@ enum ProposalPosting {
 
     // MARK: The type
 
-    /// Action and Other. Membership is a nomination, and stays the website's.
+    /// Action, Membership and Other, in the web's order. Membership is a
+    /// nomination and nothing else (web ADR 100): it names the member it is
+    /// about, and only an admin who may nominate is offered it.
     enum Kind: String, CaseIterable, Identifiable {
-        case action, other
+        case action, membership, other
         var id: String { rawValue }
-        var label: String { self == .action ? "Action" : "Other" }
+        var label: String {
+            switch self {
+            case .action: return "Action"
+            case .membership: return "Membership"
+            case .other: return "Other"
+            }
+        }
         var detail: String {
             switch self {
             case .action: return "Propose a concrete action for the community to take"
+            case .membership: return "Nominate an active member for admin"
             case .other: return "Any other proposal that needs community input"
             }
         }
     }
 
+    /// The types this reader is offered.
+    static func kinds(mayNominate: Bool) -> [Kind] {
+        mayNominate ? Kind.allCases : [.action, .other]
+    }
+
     /// Whether the web would offer this reader the Membership type (its
-    /// `canNominate`): a patch admin, on a meritocratic patch or an elected
-    /// one with a vacant seat, where leadership is Patchwork's to run. Only
-    /// then is the quiet note that nominating is the website's worth saying.
+    /// `canNominate`, and the server's `validateNomination`): a patch admin,
+    /// on a meritocratic patch or an elected one with a vacant seat, where
+    /// leadership is Patchwork's to run.
     static func webOffersNomination(rules: GovernanceRules?, seats: [GovernanceSeat], isPatchAdmin: Bool) -> Bool {
         guard isPatchAdmin, let rules, rules.leadershipVenue != "elsewhere" else { return false }
         switch rules.leadershipModel {
@@ -168,8 +182,47 @@ enum ProposalPosting {
         }
     }
 
-    static let nominationNote = "Nominating a member for admin happens on this quilt’s website."
+    /// Where this app offers a nomination: where the web does, except on a
+    /// patch whose admins decide. A nomination promotes its member only
+    /// when the community's vote resolves it (`ratifyNomination`, called
+    /// from the resolution alone); there, an admin's nomination is applied
+    /// as a direct change or decided by the maintainer, and neither path
+    /// promotes anybody — the record would say "in effect" over a member who
+    /// is still a member. The web offers it there anyway.
+    static func mayNominate(rules: GovernanceRules?, seats: [GovernanceSeat], isPatchAdmin: Bool) -> Bool {
+        webOffersNomination(rules: rules, seats: seats, isPatchAdmin: isPatchAdmin) && !adminDecides(rules)
+    }
+
+    /// Who can be nominated: active plain members — an admin already holds
+    /// the role, and a follower is not on the ladder.
+    static func nominatable(_ members: [PatchMember]) -> [PatchMember] {
+        members.filter { $0.role == "member" && !($0.userId ?? "").isEmpty }
+    }
+
+    /// What passing does, in the web's words.
+    static func nomineeHint(_ rules: GovernanceRules?) -> String {
+        rules?.leadershipModel == "elected"
+            ? "If this passes, they take the vacant seat and serve out its term. Nobody has to approve it afterwards."
+            : "If this passes, they become an admin. Nobody has to approve it afterwards."
+    }
+
+    static let nobodyToNominate = "There is nobody to nominate yet."
+
     static let documentsNote = "Changing a governance document or the rules happens on this quilt’s website."
+
+    /// The web's lines on an elected patch where nobody can be nominated:
+    /// where the way onto the council actually is (web ADR 100). Adding a
+    /// seat is on the website's Governance page, so it is named as such.
+    static func councilNote(rules: GovernanceRules?, seats: [GovernanceSeat], isPatchAdmin: Bool, nextContestOpens: String?) -> String? {
+        guard let rules, rules.leadershipModel == "elected", rules.leadershipVenue != "elsewhere" else { return nil }
+        if !isPatchAdmin {
+            return "Admins here hold seats on the council. A vacant seat is filled by nomination, which an admin raises; otherwise a seat comes up at an election any member may stand in."
+        }
+        guard !seats.contains(where: \.isVacant) else { return nil }
+        var line = "Every seat on the council is held, so there is nobody to nominate."
+        if let day = ProfileDate.day(nextContestOpens) { line += " The next election opens \(day)." }
+        return line + " Adding a seat happens on this quilt’s website."
+    }
 
     // MARK: The window
 
@@ -218,6 +271,9 @@ enum ProposalPosting {
     /// it, so a title of spaces is not accepted here and then shown blank.
     static func problem(_ draft: ProposalDraft) -> String? {
         if draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "title is required" }
+        // The web's own check, before the server's "a membership proposal
+        // has to name the person it is about".
+        if draft.kind == .membership && draft.nomineeID.isEmpty { return "Choose the member this nomination is about" }
         return nil
     }
 
@@ -247,6 +303,8 @@ struct ProposalDraft: Equatable {
     var kind: ProposalPosting.Kind = .action
     var durationHours = 72
     var putToVote = false
+    /// The member a nomination is about.
+    var nomineeID = ""
 }
 
 /// `POST nodes/{slug}/proposals`, as the web's form sends it: the title and
@@ -259,8 +317,11 @@ struct ProposalBody: Encodable, Equatable {
     var proposalType: String
     var durationHours: Int?
     var putToVote: Bool?
+    /// Only on a nomination: the person it is about.
+    var targetUserId: String?
     private enum CodingKeys: String, CodingKey {
         case title, body, proposalType = "proposal_type", durationHours = "duration_hours", putToVote = "put_to_vote"
+        case targetUserId = "target_user_id"
     }
 
     init(_ draft: ProposalDraft, rules: GovernanceRules?, isPatchAdmin: Bool) {
@@ -271,6 +332,7 @@ struct ProposalBody: Encodable, Equatable {
         let outcome = ProposalPosting.outcome(rules: rules, isPatchAdmin: isPatchAdmin, putToVote: chooses && draft.putToVote)
         durationHours = ProposalPosting.asksDuration(outcome) ? draft.durationHours : nil
         putToVote = chooses ? draft.putToVote : nil
+        targetUserId = draft.kind == .membership && !draft.nomineeID.isEmpty ? draft.nomineeID : nil
     }
 }
 

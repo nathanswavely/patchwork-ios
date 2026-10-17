@@ -161,7 +161,7 @@ struct PatchGovernanceHome: View {
         // room's own stack, so Back is the room with it already counted.
         .sheet(isPresented: $composing, onDismiss: { if let made { opened = made; self.made = nil } }) {
             ProposalFormSheet(slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [],
-                              isPatchAdmin: standing == .active(.admin)) { proposal in
+                              nextContestOpens: overview?.nextContestOpens, isPatchAdmin: standing == .active(.admin)) { proposal in
                 made = proposal
                 stale = true
             }
@@ -173,7 +173,8 @@ struct PatchGovernanceHome: View {
     /// The proposals room, handed the rules this room already holds, so its
     /// own door opens the same form.
     private var proposalList: some View {
-        PatchProposalList(quilt: quilt, slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [], close: close) { stale = true }
+        PatchProposalList(quilt: quilt, slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [],
+                          nextContestOpens: overview?.nextContestOpens, close: close) { stale = true }
     }
     /// "1 proposal needs your vote", "3 proposals need your vote".
     static func needsVoteLine(_ count: Int) -> String {
@@ -370,6 +371,7 @@ struct PatchProposalList: View {
     /// form will be. Without them there is no door.
     var rules: GovernanceRules? = nil
     var seats: [GovernanceSeat] = []
+    var nextContestOpens: String? = nil
     var close: (() -> Void)? = nil
     /// Something here changed: whoever counts these is out of date.
     var changed: () -> Void = {}
@@ -452,7 +454,8 @@ struct PatchProposalList: View {
             if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
         }
         .sheet(isPresented: $composing, onDismiss: { if let made { opened = made; self.made = nil } }) {
-            ProposalFormSheet(slug: slug, rules: rules, seats: seats, isPatchAdmin: standing == .active(.admin)) { proposal in
+            ProposalFormSheet(slug: slug, rules: rules, seats: seats, nextContestOpens: nextContestOpens,
+                              isPatchAdmin: standing == .active(.admin)) { proposal in
                 made = proposal
                 changed()
                 // Open is where a new proposal is, unless it was applied.
