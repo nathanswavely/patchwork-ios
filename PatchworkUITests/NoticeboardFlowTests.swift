@@ -220,7 +220,6 @@ final class NoticeboardFlowTests: XCTestCase {
     }
 
     private func openSampleQuilt(_ app: XCUIApplication) {
-        app.buttons["quiltChoice"].firstMatch.tap()
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         explore.tap()

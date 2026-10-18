@@ -78,18 +78,10 @@ final class AccessibilityAuditTests: XCTestCase {
     /// Welcome a new account is given.
     private func browse(_ look: Look) throws {
         let app = launch(look)
-        try need(app.navigationBars["Choose your quilts"])
-        audit(app, "Choose your quilts")
-        let choice = app.buttons["quiltChoice"].firstMatch
-        try reach(app, choice)
         let explore = app.buttons["exploreQuilt"]
-        for _ in 0..<2 where !explore.exists && !choice.isSelected {
-            choice.tap()
-            _ = explore.waitForExistence(timeout: 15)
-        }
-        try need(explore)
-        audit(app, "Quilt confirmation", scrolled: look.largest)
-        app.buttons["exploreQuilt"].tap()
+        try reach(app, explore)
+        audit(app, "First look", scrolled: look.largest)
+        explore.tap()
         try need(app.navigationBars["Sample quilt"])
         let tile = app.buttons["quiltTile-common-thread"]
         try need(tile)
@@ -842,17 +834,8 @@ final class AccessibilityAuditTests: XCTestCase {
     }
 
     private func openSampleQuilt(_ app: XCUIApplication) throws {
-        try need(app.navigationBars["Choose your quilts"])
-        let choice = app.buttons["quiltChoice"].firstMatch
-        try reach(app, choice)
-        // At the largest size a tap can land as the list settles; one more
-        // is what a person would do.
         let explore = app.buttons["exploreQuilt"]
-        for _ in 0..<2 where !explore.exists && !choice.isSelected {
-            choice.tap()
-            _ = explore.waitForExistence(timeout: 15)
-        }
-        try need(explore)
+        try reach(app, explore)
         explore.tap()
         try need(app.navigationBars["Sample quilt"])
     }

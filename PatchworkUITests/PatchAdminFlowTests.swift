@@ -169,7 +169,6 @@ final class PatchAdminFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro", "--preview-admin"]
         app.launch()
-        app.buttons["quiltChoice"].firstMatch.tap()
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         explore.tap()

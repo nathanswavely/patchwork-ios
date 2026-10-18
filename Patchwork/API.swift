@@ -172,6 +172,23 @@ struct PatchworkAPI {
             return try PreviewData.response(path, query: query)
         }
         #endif
+        return try Self.decode(try await json(path, query: query))
+    }
+    /// A read that also hands back the bytes it was decoded from, for the one
+    /// answer kept on disk between launches (QuiltKeep). Preview has no bytes
+    /// to keep, so it hands back none and nothing of it is ever stored.
+    func getKeeping<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> (T, Data?) {
+        #if DEBUG
+        if Self.isPreview { return (try PreviewData.response(path, query: query), nil) }
+        #endif
+        let data = try await json(path, query: query)
+        return (try Self.decode(data), data)
+    }
+    static func decode<T: Decodable>(_ data: Data) throws -> T {
+        do { return try decoder().decode(T.self, from: data) }
+        catch { throw APIError.response }
+    }
+    private func json(_ path: String, query: [URLQueryItem]) async throws -> Data {
         var parts = URLComponents(url: base.appendingPathComponent("api/v1/" + path), resolvingAgainstBaseURL: false)!
         parts.queryItems = query.isEmpty ? nil : query
         var request = URLRequest(url: parts.url!)
@@ -179,8 +196,7 @@ struct PatchworkAPI {
         let (data, response) = try await Self.session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.response }
         guard (200..<300).contains(http.statusCode) else { throw APIError.from(status: http.statusCode, data: data) }
-        do { return try Self.decoder().decode(T.self, from: data) }
-        catch { throw APIError.response }
+        return data
     }
     /// A write. Three of them exist — ask for a code, answer it, and let go —
     /// and every one of them needs the two headers the server refuses a
@@ -546,6 +562,7 @@ private struct SignUpBody: Encodable {
     /// and is not touched; forgetting the open quilt moves to the next saved
     /// one, or back to onboarding when none is left.
     func forget(_ quilt: Quilt) {
+        QuiltKeep.forget(quilt)
         saved.removeAll { $0.id == quilt.id }
         persist()
         if selected?.id == quilt.id { selected = saved.first }

@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		00EA9715E1FF63DDA8EBF107 /* QuiltOnboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66E8D7BA2E9B728451A4B94B /* QuiltOnboarding.swift */; };
 		043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE5474B5736A302A83E7519 /* QuiltPicker.swift */; };
 		04FDB78202DB1A36089EBF8F /* MapPlacementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD733C30091E1FB2EA5F8834 /* MapPlacementTests.swift */; };
 		0555459F8F158AF114488D2E /* Invitations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F90B1C5811392FD2E207EC /* Invitations.swift */; };
@@ -46,6 +45,7 @@
 		591E2530EDE882D5A8880697 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC1A9FCF47E9E09B071ED4 /* Typography.swift */; };
 		5D600B7F9841C69CCB97B0F9 /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF358FEA7BC11AA077E2E5A1 /* API.swift */; };
 		5F4C31A2ABF0F64850F4BE91 /* QuiltInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F732AE521653E03A1A3514 /* QuiltInfoTests.swift */; };
+		62A7B47D2952D5D6922881FD /* QuiltKeepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0DE3B99E14E4E3C8F50A46 /* QuiltKeepTests.swift */; };
 		65550D118F2245A37FE3B05B /* PatchProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C217C3BCE3AF77E084E40D6 /* PatchProfile.swift */; };
 		6623188FDAB4C4383325994F /* EventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 093E6D05E99D110AC6D41CED /* EventsTests.swift */; };
 		662E1C2029C64AB44E3BC7F2 /* Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C940E8CE8A3A426FFB996E40 /* Dashboard.swift */; };
@@ -98,6 +98,7 @@
 		CB47A39C0A5519A26B592255 /* Welcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36F289D04BA1DDF3EF45FE89 /* Welcome.swift */; };
 		CD75CCEE3B13C01A8B77CE0E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */; };
 		CDDDA449B8FEC407418B2E98 /* ContactCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE5641C25C6C1AB8784D61A /* ContactCard.swift */; };
+		D0BE069BA7F86F8939BAA393 /* QuiltKeep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 878B63CB608B320A44B48922 /* QuiltKeep.swift */; };
 		D14CD2DCE109BB357BDE327E /* EventForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD601D344604C029C0AF7B0 /* EventForm.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
 		D5E1382ABD304BDF35699A42 /* QuiltSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFC7ACE15046E1958924BFE /* QuiltSession.swift */; };
@@ -189,7 +190,6 @@
 		6280253991897DC2B3FDDF06 /* Motifs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motifs.swift; sourceTree = "<group>"; };
 		648BEEA637812310BB0E269B /* ProposalDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalDetail.swift; sourceTree = "<group>"; };
 		66AAF15099B2DB2CA27F3253 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
-		66E8D7BA2E9B728451A4B94B /* QuiltOnboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltOnboarding.swift; sourceTree = "<group>"; };
 		6C97C54F89DB98069B689C7E /* AccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTests.swift; sourceTree = "<group>"; };
 		6F1AEA837177256C32A178DA /* PatchMembers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchMembers.swift; sourceTree = "<group>"; };
 		73236C64CF82F56019DF7AC1 /* Relationship.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Relationship.swift; sourceTree = "<group>"; };
@@ -202,6 +202,7 @@
 		8258292508FE2DD12B36218B /* LabelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabelView.swift; sourceTree = "<group>"; };
 		82C8B28434034C4CB0F843D2 /* GovernanceFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GovernanceFlowTests.swift; sourceTree = "<group>"; };
 		838D4EFFB96BEC0FDDF04E3A /* EventPosting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventPosting.swift; sourceTree = "<group>"; };
+		878B63CB608B320A44B48922 /* QuiltKeep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltKeep.swift; sourceTree = "<group>"; };
 		8B426E85FB2C93CDFF848BF1 /* PatchAdminFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchAdminFlowTests.swift; sourceTree = "<group>"; };
 		8B63D84A048798D7CEB8109A /* RemotePatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePatch.swift; sourceTree = "<group>"; };
 		8C2FD14933E1B20477E4E85E /* Claiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Claiming.swift; sourceTree = "<group>"; };
@@ -229,6 +230,7 @@
 		BAE5641C25C6C1AB8784D61A /* ContactCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactCard.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE32844B5FEA95B9FA7EBDC5 /* QuiltHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltHome.swift; sourceTree = "<group>"; };
+		BF0DE3B99E14E4E3C8F50A46 /* QuiltKeepTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuiltKeepTests.swift; sourceTree = "<group>"; };
 		C0DAA50C86CF281FFD894C7E /* EventEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventEditing.swift; sourceTree = "<group>"; };
 		C25142626B0C25107810311D /* GettingInTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GettingInTests.swift; sourceTree = "<group>"; };
 		C282B734B4827A544F7C1F07 /* SearchResults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchResults.swift; sourceTree = "<group>"; };
@@ -341,9 +343,9 @@
 				4510113B947EAF0DB94F046F /* QuiltCanvas.swift */,
 				BE32844B5FEA95B9FA7EBDC5 /* QuiltHome.swift */,
 				08FC2691F17B5C1A733543AD /* QuiltInfo.swift */,
+				878B63CB608B320A44B48922 /* QuiltKeep.swift */,
 				529B45CF7173A2EF95492E0C /* QuiltLayout.swift */,
 				05EBA223D86019058670D230 /* QuiltMap.swift */,
-				66E8D7BA2E9B728451A4B94B /* QuiltOnboarding.swift */,
 				2DE5474B5736A302A83E7519 /* QuiltPicker.swift */,
 				3EFC7ACE15046E1958924BFE /* QuiltSession.swift */,
 				41A7515238A35D73C8309066 /* QuiltSwitcher.swift */,
@@ -398,6 +400,7 @@
 				57BBED3160F36AF651399B64 /* ProposalPostingTests.swift */,
 				F835B323C364F03960F9F85D /* QuiltAppearanceTests.swift */,
 				D7F732AE521653E03A1A3514 /* QuiltInfoTests.swift */,
+				BF0DE3B99E14E4E3C8F50A46 /* QuiltKeepTests.swift */,
 				15A2393CF416FD082B9BFAD5 /* QuiltLayoutTests.swift */,
 				510F83070BA4646EDC16D86B /* RelationshipTests.swift */,
 				95CAAD0FB71ED04C9CEF8F5E /* SignInTests.swift */,
@@ -609,9 +612,9 @@
 				F29C25AADC39146B0395F955 /* QuiltCanvas.swift in Sources */,
 				8C6DAF1BA26021C1E73FE388 /* QuiltHome.swift in Sources */,
 				7FFA23A5C557A1C49FD75409 /* QuiltInfo.swift in Sources */,
+				D0BE069BA7F86F8939BAA393 /* QuiltKeep.swift in Sources */,
 				78D5163BC45D8AC695285A44 /* QuiltLayout.swift in Sources */,
 				9EC7684010C1A49D7A066639 /* QuiltMap.swift in Sources */,
-				00EA9715E1FF63DDA8EBF107 /* QuiltOnboarding.swift in Sources */,
 				043F85C58969F290BCB59F73 /* QuiltPicker.swift in Sources */,
 				D5E1382ABD304BDF35699A42 /* QuiltSession.swift in Sources */,
 				BC83FCD961C536C590C9A3C2 /* QuiltSwitcher.swift in Sources */,
@@ -654,6 +657,7 @@
 				E184457FE196CE187B2F54C4 /* ProposalPostingTests.swift in Sources */,
 				BFC63B0FDED62D38D285ECE7 /* QuiltAppearanceTests.swift in Sources */,
 				5F4C31A2ABF0F64850F4BE91 /* QuiltInfoTests.swift in Sources */,
+				62A7B47D2952D5D6922881FD /* QuiltKeepTests.swift in Sources */,
 				F02D6A66065C1CBB63F082A6 /* QuiltLayoutTests.swift in Sources */,
 				0FB4DE5B83B37EA33D3224E9 /* RelationshipTests.swift in Sources */,
 				8C6BD6E2BAF918714F7F3ABD /* SignInTests.swift in Sources */,
@@ -747,7 +751,6 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -818,7 +821,6 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;

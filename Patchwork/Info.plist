@@ -3,12 +3,20 @@
 <plist version="1.0">
 <dict>
 	<!-- The two typefaces the site is set in, bundled and registered so
-	     UIFont(name:) can resolve them. Everything else in this file is
+	     UIFont(name:) can resolve them, and the launch screen, whose colour
+	     no build setting can name. Everything else in this file is
 	     generated from the build settings in project.yml. -->
 	<key>UIAppFonts</key>
 	<array>
 		<string>SpaceGrotesk-Variable.ttf</string>
 		<string>ShantellSans-Variable.ttf</string>
 	</array>
+	<!-- The launch screen is the quilt's ground, light or dark, so the
+	     moment before the first frame is the same colour as the frame. -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>PWGround</string>
+	</dict>
 </dict>
 </plist>

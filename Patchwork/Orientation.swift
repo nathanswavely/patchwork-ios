@@ -65,6 +65,111 @@ struct IntroCard: View {
     }
 }
 
+/// The first launch: no chooser, the featured quilt itself. Its canvas is
+/// live underneath — it pans, zooms and opens patches — with the bars folded
+/// away, and this welcome over its foot says whose quilt it is and offers the
+/// one way in. Elsewhere is a smaller door to the full picker, where a quilt
+/// is found by name or address.
+///
+/// It is the orientation card's job done larger, so the two never stack: a
+/// first look marks its quilt's card as seen when it is answered.
+struct FirstLookCard: View {
+    let quiltName: String
+    let instance: Instance?
+    let explore: () -> Void
+    let elsewhere: () -> Void
+    @State private var page: InfoPage?
+    /// The quilt's own one line about itself, where it has one.
+    private var summary: String {
+        let own = instance?.description.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return own.isEmpty ? "A quilt of the communities around you." : own
+    }
+    /// How much is here, in the two numbers a newcomer can picture.
+    private var counts: String? {
+        guard let stats = instance?.stats else { return nil }
+        let parts = [
+            stats.nodeCount.map { "\($0) \($0 == 1 ? "patch" : "patches")" },
+            stats.eventCount.map { "\($0) \($0 == 1 ? "event" : "events")" },
+        ].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+    var body: some View {
+        // At the largest text sizes the welcome outgrows the screen, and then
+        // it scrolls rather than pushing its one button out of reach.
+        ViewThatFits(in: .vertical) {
+            VStack(alignment: .leading, spacing: 14) { story; actions }.padding(20)
+            VStack(alignment: .leading, spacing: 14) {
+                ScrollView { story.padding([.horizontal, .top], 20) }.scrollBounceBehavior(.basedOnSize)
+                actions.padding([.horizontal, .bottom], 20)
+            }
+        }
+        .frame(maxWidth: 480, alignment: .leading)
+        // Material for the same reason as the card's: it floats over cloth
+        // that moves, and an opaque panel would read as a wall in front of it.
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Color.pwBorder))
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+        .animation(.smooth, value: counts)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("firstLook")
+        .sheet(item: $page) { page in
+            NavigationStack { page.view.modifier(IntroDone()) }
+        }
+    }
+    /// Whose quilt this is and what it holds: the part that scrolls when
+    /// the text is too large for it all to stand at once.
+    private var story: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(quiltName)
+                    .font(Font.pw.displayTitle2)
+                    .foregroundStyle(Color.pwText)
+                    .accessibilityAddTraits(.isHeader)
+                Text(summary)
+                    .font(Font.pw.body).foregroundStyle(Color.pwText)
+                if let counts {
+                    Text(counts).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                        .transition(.opacity)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Text("Every tile is a real group, placed near the groups it shares people with. No ads, no personalized algorithm.")
+                .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    /// The way in and the two doors beside it, which never scroll away.
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Button(action: explore) {
+                Text("Start exploring").frame(maxWidth: .infinity)
+            }
+            .font(Font.pw.headline)
+            .buttonStyle(.borderedProminent).controlSize(.large)
+            .foregroundStyle(Color.pwOnAccent)
+            .accessibilityIdentifier("exploreQuilt")
+            // Side by side while both fit on a line, stacked when they do not,
+            // so neither breaks inside a word.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { about; Spacer(minLength: 0); elsewhereDoor }
+                VStack(alignment: .leading, spacing: 12) { about; elsewhereDoor }
+            }
+            .font(Font.pw.footnoteSemibold)
+            .foregroundStyle(Color.pwTextMuted)
+            .multilineTextAlignment(.leading)
+        }
+    }
+    private var about: some View {
+        Button("What is Patchwork?") { page = .about }.accessibilityIdentifier("introAbout")
+    }
+    private var elsewhereDoor: some View {
+        Button("Find another quilt", action: elsewhere).accessibilityIdentifier("findAnotherQuilt")
+    }
+}
+
 private struct IntroDone: ViewModifier {
     @Environment(\.dismiss) private var close
     func body(content: Content) -> some View {
