@@ -121,9 +121,9 @@ struct QuiltHome: View {
     }
     /// The quilt, with the orientation card over the foot of it. The overlay
     /// goes on the tab's own content rather than on the `TabView`, so the
-    /// card floats inside the canvas instead of underneath the tab bar; the
-    /// padding clears the canvas's own Quilt/Map/List pill, because the card
-    /// may cover the quilt but never a control.
+    /// card floats inside the canvas just above the tab bar. It covers the
+    /// corner view switcher while it is up, which is fine: it asks to be
+    /// answered, and the switcher is back the moment it is.
     private var quiltPane: some View {
         NavigationStack { QuiltBrowser(openDiscover: { pane = .discover }) }
             .overlay(alignment: .bottom) {
@@ -132,7 +132,7 @@ struct QuiltHome: View {
                         IntroState.markSeen(session.quilt)
                         withAnimation { intro = false }
                     }
-                    .padding(.bottom, 64)
+                    .padding(.bottom, 12)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
