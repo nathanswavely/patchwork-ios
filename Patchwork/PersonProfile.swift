@@ -78,7 +78,12 @@ struct PersonProfile: View {
             }
         }
         .navigationTitle(person?.name ?? username).navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: api.webURL("users/\(username)")).accessibilityIdentifier("sharePerson")
+            }
+        }
         .sheet(item: $reporting) { ReportSheet(target: $0, api: api) }
         .task { if person == nil { await load() } }
         .refreshable { await load() }

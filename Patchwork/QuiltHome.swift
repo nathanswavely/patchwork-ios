@@ -24,6 +24,8 @@ struct QuiltHome: View {
     @State private var wantsPicker = false
     /// The one-time orientation card, over the foot of the quilt (see Orientation.swift).
     @State private var intro = false
+    /// What a link from outside the app opened over the quilt.
+    @State private var linked: LinkedSheet?
     /// Read here, where there is exactly one of them. The unread poll belongs
     /// to the session, and this is the one view that can tell it whether
     /// anybody is looking: the discovery toolbar is on four surfaces at once
@@ -102,6 +104,8 @@ struct QuiltHome: View {
         }) {
             QuiltSwitcher { wantsPicker = true; session.switching = false }
         }
+        .sheet(item: $linked, onDismiss: { session.sheetDismissed() }) { LinkedSheetView(sheet: $0) }
+        .onChange(of: store.incoming) { _, _ in take() }
         .sheet(isPresented: $finding) { NavigationStack { QuiltPicker(neighbors: session.instance?.neighborQuilts ?? []) } }
         // Said once, on the quilt the reader is left on, after Settings has gone.
         .alert("Your account has been deleted.", isPresented: $session.farewell) {
@@ -119,10 +123,47 @@ struct QuiltHome: View {
         // bring the smaller card up behind it.
         .onChange(of: firstLook) { _, now in if !now { IntroState.markSeen(session.quilt) } }
         .onChange(of: colors) { _, now in session.apply(colorMode: ColorMode(rawValue: now) ?? .standard) }
+        // A link that arrived while another quilt was open, or before the app
+        // had drawn anything, is followed once this quilt's home is up.
+        .task { try? await Task.sleep(for: .milliseconds(300)); take() }
         // Coming back to the app reads the count again and restarts the
         // reconciliation; leaving it stops.
         .onChange(of: scenePhase) { _, now in session.scenePhaseChanged(to: now) }
         .environmentObject(session)
+    }
+    /// Follows the link waiting in the store, if it is for this quilt.
+    private func take() {
+        guard let url = store.incoming, url.host()?.lowercased() == session.quilt.url.host()?.lowercased() else { return }
+        store.incoming = nil
+        Task { await follow(LinkTarget.of(url)) }
+    }
+    /// A link lands where the website would have put it: a tab, a docked
+    /// patch, or a screen over the quilt. Whatever was open goes first,
+    /// unless it is a sheet that may not be interrupted.
+    private func follow(_ target: LinkTarget) async {
+        guard await Presentations.clear() else { return }
+        session.endSearch()
+        let signedIn = session.me != nil
+        switch target {
+        case .quilt(let my):
+            pane = .quilt
+            if my, signedIn { session.scope = .my }
+        case .events(let my):
+            pane = .events
+            if my, signedIn { session.scope = .my }
+        case .discover: pane = .discover
+        case .dashboard: pane = signedIn ? .dashboard : .quilt
+        case .notifications: if signedIn { linked = .notifications }
+        case .info(let page): linked = .info(page)
+        case .invite(let link): linked = .invite(link: link)
+        case .patch(let slug):
+            pane = .quilt
+            await session.open(slug: slug)
+        case .screen(let destination): linked = .screen(destination)
+        case .website(let path):
+            let exit = NotificationLink.exit(path)
+            linked = .website(session.api.webURL(exit.path, query: exit.query))
+        }
     }
     /// The search tab's own page: the ground the results overlay draws on,
     /// wearing the same top bar as every other surface so the field lands in

@@ -561,6 +561,19 @@ private struct SignUpBody: Encodable {
     /// Forgets a saved quilt. Its session cookie stays the quilt's business
     /// and is not touched; forgetting the open quilt moves to the next saved
     /// one, or back to onboarding when none is left.
+    /// A link into a quilt's website, handed over by the system. It opens on
+    /// that quilt — switching to it, or keeping it, which a link someone
+    /// tapped is reason enough to do — and waits in `incoming` for the quilt's
+    /// home to follow it.
+    @Published var incoming: URL?
+    func receive(_ url: URL) {
+        guard let host = url.host()?.lowercased(), let origin = URL(string: "https://\(host)\(url.port.map { ":\($0)" } ?? "")") else { return }
+        let known = (saved + Quilt.directory).first { $0.url.host()?.lowercased() == host && $0.url.port == url.port }
+        let quilt = known ?? Quilt(url: origin, name: host)
+        if selected?.id != quilt.id { connect(quilt) }
+        else if !Self.previewing, !saved.contains(where: { $0.id == quilt.id }) { adopt([quilt]) }
+        incoming = url
+    }
     func forget(_ quilt: Quilt) {
         QuiltKeep.forget(quilt)
         saved.removeAll { $0.id == quilt.id }

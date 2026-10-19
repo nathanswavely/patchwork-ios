@@ -5,6 +5,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>webcredentials:lancasterpatchwork.org</string>
+		<string>applinks:lancasterpatchwork.org</string>
 	</array>
 </dict>
 </plist>

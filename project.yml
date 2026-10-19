@@ -36,6 +36,9 @@ targets:
       properties:
         com.apple.developer.associated-domains:
           - webcredentials:lancasterpatchwork.org
+          # Links open here only where the quilt's admin has said so, which
+          # adds the paths to the quilt's own association file (Links.swift).
+          - applinks:lancasterpatchwork.org
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.swavelycreative.patchwork

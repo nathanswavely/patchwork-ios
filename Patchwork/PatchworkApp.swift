@@ -19,6 +19,9 @@ import SwiftUI
             // spinner; choosing another quilt swaps it out.
             let quilt = quilts.selected ?? Quilt.featured
             QuiltHome(quilt: quilt, firstLook: quilts.selected == nil).id(quilt.id)
+                // A tapped link to a quilt whose admin lets links open here.
+                .onOpenURL { quilts.receive($0) }
+                .task { if let link = launchLink { quilts.receive(link) } }
             .preferredColorScheme(previewColorScheme ?? (ThemeChoice(rawValue: theme) ?? .system).scheme)
             .environmentObject(quilts)
             // The body face is the default for every descendant that does not
@@ -28,6 +31,15 @@ import SwiftUI
             .foregroundStyle(Color.pwText)
             .tint(Color.pwAccent)
         }
+    }
+    /// A link handed over at launch, for the UI tests: a universal link
+    /// cannot be tapped into a simulator for a quilt that does not exist.
+    private var launchLink: URL? {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "--open-link"), index + 1 < arguments.count { return URL(string: arguments[index + 1]) }
+        #endif
+        return nil
     }
     private var previewColorScheme: ColorScheme? {
         #if DEBUG
