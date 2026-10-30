@@ -188,7 +188,17 @@ struct ProposalDetailView: View {
         .groundedList()
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { listFrame = $0 }
         .navigationTitle("Proposal").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+            // The website's address for it, which opens here for anybody
+            // with the app on a quilt that lets its links do so.
+            if let slug {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: api.webURL("patches/\(slug)/governance/\(proposal.id)"))
+                        .accessibilityIdentifier("shareProposal")
+                }
+            }
+        }
         .safeAreaInset(edge: .bottom) { if showsBar { voteBar } }
         .animation(.easeInOut(duration: 0.2), value: showsBar)
         .confirmationDialog(ProposalPosting.withdrawQuestion, isPresented: $confirmingWithdraw, titleVisibility: .visible) {

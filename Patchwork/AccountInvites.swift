@@ -98,6 +98,11 @@ struct InviteSheet: View {
     /// Who the new account is, held while its recovery codes are read.
     @State private var made: User?
 
+    /// Opened from a tapped invite link rather than the account menu: the
+    /// link is already in hand, so the sheet checks it straight away.
+    init(link: String = "") { _link = State(initialValue: link); arrived = !link.isEmpty }
+    private let arrived: Bool
+
     private var quiltName: String { session.instance?.name ?? session.quilt.name }
     private var emailEnabled: Bool { session.instance?.emailEnabled == true }
 
@@ -142,6 +147,7 @@ struct InviteSheet: View {
         // The codes are the only way back in on a quilt with no mail: the
         // sheet is not let go of until they are saved.
         .interactiveDismissDisabled(busy || holdingCodes)
+        .task { if arrived, step == .paste, session.me == nil { await check() } }
     }
 
     // MARK: Steps

@@ -615,64 +615,74 @@ struct NotificationsSheet: View {
             // the profile arrives over whatever opened it.
             dismiss()
             await session.open(slug: slug)
-        case .calendar(let slug):
-            if let patch = await patch(slug) { route.append(.calendar(patch)) }
-        case .members(let slug):
-            route.append(.members(slug))
-        case .joinRequests(let slug):
-            route.append(PatchAdmin.requestsRoute(slug: slug, standing: session.standing(for: slug)))
-        case .governance(let slug):
-            if let patch = await patch(slug) { route.append(.governance(patch)) }
-        case .proposal(_, let id):
-            if let proposal: Proposal = await fetch("proposals/\(id)") { route.append(.proposal(proposal)) }
-        case .document(_, let id):
-            if let document: GovernanceDocument = await fetch("governance/\(id)") { route.append(.document(document)) }
-        case .noticeboard(let slug):
-            if let patch = await patch(slug) { route.append(.noticeboard(patch)) }
-        case .noticeReports(let slug):
-            // The queue is the patch's own admin's; anybody else is shown
-            // the board the reports were about.
-            if PatchAdmin.runs(session.standing(for: slug)) { route.append(.noticeReports(slug)) }
-            else if let patch = await patch(slug) { route.append(.noticeboard(patch)) }
-        case .notice(_, let id):
-            // The notice's screen reads itself, and is the one that knows
-            // how to say it was taken down — so it is pushed on its id.
-            route.append(.notice(Notice(id: id)))
-        case .event(let id):
-            if let event: PatchworkEvent = await fetch("events/\(id)") { route.append(.event(event)) }
-        case .remotePatch(let host, let slug):
-            route.append(.remote(host: host, slug: slug))
-        case .person(let username):
-            // The profile reads itself, and is the one that knows how to say
-            // there is nobody by that name.
-            route.append(.person(username))
-        case .claim(let slug):
-            if let patch = await patch(slug) { route.append(.claim(patch)) }
         case .website(let path):
             // Not a surface this client has built. It is an exit, and it is
             // drawn as one: the reader leaves for the website rather than
             // being handed a stub of a page that does not exist here.
             let exit = NotificationLink.exit(path)
             openURL(session.api.webURL(exit.path, query: exit.query))
+        default:
+            do { if let next = try await destination.screen(in: session) { route.append(next) } }
+            catch APIError.unauthenticated { session.signedOut(); dismiss() }
+            catch { self.error = "That could not be opened just now. Try again." }
         }
     }
 
-    private func patch(_ slug: String) async -> Patch? {
-        if let known = session.patches.first(where: { $0.slug == slug }) { return known }
-        let response: PatchResponse? = await fetch("nodes/\(slug)")
-        return response?.node
+    private func destination(_ route: NotificationRoute) -> some View {
+        RouteScreen(route: route) { dismiss() }
     }
+}
 
-    private func fetch<T: Decodable>(_ path: String) async -> T? {
-        do { return try await session.api.get(path) }
-        catch APIError.unauthenticated { session.signedOut(); dismiss(); return nil }
-        catch {
-            self.error = "That could not be opened just now. Try again."
-            return nil
+extension NotificationLink.Destination {
+    /// The screen this destination opens, with the thing it needs already in
+    /// hand. A native destination needs the thing itself, not its id, because
+    /// every detail screen in this app takes what it already knows and reads
+    /// the rest back. So the object is fetched first and the push carries it;
+    /// a fetch that fails throws rather than silently opening a browser.
+    ///
+    /// A patch (docked by the shell) and the website (an exit) are not
+    /// screens, and answer nil.
+    @MainActor func screen(in session: QuiltSession) async throws -> NotificationRoute? {
+        func patch(_ slug: String) async throws -> Patch {
+            if let known = session.patches.first(where: { $0.slug == slug }) { return known }
+            let response: PatchResponse = try await session.api.get("nodes/\(slug)")
+            return response.node
+        }
+        switch self {
+        case .patch, .website: return nil
+        case .calendar(let slug): return .calendar(try await patch(slug))
+        case .members(let slug): return .members(slug)
+        case .joinRequests(let slug): return PatchAdmin.requestsRoute(slug: slug, standing: session.standing(for: slug))
+        case .governance(let slug): return .governance(try await patch(slug))
+        case .proposal(_, let id): return .proposal(try await session.api.get("proposals/\(id)"))
+        case .document(_, let id): return .document(try await session.api.get("governance/\(id)"))
+        case .noticeboard(let slug): return .noticeboard(try await patch(slug))
+        // The queue is the patch's own admin's; anybody else is shown the
+        // board the reports were about.
+        case .noticeReports(let slug):
+            if PatchAdmin.runs(session.standing(for: slug)) { return .noticeReports(slug) }
+            return .noticeboard(try await patch(slug))
+        // The notice's screen reads itself, and is the one that knows how to
+        // say it was taken down — so it is pushed on its id.
+        case .notice(_, let id): return .notice(Notice(id: id))
+        case .event(let id): return .event(try await session.api.get("events/\(id)"))
+        case .remotePatch(let host, let slug): return .remote(host: host, slug: slug)
+        // The profile reads itself, and is the one that knows how to say
+        // there is nobody by that name.
+        case .person(let username): return .person(username)
+        case .claim(let slug): return .claim(try await patch(slug))
         }
     }
+}
 
-    @ViewBuilder private func destination(_ route: NotificationRoute) -> some View {
+/// The screen a route opens, wherever it is pushed from: the notifications'
+/// stack, or a link from outside the app. `close` lets the whole sheet go,
+/// which is how a claim that has been set up hands its patch to the quilt.
+struct RouteScreen: View {
+    let route: NotificationRoute
+    let close: () -> Void
+    @EnvironmentObject private var session: QuiltSession
+    var body: some View {
         switch route {
         case .calendar(let patch): PatchCalendar(quilt: session.quilt, patch: patch)
         case .members(let slug): PatchMemberList(quilt: session.quilt, slug: slug)
@@ -691,7 +701,7 @@ struct NotificationsSheet: View {
             // Set up, the patch is live: the sheet goes and it docks.
             ClaimPatchView(slug: patch.slug, name: patch.name) { slug in
                 session.dock(afterSheet: slug)
-                dismiss()
+                close()
             }
         }
     }

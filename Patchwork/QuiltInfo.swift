@@ -174,9 +174,10 @@ extension QuiltInfoFooter {
     }
 }
 
-/// A pushed page opened straight from a footer has no stack behind it to go
-/// back to, so it carries its own way out.
-private struct SheetDone: ViewModifier {
+/// A pushed page opened straight from a footer, or a sheet's root screen
+/// opened by a link, has no stack behind it to go back to, so it carries its
+/// own way out.
+struct SheetDone: ViewModifier {
     @Environment(\.dismiss) private var dismiss
     func body(content: Content) -> some View {
         content.toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
