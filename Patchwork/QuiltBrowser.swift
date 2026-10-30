@@ -10,9 +10,6 @@ struct QuiltBrowser: View {
     @State private var sort = PatchOrder.quilt
     @State private var filtering = false
     @State private var pending: Patch?
-    /// How much of the canvas's foot the view switcher covers, padding and
-    /// all, so the quilt's names can keep clear of it.
-    @State private var pillHeight: CGFloat = 0
     /// Where the map was left, so a trip to the quilt and back does not
     /// re-frame it.
     @State private var mapMemory = MapMemory()
@@ -76,7 +73,7 @@ struct QuiltBrowser: View {
                 }
                 .background(Color.pwGround.ignoresSafeArea())
             } else if mode == "Quilt" {
-                QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs, colorMode: session.colorMode, footer: pillHeight) { open($0) }
+                QuiltCanvas(tiles: session.tiles, patches: filtered, tagMotifs: session.tagMotifs, colorMode: session.colorMode) { open($0) }
                     .ignoresSafeArea()
             } else if mode == "Map" {
                 QuiltMap(patches: filtered,
@@ -185,7 +182,7 @@ struct QuiltBrowser: View {
     /// The view switcher waits in the bottom-right corner, just over the tab
     /// bar and in thumb reach, as one button wearing the current view.
     private var pill: some View {
-        ViewSwitcher(mode: $mode, showsMap: session.mapEnabled) { pillHeight = $0 + 12 }
+        ViewSwitcher(mode: $mode, showsMap: session.mapEnabled)
             .padding(.trailing, 16)
             .padding(.bottom, 12)
     }
@@ -197,9 +194,6 @@ struct QuiltBrowser: View {
 private struct ViewSwitcher: View {
     @Binding var mode: String
     let showsMap: Bool
-    /// The folded button's height, which is what the canvas keeps its names
-    /// clear of. Opening is momentary, so the names do not move for it.
-    var foldedHeight: (CGFloat) -> Void = { _ in }
     @State private var open = false
     private var views: [String] { showsMap ? ["Quilt", "Map", "List"] : ["Quilt", "List"] }
     private func glyph(_ view: String, filled: Bool) -> String {
@@ -259,7 +253,6 @@ private struct ViewSwitcher: View {
             }
         }
         .onChange(of: mode) { open = false }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if !open { foldedHeight($0) } }
     }
 }
 
