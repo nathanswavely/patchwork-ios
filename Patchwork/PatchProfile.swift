@@ -43,6 +43,8 @@ struct PatchSheet: View {
     @State private var opened: PatchworkEvent?
     /// The reader holds an open claim on this listing (`claims/mine`).
     @State private var claimInProgress = false
+    /// The admin's edit of this patch, from the cover's ⋯.
+    @State private var editing = false
     /// How much of the first glimpse shows under the head at rest: enough for
     /// its rule, its title and a line of it, cut off. The cut is the invitation.
     private let peek: CGFloat = 96
@@ -106,6 +108,12 @@ struct PatchSheet: View {
             }
         }
         .signInGate($signingIn)
+        .sheet(isPresented: $editing) {
+            EditPatchSheet(slug: patch.slug) {
+                feedback = RelationshipFeedback(text: PatchEditing.saved, refused: false)
+                Task { await load() }
+            }
+        }
         .background(GeometryReader { proxy in Color.clear.preference(key: SheetTopKey.self, value: proxy.frame(in: .global).minY) })
         .onPreferenceChange(HeadBottomKey.self) { headBottom = $0; measure() }
         .onPreferenceChange(SheetTopKey.self) { sheetTop = $0; measure() }
@@ -248,9 +256,15 @@ struct PatchSheet: View {
         .accessibilityIdentifier("closePatch")
     }
     /// The acts that ride the cover's top corner, as the web's do: one glass
-    /// button holding the exits — the website, and sharing this page.
+    /// button holding the exits — the website, and sharing this page — and,
+    /// for the patch's own admin, editing it, which is where the web's
+    /// Settings button sits.
     private var coverActs: some View {
         Menu {
+            if !isUnclaimed && PatchAdmin.runs(session.standing(for: patch.slug)) {
+                Button { editing = true } label: { Label("Edit patch", systemImage: "pencil") }
+                    .accessibilityIdentifier("editPatch")
+            }
             Link(destination: api.webURL("patches/\(patch.slug)")) { Label("Visit patch website", systemImage: "safari") }
             ShareLink(item: api.webURL("patches/\(patch.slug)")) { Label("Share", systemImage: "square.and.arrow.up") }
         } label: {

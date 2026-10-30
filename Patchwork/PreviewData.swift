@@ -270,6 +270,8 @@ enum PreviewData {
         // The Food Share adds members by invitation only, so a
         // `--preview-invited` launch has a patch to have been asked into.
         (invitingSlug, invitingSlug, extraNames[8], "", "public", "invite_only"),
+        // Market Friends, which a `--preview-nominator` launch runs.
+        (marketSlug, marketSlug, extraNames[5], "", "public", "approval_required"),
     ]
 
     /// The membership set the writes mutate and `me/nodes`, `nodes/{slug}` and
@@ -288,11 +290,17 @@ enum PreviewData {
         ]
         if governanceMember { rows["common-thread"] = (role: "member", status: "active") }
         if governanceAdmin { rows[adminSlug] = (role: "admin", status: "active") }
+        if nominatorLaunch { rows[marketSlug] = (role: "admin", status: "active") }
         return rows
     }
     /// The extra a `--preview-admin` launch makes the reader an admin of: the
     /// Film Club, whose admins decide its proposals.
     static let adminSlug = "extra-7"
+    /// The extra a `--preview-nominator` launch makes the reader an admin
+    /// of: Market Friends, which votes by majority and ratifies its admins
+    /// by nomination (the Collaborative template's leadership).
+    static let marketSlug = "extra-5"
+    private static let nominatorLaunch = ProcessInfo.processInfo.arguments.contains("--preview-nominator")
     /// The extra the fixture reader is a member of: the Repair Cafe.
     static let memberSlug = "extra-6"
     /// The invite-only extra, the Food Share, whose admins ask the reader in
@@ -973,16 +981,7 @@ enum PreviewData {
         guard isRequest || isAct || isEdit else { return nil }
         guard signedIn else { throw APIError.unauthenticated }
 
-        if isEdit {
-            let slug = parts[1]
-            guard role(slug) == "admin" else { throw APIError.message("insufficient permissions", status: 403) }
-            var edits = nodeEdits[slug] ?? [:]
-            for key in ["name", "description", "address", "website", "latitude", "longitude", "appearance", "tags"] {
-                if let value = fields[key] { edits[key] = value }
-            }
-            nodeEdits[slug] = edits
-            return #"{"status":"ok"}"#
-        }
+        if isEdit { return try updateNode(parts[1], fields: fields) }
 
         if isRequest {
             _ = browserStandIn
@@ -1076,6 +1075,69 @@ enum PreviewData {
             throw APIError.status(404)
         }
     }
+
+    /// `UpdateNode`, in its order and its words: the patch's admin only, the
+    /// checks that make a bad value a 400 rather than the database's 500,
+    /// the question about events that follow the zone, and then every
+    /// allowed field written over the fixture row. `null` clears.
+    private static func updateNode(_ slug: String, fields: [String: Any]) throws -> String {
+        guard holdable.contains(where: { $0.slug == slug }) || madePatches.contains(where: { $0.slug == slug }) else {
+            throw APIError.message("node not found", status: 404)
+        }
+        guard role(slug) == "admin" || (accountFields["role"] as? String) == "admin" else {
+            throw APIError.message("insufficient permissions", status: 403)
+        }
+        var edits = nodeEdits[slug] ?? [:]
+        if let raw = fields["timezone"] {
+            let zone = ((raw as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !zone.isEmpty && (TimeZone(identifier: zone) == nil || !zone.contains("/")) {
+                throw APIError.message("timezone must be an IANA zone name for a place, like America/New_York or Europe/Berlin — a fixed-offset name like EST is an hour wrong for half the year", status: 400)
+            }
+            let stored = (edits["timezone"] as? String) ?? "America/New_York"
+            // The club's calendar follows its zone, so a change asks first.
+            let following = everyEvent.filter { $0.json.contains("\"node_slug\":\"\(slug)\"") && !deletedEvents.contains($0.id) }.count
+            let mode = (fields["timezone_events"] as? String) ?? ""
+            if zone != stored, following > 0, mode != "keep_clock", mode != "keep_instant" {
+                let subject = following == 1 ? "event follows" : "events follow"
+                throw refuse(409, "\(following) \(subject) this patch's timezone and would read as a different time. Say whether to keep their clock times or leave them where they are.",
+                             code: "timezone_events_undecided")
+            }
+        }
+        if let raw = fields["visibility"], !["public", "private"].contains((raw as? String) ?? "") {
+            throw APIError.message("visibility must be one of public, private", status: 400)
+        }
+        if let raw = fields["notice_posting"], !["admins", "members"].contains((raw as? String) ?? "") {
+            throw APIError.message("notice_posting must be admins or members", status: 400)
+        }
+        if let raw = fields["notice_replies_default"], !(raw is Bool) {
+            throw APIError.message("notice_replies_default must be true or false", status: 400)
+        }
+        if fields["image_url"] != nil || fields["image_alt"] != nil {
+            let url = (fields["image_url"] as? String) ?? (edits["image_url"] as? String) ?? ""
+            let alt = (fields["image_alt"] as? String) ?? (edits["image_alt"] as? String) ?? ""
+            if let problem = EventPosting.imageProblem(url: url, alt: alt) { throw APIError.message(problem, status: 400) }
+        }
+        if let tags = fields["tags"] {
+            guard let names = tags as? [String] else { throw APIError.message("tags must be an array of tag names", status: 400) }
+            if let unknown = names.first(where: { !vocabulary.contains($0) }) { throw APIError.message("unknown tag: \(unknown)", status: 400) }
+        }
+        let allowed = ["name", "description", "latitude", "longitude", "address", "timezone", "website", "links", "visibility",
+                       "appearance", "accept_event_suggestions", "notice_posting", "notice_replies_default",
+                       "public_member_list", "public_governance_record", "image_url", "image_alt", "tags"]
+        let written = allowed.filter { fields[$0] != nil }
+        guard !written.isEmpty || fields["suggest_tags"] != nil else { throw APIError.message("no valid fields to update", status: 400) }
+        for key in written {
+            let value = fields[key]!
+            // An empty zone clears it back to the quilt's.
+            if key == "timezone", (value as? String)?.isEmpty == true { edits[key] = NSNull() } else { edits[key] = value }
+        }
+        nodeEdits[slug] = edits
+        lastNodeEdit = fields
+        return #"{"status":"ok"}"#
+    }
+    /// The last `PATCH nodes/{slug}` body, so a test can see only what
+    /// changed travelled.
+    static var lastNodeEdit: [String: Any] = [:]
 
     // MARK: Account invite links
 
@@ -1302,13 +1364,15 @@ enum PreviewData {
         var quorum = 0
         var hours = 0
         var eligible = 5
+        var leadership = "maintainer"
     }
-    private static let fixtureRules: [String: FixtureRules] = [
+    private static var fixtureRules: [String: FixtureRules] = [
         "common-thread": FixtureRules(quorum: 20, hours: 336, eligible: 12),
         "listening-room": FixtureRules(hours: 168),
         "extra-1": FixtureRules(method: "admin"),
         memberSlug: FixtureRules(venue: "elsewhere", hours: 168, eligible: 6),
         adminSlug: FixtureRules(method: "admin", hours: 48, eligible: 4),
+        marketSlug: FixtureRules(hours: 72, eligible: 4, leadership: "meritocratic"),
     ]
 
     /// The overview of a patch whose rules are only the table's.
@@ -1316,11 +1380,12 @@ enum PreviewData {
         guard let rules = fixtureRules[slug] else { return nil }
         let object: [String: Any] = [
             "rules": ["decision_method": rules.method, "quorum_percent": rules.quorum,
-                      "default_vote_duration_hours": rules.hours, "leadership_model": "maintainer",
+                      "default_vote_duration_hours": rules.hours, "leadership_model": rules.leadership,
                       "leadership_venue": "patchwork", "proposal_venue": rules.venue] as [String: Any],
             "admins": [] as [Any], "admins_withheld": true, "proposals_withheld": false, "election": NSNull(),
             "seats": [] as [Any], "next_term_end": "", "next_contest_opens": "", "membership_policy": "open",
-            "member_count": rules.eligible, "document_count": 0, "open_proposals": 0, "passed_proposals": 0,
+            "member_count": rules.eligible, "document_count": docs.filter { $0.slug == slug && mayRead($0) }.count,
+            "open_proposals": 0, "passed_proposals": 0,
             "rejected_proposals": 0, "needs_vote": 0,
         ]
         return overviewJSON(slug, base: serialize(object))
@@ -1374,6 +1439,17 @@ enum PreviewData {
         var abstainers: Set<String> = []
         /// An admin of an admin-decides patch asked the members first.
         var advisory = false
+        /// Who declined it, by name (`declined_by`), and when it was made
+        /// official. A direct change is stamped at its own creation; nil
+        /// leaves a voted change applied a day after it was raised.
+        var declinedBy = ""
+        var appliedMinutesAgo: Int?
+        /// The member a nomination is about, by name.
+        var targetName = ""
+        /// An amendment's document (its filename) and the text it proposes.
+        var targetDoc = ""
+        var proposedBody = ""
+        var proposedTitle = ""
         var isElection: Bool { seats > 0 }
     }
 
@@ -1451,6 +1527,24 @@ enum PreviewData {
                 ballots: [FixtureBallot(userId: "l1", name: "Dee Ramos", username: "dee", value: "approve"),
                           FixtureBallot(userId: "l2", name: "Ade Bello", username: "ade", value: "approve")],
                 eligible: 5, quorum: 0),
+            // The Film Club's admins decide (a `--preview-admin` launch is
+            // one of them): a member's request waiting on the maintainer,
+            // and a vote the members carried before the club handed its
+            // decisions to its admins, waiting to be made official.
+            FixtureProposal(
+                id: "club-proposal-1", slug: adminSlug, nodeId: adminSlug, title: "Subtitles at every screening",
+                body: "Half of us watch with the subtitles on at home. The projector can show them.",
+                author: "Lena Fox", authorId: "u-lena", state: "awaiting_admin",
+                createdMinutesAgo: 2 * day, endsInMinutes: nil, eligible: 4, quorum: 0, method: "admin"),
+            FixtureProposal(
+                id: "club-proposal-2", slug: adminSlug, nodeId: adminSlug, title: "Move screenings to the library",
+                body: "The library’s back room is free on Fridays and has a screen.",
+                author: "Ollie Grant", authorId: "u-ollie", status: "approved", state: "approved",
+                createdMinutesAgo: 20 * day, endsInMinutes: -17 * day,
+                ballots: [FixtureBallot(userId: "u-juno", name: "Juno Park", username: "juno", value: "approve"),
+                          FixtureBallot(userId: "u-lena", name: "Lena Fox", username: "lena", value: "approve"),
+                          FixtureBallot(userId: "u-ollie", name: "Ollie Grant", username: "ollie", value: "approve")],
+                eligible: 4, quorum: 0),
         ]
     }
 
@@ -1499,7 +1593,7 @@ enum PreviewData {
         let reader = signedIn ? me : ""
         let open = p.status == "open" && p.state == "voting"
         fields["target_user_id"] = ""
-        fields["target_user_name"] = ""
+        fields["target_user_name"] = p.targetName
         fields["seats_contested"] = p.seats
         fields["nominations_close_at"] = p.isElection ? (instant(minutesFromNow: p.nominationsCloseInMinutes) as? String ?? "") : ""
         fields["election_phase"] = p.isElection ? (open ? p.phase : "closed") : ""
@@ -1533,10 +1627,26 @@ enum PreviewData {
         ] as [String: Any]
         fields["tenure_days"] = 0
         fields["vote_eligible_at"] = ""
-        fields["applied_at"] = p.state == "in_effect" ? stamp(minutesAgo: max(0, p.createdMinutesAgo - day)) : ""
-        fields["advisory"] = p.advisory
-        fields["can_decide"] = false
-        fields["declined_by"] = ""
+        // A direct change is stamped applied at the instant it was made, as
+        // `settleApplied` is handed the creation time; anything else later.
+        if let applied = p.appliedMinutesAgo {
+            fields["applied_at"] = stamp(minutesAgo: applied)
+        } else if p.state == "in_effect" {
+            fields["applied_at"] = p.ballots.isEmpty ? fields["created_at"]! : stamp(minutesAgo: max(0, p.createdMinutesAgo - day))
+        } else {
+            fields["applied_at"] = ""
+        }
+        // Both from the proposal's frozen terms, as `GetProposal` answers.
+        fields["advisory"] = p.method == "admin"
+        fields["can_decide"] = p.method == "admin" && p.status == "open" && role(p.slug) == "admin"
+        fields["declined_by"] = p.declinedBy
+        if !p.targetDoc.isEmpty {
+            fields["target_doc"] = p.targetDoc
+            fields["proposed_body"] = p.proposedBody
+            fields["proposed_title"] = p.proposedTitle
+            fields["doc_text_hidden"] = false
+            fields["current_doc_content"] = currentText(slug: p.slug, target: p.targetDoc)
+        }
         return fields
     }
 
@@ -1655,6 +1765,9 @@ enum PreviewData {
         if method == "POST", parts.count == 3, parts[0] == "nodes", parts[2] == "proposals" {
             return try propose(slug: parts[1], fields: fields)
         }
+        if method == "POST", parts.count == 3, parts[0] == "nodes", parts[2] == "governance" {
+            return try createDocument(slug: parts[1], fields: fields)
+        }
         guard parts.count >= 2, parts[0] == "proposals" || parts[0] == "comments" else { return nil }
         guard signedIn else { throw APIError.unauthenticated }
         if parts[0] == "proposals" {
@@ -1734,6 +1847,53 @@ enum PreviewData {
                 p.candidates.removeAll { $0.userId == me }
                 proposals[index] = p
                 return ""
+            case ("POST", ["decide"]):
+                // `DecideProposal`: the body first, then `maintainerDecidable`.
+                let decision = (fields["decision"] as? String) ?? ""
+                guard ["approve", "decline"].contains(decision) else {
+                    throw APIError.message("decision must be approve or decline", status: 400)
+                }
+                try maintainerDecidable(p)
+                if decision == "approve" {
+                    (p.status, p.state, p.appliedMinutesAgo) = ("approved", "in_effect", 0)
+                    applyAmendment(p)
+                } else {
+                    (p.status, p.state, p.declinedBy) = ("rejected", "rejected", myName)
+                }
+                p.endsInMinutes = p.endsInMinutes.map { min($0, 0) }
+                proposals[index] = p
+                return decision == "approve" ? #"{"status":"approved","state":"in_effect"}"# : #"{"status":"rejected","state":"rejected"}"#
+            case ("POST", ["open-vote"]):
+                try maintainerDecidable(p)
+                guard p.state == "awaiting_admin" else { throw APIError.message("a vote is already open on this proposal", status: 409) }
+                guard p.endsInMinutes == nil else {
+                    throw APIError.message("the members have already been asked; the tally is on the proposal", status: 409)
+                }
+                var hours = (fields["duration_hours"] as? Int) ?? 0
+                if hours <= 0 { hours = fixtureRules[p.slug]?.hours ?? 0 }
+                if hours <= 0 { hours = 72 }
+                p.state = "voting"
+                p.endsInMinutes = hours * 60
+                p.advisory = true
+                proposals[index] = p
+                return #"{"status":"ok","state":"voting"}"#
+            case ("POST", ["apply"]):
+                // `ApplyProposal`, in its order and words.
+                guard role(p.slug) == "admin" else {
+                    throw APIError.message("only this patch's admins can make proposals official", status: 403)
+                }
+                let approved = p.state == "approved" || p.status == "approved"
+                let maintainers = p.method == "admin" && p.status == "open" && ["voting", "awaiting_admin"].contains(p.state)
+                guard approved || maintainers else {
+                    if p.status == "open" {
+                        throw APIError.message("this patch decides proposals by vote; wait for the window to close", status: 409)
+                    }
+                    throw APIError.message("proposal cannot be applied in its current state", status: 400)
+                }
+                (p.status, p.state, p.appliedMinutesAgo) = ("approved", "in_effect", 0)
+                applyAmendment(p)
+                proposals[index] = p
+                return #"{"status":"ok","state":"in_effect"}"#
             case ("POST", ["comments"]):
                 guard readable(p) else { throw APIError.message("proposal not found", status: 404) }
                 try mayDiscuss(p.slug)
@@ -1793,6 +1953,246 @@ enum PreviewData {
         }
     }
 
+    /// Market Friends' roster, for a `--preview-nominator` launch: the
+    /// reader and one other admin, three members and a follower.
+    private static let marketRoster: [(id: String, name: String, username: String, role: String)] = [
+        ("u-ines", "Ines Duarte", "ines", "admin"),
+        ("u-hana", "Hana Sato", "hana", "member"),
+        ("u-ravi", "Ravi Iyer", "ravi", "member"),
+        ("u-cleo", "Cleo Marsh", "cleo", "member"),
+        ("u-dot", "Dot Reyes", "dot", "follower"),
+    ]
+    private static var marketMembers: String {
+        var rows: [[String: Any]] = []
+        if let mine = held[marketSlug] {
+            rows.append(["id": "ch00", "user_id": me, "role": mine.role, "username": "samplereader", "display_name": myName])
+        }
+        rows += marketRoster.filter { $0.role != "follower" }.enumerated().map { index, row in
+            ["id": "ch0\(index + 1)", "user_id": row.id, "role": row.role, "username": row.username, "display_name": row.name]
+        }
+        return serialize(["items": rows, "next_cursor": "", "member_count": rows.count, "follower_count": 1, "public_member_list": "everyone"])
+    }
+
+    /// `validateNomination`, in its order and words, over the fixture rules
+    /// and Market Friends' roster.
+    private static func nominationProblem(slug: String, nominee: String) -> String? {
+        let rules = fixtureRules[slug] ?? FixtureRules()
+        guard rules.leadership == "meritocratic" else {
+            return "nominating an admin is the meritocratic model's mechanic; this patch fills admin seats another way"
+        }
+        guard role(slug) == "admin" else { return "only an admin of this patch can nominate someone for admin" }
+        let row = slug == marketSlug ? marketRoster.first { $0.id == nominee } : nil
+        guard let row, row.role != "follower" else { return "a nominee must be an active member of this patch" }
+        if row.role == "admin" { return "that person is already an admin of this patch" }
+        return nil
+    }
+
+    // MARK: Documents
+
+    /// A patch's governance documents and each one's versions, newest
+    /// last, so an amendment that takes effect writes a version and the
+    /// history and the diff read it back. Common Thread publishes its
+    /// charter and its amended lining; the Film Club keeps its screening
+    /// rules to its members.
+    private struct FixtureDoc {
+        let id: String
+        let slug: String
+        let nodeId: String
+        var title: String
+        var kind = "charter"
+        var visibility = "public"
+        var createdMinutesAgo: Int
+        /// (text, message, author, minutes ago), oldest first.
+        var versions: [(text: String, message: String, author: String, minutesAgo: Int)]
+        var body: String { versions.last?.text ?? "" }
+        var filename: String { PreviewData.filename(title) }
+    }
+
+    /// `governance.Filename`: lower-cased, spaces to hyphens, anything else
+    /// that is not a letter, a digit or a hyphen dropped.
+    static func filename(_ title: String) -> String {
+        let name = title.lowercased().replacingOccurrences(of: " ", with: "-")
+        return String(name.unicodeScalars.filter { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }.map(Character.init)) + ".md"
+    }
+
+    private static var freshDocs: [FixtureDoc] {
+        let charter = "This patch keeps its own copy of the shared standards, and adds one paragraph of its own.\n\n## Open studio hours\n\nAnyone may use the studio during open hours. Tools go back where they were found, and whoever is last out locks the door.\n\n## Changing this\n\nAny member may propose a change. A majority carries it."
+        let earlier = charter.replacingOccurrences(of: "Tools go back where they were found, and whoever", with: "Whoever")
+        let first = "## Open studio hours\n\nAnyone may use the studio during open hours. Whoever is last out locks the door."
+        let lining = "Every patch on this quilt starts by agreeing to the lining. This patch amended it.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are."
+        let screening = "## Screenings\n\nWe screen on the first Friday of the month. Doors open at seven.\n\n## Choosing films\n\nAny member may suggest a film. The admins choose from the suggestions."
+        return [
+            FixtureDoc(id: "demo-doc", slug: "common-thread", nodeId: "demo-patch", title: "How we decide", createdMinutesAgo: 200 * day, versions: [
+                (first, "Create How we decide", "Rowan Hale", 200 * day),
+                (earlier, "Add the paragraph on changing this", "Rowan Hale", 120 * day),
+                (charter, "Ask for tools to go back where they were found", "Imani Osei", 64 * day),
+            ]),
+            FixtureDoc(id: "demo-lining", slug: "common-thread", nodeId: "demo-patch", title: "Community Standards", kind: "lining",
+                       createdMinutesAgo: 230 * day, versions: [
+                (lining.replacingOccurrences(of: " This patch amended it.", with: ""), "Adopt the lining", "System", 230 * day),
+                (lining, "Amend the lining", "Rowan Hale", 88 * day),
+            ]),
+            FixtureDoc(id: "club-doc", slug: adminSlug, nodeId: adminSlug, title: "Screening rules", visibility: "members",
+                       createdMinutesAgo: 150 * day, versions: [(screening, "Create Screening rules", "Juno Park", 150 * day)]),
+        ]
+    }
+    private static var docs: [FixtureDoc] = freshDocs
+    private static var docSerial = 0
+
+    private static func docJSON(_ d: FixtureDoc) -> [String: Any] {
+        ["id": d.id, "node_id": d.nodeId, "title": d.title, "body": d.body, "kind": d.kind, "visibility": d.visibility,
+         "version": d.versions.count, "created_by": "u1", "created_at": stamp(minutesAgo: d.createdMinutesAgo),
+         "updated_at": stamp(minutesAgo: d.versions.last?.minutesAgo ?? d.createdMinutesAgo), "filename": d.filename]
+    }
+
+    /// Who may read a members-only document: its patch's members and admins.
+    private static func mayRead(_ d: FixtureDoc) -> Bool { d.visibility == "public" || inRoom(d.slug) }
+
+    /// The text an amendment would replace, as the repository holds it now.
+    private static func currentText(slug: String, target: String) -> String {
+        if target == "governance-rules.json" || target == "Governance Rules" { return rulesText(slug) }
+        return docs.first { $0.slug == slug && ($0.filename == target || $0.title == target) }?.body ?? ""
+    }
+
+    /// An amendment taking effect: its document gains a version, or is
+    /// written where the patch had no such document (`DirectEdit`'s rule).
+    private static func applyAmendment(_ p: FixtureProposal, by author: String? = nil, message: String? = nil) {
+        guard p.type == "amendment", !p.targetDoc.isEmpty else { return }
+        if p.targetDoc == "governance-rules.json" { applyRules(p); return }
+        let entry = (text: p.proposedBody, message: message ?? p.title, author: author ?? p.author, minutesAgo: 0)
+        if let index = docs.firstIndex(where: { $0.slug == p.slug && ($0.filename == p.targetDoc || $0.title == p.targetDoc) }) {
+            docs[index].versions.append(entry)
+        }
+    }
+
+    // MARK: Rules
+
+    /// Each patch's rules file, whole, as `GetGovernanceRules` answers it:
+    /// every field, the ones nobody edits included, so the rules form has
+    /// something to carry through.
+    private static var ruleFiles: [String: [String: Any]] = [:]
+
+    private static func rulesFile(_ slug: String) -> [String: Any]? {
+        if let file = ruleFiles[slug] { return file }
+        guard let rules = fixtureRules[slug] else { return nil }
+        return [
+            "decision_method": rules.method, "quorum_percent": rules.quorum, "default_vote_duration_hours": rules.hours,
+            "amendment_threshold": "majority", "amendment_auto_apply": true, "min_voting_tenure_days": 0, "subject_recusal": false,
+            "leadership_model": rules.leadership, "leadership_venue": "patchwork", "proposal_venue": rules.venue,
+            "nomination_days": 0, "succession_method": "", "succession_policy": "longest_tenure", "admin_term_months": 0,
+            "max_admins": 3, "inactivity_days": 90, "membership_policy": "open",
+            "follower_permissions": ["events": true, "proposals": true, "charters": false, "members": true],
+        ]
+    }
+
+    private static func rulesText(_ slug: String) -> String {
+        guard let file = rulesFile(slug), let data = try? JSONSerialization.data(withJSONObject: file, options: [.prettyPrinted, .sortedKeys]) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// A rules change taking effect: the file is replaced whole, and the
+    /// rules the fixtures decide by follow it (`SyncRulesToDB`).
+    private static func applyRules(_ p: FixtureProposal) {
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(p.proposedBody.utf8))) as? [String: Any] else { return }
+        ruleFiles[p.slug] = object
+        var rules = fixtureRules[p.slug] ?? FixtureRules()
+        rules.method = (object["decision_method"] as? String) ?? rules.method
+        rules.venue = (object["proposal_venue"] as? String) ?? rules.venue
+        rules.quorum = (object["quorum_percent"] as? Int) ?? rules.quorum
+        rules.hours = (object["default_vote_duration_hours"] as? Int) ?? rules.hours
+        rules.leadership = (object["leadership_model"] as? String) ?? rules.leadership
+        fixtureRules[p.slug] = rules
+    }
+
+    /// `GET nodes/{slug}/governance/rules` and `…/electorate`.
+    private static func rulesRead(_ path: String) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count == 4, parts[0] == "nodes", parts[2] == "governance" else { return nil }
+        switch parts[3] {
+        case "rules":
+            guard let file = rulesFile(parts[1]) else { throw APIError.message("node not found", status: 404) }
+            return serialize(file)
+        case "electorate":
+            guard signedIn, inRoom(parts[1]) else { throw APIError.message("only this patch's members can see who votes here", status: 403) }
+            let count = fixtureRules[parts[1]]?.eligible ?? 5
+            let tenures = (0..<count).map { max(0, 400 - $0 * 37) }
+            return serialize(["members": count, "tenure_days": tenures, "patch_age_days": 420])
+        default:
+            return nil
+        }
+    }
+
+    /// The document reads: a patch's list, one document, its versions and a
+    /// diff between two of them.
+    private static func documentRead(_ path: String, query: [URLQueryItem]) throws -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        if parts.count == 3, parts[0] == "nodes", parts[2] == "governance", docs.contains(where: { $0.slug == parts[1] }) {
+            let listed = docs.filter { $0.slug == parts[1] && mayRead($0) }
+            return serialize(["items": listed.map(docJSON), "published_only": !inRoom(parts[1])])
+        }
+        guard parts.count >= 2, parts[0] == "governance", let d = docs.first(where: { $0.id == parts[1] }) else { return nil }
+        guard mayRead(d) else { throw APIError.message("governance doc not found", status: 404) }
+        if parts.count == 2 { return serialize(docJSON(d)) }
+        let shas = d.versions.indices.map { "\(d.id)-v\($0 + 1)" }
+        if parts[2] == "versions" {
+            let items = d.versions.enumerated().reversed().map { index, v -> [String: Any] in
+                ["sha": shas[index], "message": v.message, "author_name": v.author, "author_email": "",
+                 "date": stamp(minutesAgo: v.minutesAgo), "version_number": index + 1]
+            }
+            return serialize(["items": items, "filename": d.filename])
+        }
+        if parts[2] == "diff" {
+            let value = { (name: String) in query.first { $0.name == name }?.value ?? "" }
+            guard let from = shas.firstIndex(of: value("from")), let to = shas.firstIndex(of: value("to")) else {
+                throw APIError.message("version not found", status: 404)
+            }
+            let hunks = LineDiff.lines(old: d.versions[from].text, new: d.versions[to].text).map { line -> [String: Any] in
+                ["type": line.kind == .added ? "insert" : (line.kind == .removed ? "delete" : "equal"), "text": line.text + "\n"]
+            }
+            return serialize(["from_sha": shas[from], "to_sha": shas[to], "filename": d.filename, "hunks": hunks, "unified": ""])
+        }
+        return nil
+    }
+
+    /// `POST nodes/{slug}/governance`: `CreateGovernanceDoc`, in its order
+    /// and words.
+    private static func createDocument(slug: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        let known = ["common-thread", "listening-room"] + extraNames.indices.map { "extra-\($0)" }
+        guard known.contains(slug) else { throw APIError.message("node not found", status: 404) }
+        guard role(slug) == "admin" else { throw APIError.message("admin access required", status: 403) }
+        let title = (fields["title"] as? String) ?? ""
+        guard !title.isEmpty else { throw APIError.message("title is required", status: 400) }
+        var visibility = (fields["visibility"] as? String) ?? ""
+        if visibility.isEmpty { visibility = "members" }
+        guard ["public", "members"].contains(visibility) else { throw APIError.message("visibility must be public or members", status: 400) }
+        guard filename(title) != filename("Community Standards") else {
+            throw APIError.message("that title is reserved for the lining", status: 400)
+        }
+        docSerial += 1
+        let nodeId = slug == "common-thread" ? "demo-patch" : (slug == "listening-room" ? "demo-patch-2" : slug)
+        let d = FixtureDoc(id: "new-doc-\(docSerial)", slug: slug, nodeId: nodeId, title: title, visibility: visibility,
+                           createdMinutesAgo: 0, versions: [((fields["body"] as? String) ?? "", "Create \(title)", myName, 0)])
+        docs.append(d)
+        return serialize(docJSON(d))
+    }
+
+    /// `maintainerDecidable`'s refusals, in its order and words.
+    private static func maintainerDecidable(_ p: FixtureProposal) throws {
+        guard role(p.slug) == "admin" else {
+            throw APIError.message("only this patch's admins can decide its proposals", status: 403)
+        }
+        guard p.method == "admin" else {
+            throw APIError.message("this patch decides proposals by vote, not by its admins", status: 409)
+        }
+        guard !p.isElection else {
+            throw APIError.message("an election is closed by the electorate, not by an admin (docs/adr/051)", status: 409)
+        }
+        guard p.status == "open", ["voting", "awaiting_admin"].contains(p.state) else {
+            throw APIError.message("this proposal is not open for a decision", status: 409)
+        }
+    }
+
     /// `POST nodes/{slug}/proposals`: the server's refusals in its order and
     /// words, then its switch for the state a proposal is born in. Answered
     /// with the bare proposal, as the server answers.
@@ -1813,14 +2213,23 @@ enum PreviewData {
         if type == "membership" && target.isEmpty {
             throw APIError.message("a membership proposal has to name the person it is about", status: 400)
         }
+        if !target.isEmpty, let problem = nominationProblem(slug: slug, nominee: target) {
+            throw APIError.message(problem, status: 409)
+        }
+        let targetDoc = (fields["target_doc"] as? String) ?? ""
         let rules = fixtureRules[slug] ?? FixtureRules()
         var hours = (fields["duration_hours"] as? Int) ?? 0
         if hours <= 0 { hours = rules.hours > 0 ? rules.hours : 72 }
         let isAdmin = role(slug) == "admin"
         let putToVote = (fields["put_to_vote"] as? Bool) ?? false
         let adminDecides = rules.method == "admin"
+        let rulesDoc = targetDoc == "governance-rules.json" || targetDoc == "Governance Rules"
+        if rules.venue == "elsewhere" && rulesDoc && !isAdmin {
+            throw APIError.message("this patch decides at meetings, and the governance rules are not something a meeting adopts. Ask an admin to apply the change directly (docs/adr/053).", status: 409)
+        }
         var (status, state) = ("open", "voting")
         if adminDecides && isAdmin && !putToVote { (status, state) = ("approved", "in_effect") }
+        else if rules.venue == "elsewhere" && rulesDoc { (status, state) = ("approved", "in_effect") }
         else if rules.venue == "elsewhere" { state = "elsewhere" }
         else if adminDecides && !isAdmin { state = "awaiting_admin" }
         proposalSerial += 1
@@ -1831,7 +2240,12 @@ enum PreviewData {
             status: status, state: state, createdMinutesAgo: 0,
             endsInMinutes: state == "voting" ? hours * 60 : nil,
             eligible: rules.eligible, quorum: rules.quorum, method: rules.method,
-            advisory: adminDecides && isAdmin && putToVote)
+            advisory: adminDecides && isAdmin && putToVote,
+            targetName: marketRoster.first { $0.id == target }?.name ?? "",
+            targetDoc: type == "amendment" ? targetDoc : "",
+            proposedBody: type == "amendment" ? ((fields["proposed_body"] as? String) ?? "") : "",
+            proposedTitle: type == "amendment" ? ((fields["proposed_title"] as? String) ?? "") : "")
+        if state == "in_effect" { applyAmendment(p, by: myName, message: (fields["change_summary"] as? String) ?? title) }
         proposals.append(p)
         var answer = listFields(p)
         answer["duration_hours"] = hours
@@ -1841,6 +2255,8 @@ enum PreviewData {
 
     /// The governance reads that are not fixed text.
     private static func governanceRead(_ path: String, query: [URLQueryItem]) throws -> String? {
+        if let answer = try documentRead(path, query: query) { return answer }
+        if let answer = try rulesRead(path) { return answer }
         let parts = path.split(separator: "/").map(String.init)
         if parts.count == 2 || parts.count == 3, parts[0] == "proposals" {
             let p = proposals[try proposalIndex(parts[1])]
@@ -1889,10 +2305,21 @@ enum PreviewData {
         let createdMinutesAgo: Int
     }
 
-    private static let boards: [String: (nodeId: String, posting: String, repliesDefault: Bool)] = [
+    private static let fixedBoards: [String: (nodeId: String, posting: String, repliesDefault: Bool)] = [
         "common-thread": ("demo-patch", "members", true),
         memberSlug: (memberSlug, "admins", true),
+        adminSlug: (adminSlug, "members", true),
     ]
+    /// The boards as `PATCH nodes/{slug}` has left them: the two settings
+    /// live on the patch's row, so an edit there is what the board reads.
+    private static var boards: [String: (nodeId: String, posting: String, repliesDefault: Bool)] {
+        fixedBoards.reduce(into: [:]) { result, entry in
+            let edits = nodeEdits[entry.key] ?? [:]
+            result[entry.key] = (entry.value.nodeId,
+                                 (edits["notice_posting"] as? String) ?? entry.value.posting,
+                                 (edits["notice_replies_default"] as? Bool) ?? entry.value.repliesDefault)
+        }
+    }
 
     /// Newest first, the order the server serves them in. One was put up
     /// by the reader, one has its replies switched off with one kept, and
@@ -1918,6 +2345,17 @@ enum PreviewData {
                       title: "Soldering irons are back",
                       body: "Both irons are back from repair and on the bench by the window.\n\nPlease switch them off at the wall when you finish.",
                       membersTold: true, createdMinutesAgo: 9 * day),
+        // The Film Club's board, which its admin keeps on a
+        // `--preview-admin` launch: one notice reported, and one whose
+        // reply was.
+        FixtureNotice(id: "notice-f2", slug: adminSlug, authorId: "u-lena", authorName: "Lena Fox", authorUsername: "lena",
+                      title: "Cheap DVDs, message me",
+                      body: "Boxes of them. Five for a tenner, collection only.",
+                      createdMinutesAgo: 5 * 60),
+        FixtureNotice(id: "notice-f1", slug: adminSlug, authorId: "u-juno", authorName: "Juno Park", authorUsername: "juno",
+                      title: "Projector bulb ordered",
+                      body: "The bulb went during the second reel on Friday. A new one arrives on Wednesday.",
+                      createdMinutesAgo: 3 * day),
     ]
 
     /// Oldest first, as the server serves them.
@@ -1930,9 +2368,110 @@ enum PreviewData {
                      body: "I can drive over and collect the part if that is quicker.", createdMinutesAgo: 90),
         FixtureReply(id: "reply-r1", noticeId: "notice-r1", authorId: "rc2", authorName: "Kofi Adu", authorUsername: "kofi",
                      body: "Good news. I will bring the spare tips on Saturday.", createdMinutesAgo: 8 * day),
+        FixtureReply(id: "reply-f1", noticeId: "notice-f1", authorId: "u-ollie", authorName: "Ollie Grant", authorUsername: "ollie",
+                     body: "Typical. Whoever broke it should be made to pay for it.", createdMinutesAgo: 2 * day),
     ]
     private static var noticeSerial = 100
     private static var reportSerial = 0
+
+    /// The Film Club's report queue (`content_reports` with its `node_id`):
+    /// three waiting — one about a notice, one about a reply, and one about
+    /// a notice its author has since taken down — and one each already
+    /// resolved and dismissed.
+    private struct FixtureReport {
+        let id: String
+        let entityType: String
+        let entityId: String
+        let reason: String
+        let details: String
+        let reporterId: String
+        let reporterName: String
+        var status = "pending"
+        var note = ""
+        let minutesAgo: Int
+    }
+    private static var freshReports: [FixtureReport] {
+        [
+            FixtureReport(id: "report-f1", entityType: "notice", entityId: "notice-f2", reason: "Spam or scam",
+                          details: "The same post is on three other boards.", reporterId: "u-juno", reporterName: "Juno Park",
+                          minutesAgo: 3 * 60),
+            FixtureReport(id: "report-f2", entityType: "reply", entityId: "reply-f1", reason: "Harassment or intimidation",
+                          details: "", reporterId: "u-lena", reporterName: "Lena Fox", minutesAgo: day),
+            FixtureReport(id: "report-f3", entityType: "notice", entityId: "notice-f0", reason: "Something else",
+                          details: "It had the wrong date on it.", reporterId: "u-ollie", reporterName: "Ollie Grant",
+                          minutesAgo: 2 * day),
+            FixtureReport(id: "report-f4", entityType: "notice", entityId: "notice-f1", reason: "Something else",
+                          details: "No date for the next screening.", reporterId: "u-ollie", reporterName: "Ollie Grant",
+                          status: "resolved", note: "Asked Juno to add the date.", minutesAgo: 6 * day),
+            FixtureReport(id: "report-f5", entityType: "reply", entityId: "reply-f1", reason: "Spam or scam",
+                          details: "", reporterId: "u-juno", reporterName: "Juno Park", status: "dismissed", minutesAgo: 7 * day),
+        ]
+    }
+    private static var reports: [FixtureReport] = freshReports
+
+    /// A queue row as `ListPatchReports` serves it, with the reported thing
+    /// quoted from the board as it stands now.
+    private static func reportJSON(_ r: FixtureReport) -> [String: Any] {
+        var target = ""
+        var noticeId = ""
+        var gone = true
+        if r.entityType == "notice", let n = notices.first(where: { $0.id == r.entityId }) {
+            target = n.title; noticeId = n.id; gone = false
+        } else if r.entityType == "reply", let reply = noticeReplies.first(where: { $0.id == r.entityId }) {
+            target = reply.body; noticeId = reply.noticeId; gone = false
+        } else if r.entityType == "notice" {
+            noticeId = r.entityId
+        }
+        return [
+            "id": r.id, "reporter_id": r.reporterId, "entity_type": r.entityType, "entity_id": r.entityId,
+            "reason": r.reason, "details": r.details, "status": r.status, "resolution_note": r.note,
+            "created_at": stamp(minutesAgo: r.minutesAgo), "updated_at": stamp(minutesAgo: r.minutesAgo),
+            "node_id": adminSlug, "reporter_name": r.reporterName, "target": target, "notice_id": noticeId, "gone": gone,
+        ]
+    }
+
+    /// `ListPatchReports`: the patch's own admin only — an instance admin
+    /// with no role here is answered 404, like the room.
+    private static func reportsRead(_ slug: String, query: [URLQueryItem]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        guard role(slug) == "admin" else { throw APIError.message("not found", status: 404) }
+        let status = query.first { $0.name == "status" }?.value.flatMap { $0.isEmpty ? nil : $0 } ?? "pending"
+        let rows = slug == adminSlug ? reports.filter { $0.status == status } : []
+        let answer = page(rows, id: \.id, query: query)
+        return serialize(["items": answer.rows.map(reportJSON), "next_cursor": answer.next])
+    }
+
+    /// `UpdatePatchReport`, in its order and its words.
+    private static func reportAct(_ slug: String, id: String, fields: [String: Any]) throws -> String {
+        guard signedIn else { throw APIError.unauthenticated }
+        guard role(slug) == "admin" else { throw APIError.message("not found", status: 404) }
+        guard slug == adminSlug, let index = reports.firstIndex(where: { $0.id == id }) else {
+            throw APIError.message("report not found", status: 404)
+        }
+        guard reports[index].status == "pending" else { throw APIError.message("this report has already been reviewed", status: 400) }
+        let report = reports[index]
+        var status = "resolved"
+        switch (fields["action"] as? String) ?? "" {
+        case "dismiss":
+            status = "dismissed"
+        case "remove":
+            if report.entityType == "notice" {
+                notices.removeAll { $0.id == report.entityId }
+                noticeReplies.removeAll { $0.noticeId == report.entityId }
+            } else {
+                noticeReplies.removeAll { $0.id == report.entityId }
+            }
+        case "close_replies":
+            let noticeId = report.entityType == "reply"
+                ? noticeReplies.first { $0.id == report.entityId }?.noticeId ?? report.entityId : report.entityId
+            if let n = notices.firstIndex(where: { $0.id == noticeId }) { notices[n].repliesOpen = false }
+        default:
+            throw APIError.message("action must be dismiss, remove, or close_replies", status: 400)
+        }
+        reports[index].status = status
+        reports[index].note = (fields["resolution_note"] as? String) ?? ""
+        return "{\"status\":\"\(status)\"}"
+    }
 
     private static func noticeJSON(_ n: FixtureNotice) -> [String: Any] {
         [
@@ -2498,6 +3037,7 @@ enum PreviewData {
         let parts = path.split(separator: "/").map(String.init)
         guard parts.count == 3, parts[0] == "nodes" else { return nil }
         if parts[1] == adminSlug && parts[2] == "members" { return clubMembers(query) }
+        if parts[2] == "reports" { return try reportsRead(parts[1], query: query) }
         if parts[2] == "event-submissions" { return try submissions(parts[1]) }
         return nil
     }
@@ -2514,6 +3054,8 @@ enum PreviewData {
         switch (method, parts.count, parts[2]) {
         case ("PATCH", 4, "members"):
             return try updateMember(slug, userId: parts[3], fields: fields)
+        case ("PATCH", 4, "reports"):
+            return try reportAct(slug, id: parts[3], fields: fields)
         case ("POST", 3, "invitations"):
             return try invite(slug, fields: fields)
         case ("DELETE", 4, "invitations"):
@@ -2548,7 +3090,9 @@ enum PreviewData {
                 if status != "pending" { clubRoster[index].message = "" }
             }
         }
-        // The app sends no role change: those stay on the website.
+        if let role = fields["role"] as? String {
+            return try changeRole(row, to: role, mine: mine)
+        }
         guard let status = fields["status"] as? String else { throw APIError.message("invalid request body", status: 400) }
         switch status {
         case "active":
@@ -2570,6 +3114,31 @@ enum PreviewData {
             throw APIError.message("invalid status value", status: 400)
         }
         var answer = clubJSON(clubRows.first { $0.userId == userId } ?? row, message: false)
+        for key in ["username", "display_name", "avatar_url"] { answer[key] = nil }
+        return serialize(answer)
+    }
+
+    /// `UpdateMember`'s role half, in its order and its words. The club is
+    /// run by a maintainer, so a promotion is honoured; the governance
+    /// refusals the server makes elsewhere (decided elsewhere, ratified by
+    /// proposal, an elected council) are read from the rules by the app
+    /// before it offers the act at all.
+    private static func changeRole(_ row: ClubRow, to role: String, mine: String) throws -> String {
+        guard ["member", "follower", "admin"].contains(role) else { throw APIError.message("invalid role value", status: 400) }
+        if row.status == "invited" { throw APIError.message("they have not accepted the invitation yet", status: 400) }
+        if row.role == "follower" && role != "follower" {
+            throw APIError.message("they follow this patch: invite them to join, or let them become a member themselves", status: 409)
+        }
+        if row.role == "admin" && role != "admin",
+           clubRows.filter({ $0.role == "admin" && $0.status == "active" }).count <= 1 {
+            throw APIError.message("cannot demote the last admin", status: 409)
+        }
+        if row.userId == mine {
+            held[adminSlug]?.role = role
+        } else if let index = clubRoster.firstIndex(where: { $0.userId == row.userId }) {
+            clubRoster[index].role = role
+        }
+        var answer = clubJSON(clubRows.first { $0.userId == row.userId } ?? row, message: false)
         for key in ["username", "display_name", "avatar_url"] { answer[key] = nil }
         return serialize(answer)
     }
@@ -2860,8 +3429,6 @@ enum PreviewData {
         }.enumerated().map { index, json in idFirst(edited(json, nodeEdits["extra-\(index)"])) }
         let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m5","user_id":"u7","role":"member","username":"wren","display_name":"Wren Adler"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
-        let document = #"{"id":"demo-doc","node_id":"demo-patch","title":"How we decide","body":"This patch keeps its own copy of the shared standards, and adds one paragraph of its own.\n\n## Open studio hours\n\nAnyone may use the studio during open hours. Tools go back where they were found, and whoever is last out locks the door.\n\n## Changing this\n\nAny member may propose a change. A majority carries it.","kind":"charter","visibility":"public","version":3,"created_at":"2026-04-02T10:00:00Z","updated_at":"2026-08-14T10:00:00Z"}"#
-        let lining = #"{"id":"demo-lining","node_id":"demo-patch","title":"Community Standards","body":"Every patch on this quilt starts by agreeing to the lining. This patch amended it.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are.","kind":"lining","visibility":"public","version":2,"created_at":"2026-03-01T10:00:00Z","updated_at":"2026-07-21T10:00:00Z"}"#
         let overview = #"{"rules":{"decision_method":"majority","quorum_percent":20,"default_vote_duration_hours":336,"leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork","inactivity_days":90,"max_admins":3},"admins":[{"user_id":"u1","username":"rowan","display_name":"Rowan Hale","joined_at":"2026-01-14T10:00:00Z"}],"admins_withheld":false,"proposals_withheld":false,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"open","member_count":12,"document_count":2,"open_proposals":1,"passed_proposals":3,"rejected_proposals":1,"needs_vote":0}"#
         let listeningOverview = #"{"rules":{"decision_method":"majority","quorum_percent":0,"default_vote_duration_hours":168,"leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":false,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"open","member_count":8,"document_count":0,"open_proposals":1,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
         let withheldOverview = #"{"rules":{"decision_method":"admin","leadership_model":"maintainer","leadership_venue":"patchwork","proposal_venue":"patchwork"},"admins":[],"admins_withheld":true,"proposals_withheld":true,"election":null,"seats":[],"next_term_end":"","next_contest_opens":"","membership_policy":"invite_only","member_count":8,"document_count":0,"open_proposals":0,"passed_proposals":0,"rejected_proposals":0,"needs_vote":0}"#
@@ -2936,21 +3503,19 @@ enum PreviewData {
         case "tags": json = #"[{"name":"craft","motif":"scissors","node_count":3},{"name":"music","motif":"musicNotes","node_count":6},{"name":"venue","motif":"buildings","node_count":1},{"name":"community","node_count":6},{"name":"archive","node_count":0}]"#
         case "events": json = eventsPage(query)
         case "nodes/common-thread/members": json = members
+        case "nodes/\(marketSlug)/members": json = marketMembers
         case "nodes/listening-room/members": json = withheldMembers
-        case "nodes/common-thread/governance": json = "{\"items\":[\(document),\(lining)],\"published_only\":true}"
         case "nodes/listening-room/governance": json = #"{"items":[],"published_only":true}"#
         case "nodes/common-thread/governance/overview": json = overviewJSON("common-thread", base: overview)
         case "nodes/listening-room/governance/overview": json = overviewJSON("listening-room", base: listeningOverview)
         case "nodes/extra-1/governance/overview": json = withheldOverview
-        case "nodes/\(memberSlug)/governance/overview", "nodes/\(adminSlug)/governance/overview":
+        case "nodes/\(memberSlug)/governance/overview", "nodes/\(adminSlug)/governance/overview", "nodes/\(marketSlug)/governance/overview":
             json = plainOverview(String(path.split(separator: "/")[1])) ?? "{}"
         case "nodes/extra-1/governance": json = #"{"items":[],"published_only":true}"#
         case "nodes/extra-1/governance/record": json = #"{"items":[],"public_governance_record":"nobody"}"#
         case "nodes/extra-1/proposals": json = #"{"items":[],"next_cursor":"","public_governance_record":"nobody"}"#
         case "nodes/common-thread/governance/record": json = record
         case "nodes/listening-room/governance/record": json = #"{"items":[],"public_governance_record":"everyone"}"#
-        case "governance/demo-doc": json = document
-        case "governance/demo-lining": json = lining
         default:
             if let event = events.first(where: { "events/\($0.id)" == path }) { json = event.json }
             // A pending suggestion is readable by its submitter and nobody

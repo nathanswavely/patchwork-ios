@@ -173,7 +173,7 @@ final class ProposalPostingTests: XCTestCase {
         XCTAssertEqual(made.state, "in_effect")
     }
 
-    // MARK: Nominations stay the website's
+    // MARK: Who the web offers a nomination
 
     func testTheNominationNoteOnlyWhereTheWebWouldOfferIt() {
         let meritocratic = GovernanceRules(leadershipModel: "meritocratic", leadershipVenue: "patchwork")

@@ -2,11 +2,12 @@
 import UIKit
 
 /// Name badges: the pill floating over a tile that names its patch, and
-/// nothing else (CONTEXT.md "Name badge"). Badges reveal progressively as
-/// tiles earn on-screen room; where they would crowd, the larger tile wins
-/// and the rest wait for a closer zoom. The thresholds are the web's, each of
-/// which was measured before it was set — see QuiltCanvas.svelte for the
-/// sweeps behind them.
+/// nothing else (CONTEXT.md "Name badge"). Badges are pinned to their tiles
+/// and travel with the quilt; which tiles wear one is decided by zoom and
+/// tile size alone, over the whole quilt, so panning never changes the set.
+/// Where badges would crowd, the larger tile wins and the rest wait for a
+/// closer zoom. The thresholds are the web's, each of which was measured
+/// before it was set — see QuiltCanvas.svelte for the sweeps behind them.
 enum QuiltBadges {
     /// On-screen tile size that earns a badge, and the smaller size an
     /// incumbent holds down to. A name already read should not blink off and
@@ -18,14 +19,11 @@ enum QuiltBadges {
     /// the dimension that has room.
     static let textEm: CGFloat = 8.5
     static let maxLines = 3
-    /// Visible quilt a new badge owes its neighbours, what an incumbent owes
-    /// on a roomy tile, and the tile size at which it is owed in full.
+    /// Quilt a new badge owes its neighbours, what an incumbent owes on a
+    /// roomy tile, and the tile size at which it is owed in full.
     static let gap: CGFloat = 32
     static let keepGap: CGFloat = 26
     static let roomyPx: CGFloat = 80
-    /// The clear space a pinned badge keeps from the viewport's edge, so a
-    /// name held at the bar's edge does not sit flush against the glass.
-    static let edgeInset: CGFloat = 6
 
     struct Shape: Hashable {
         let textWidth: CGFloat
@@ -60,7 +58,8 @@ enum QuiltBadges {
         }
     }
 
-    /// A tile on screen: its id, its name, and its frame in the badge layer's coordinates.
+    /// A tile: its id, its name, and its frame at the current zoom, in the
+    /// badge layer's coordinates — points on screen, wherever the screen is.
     struct Candidate {
         let id: String
         let name: String
@@ -133,14 +132,14 @@ enum QuiltBadges {
         }
     }
 
-    /// Which tiles wear a badge this pass, and in what shape. Incumbents go
+    /// Which tiles wear a badge at this zoom, and in what shape. Incumbents go
     /// first and keep their spot for as long as they can hold a badge at all;
     /// then larger tiles, so the bigger name wins a collision. A pill that
     /// does not fit stacks onto another line and asks again, and only a name
-    /// that fits at no depth gives up its badge. A badge is never cut by the
-    /// viewport's edge: it rides the visible part of its tile (see `pin`), and
-    /// where too little of the tile is left to hold it, it waits.
-    static func plan(_ candidates: [Candidate], held: Set<String>, viewport: CGRect, type: Typeface,
+    /// that fits at no depth gives up its badge. The plan covers the whole
+    /// quilt and knows nothing of the screen: a badge sits at its tile's
+    /// centre, and the screen's edges and the bars cut it as they cut the tile.
+    static func plan(_ candidates: [Candidate], held: Set<String>, type: Typeface,
                      shapes: (String) -> [Shape]) -> [Placement] {
         let sorted = candidates.enumerated().sorted { a, b in
             let ha = held.contains(a.element.id), hb = held.contains(b.element.id)
@@ -148,13 +147,12 @@ enum QuiltBadges {
             if a.element.rect.width != b.element.rect.width { return a.element.rect.width > b.element.rect.width }
             return a.offset < b.offset
         }.map(\.element)
-        var placed: [CGRect] = []
+        var placed = Buckets()
         var out: [Placement] = []
         for candidate in sorted {
             let screenPx = candidate.rect.width
             let incumbent = held.contains(candidate.id)
             if screenPx < (incumbent ? keepPx : minPx) { continue }
-            if !candidate.rect.intersects(viewport) { continue }
             // What this badge owes its neighbours: the full gap to move in; to
             // stay, a gap that slides toward keepGap as its tile grows past the
             // floor — leniency only while there is a tile under it worth reading.
@@ -163,10 +161,10 @@ enum QuiltBadges {
             for shape in shapes(candidate.name) {
                 let w = shape.textWidth + type.chromeX
                 let h = type.chromeY + CGFloat(shape.lines) * type.lineHeight
-                guard let box = pin(CGSize(width: w, height: h), on: candidate.rect, in: viewport) else { continue }
+                let box = CGRect(x: candidate.rect.midX - w / 2, y: candidate.rect.midY - h / 2, width: w, height: h)
                 let grown = box.insetBy(dx: -owed, dy: -owed)
-                if placed.contains(where: { grown.intersects($0) }) { continue }
-                placed.append(box)
+                if placed.collides(grown) { continue }
+                placed.insert(box)
                 out.append(Placement(id: candidate.id, name: candidate.name, rect: box, shape: shape))
                 break
             }
@@ -174,37 +172,53 @@ enum QuiltBadges {
         return out
     }
 
-    /// Where a pill sits on its tile: centred, then pulled inside the viewport
-    /// for as long as it can stay on the tile, the way a section header
-    /// sticks. A pill wider than its tile stays centred on it. Nil when the
-    /// visible part of the tile cannot hold the whole pill.
-    static func pin(_ size: CGSize, on tile: CGRect, in viewport: CGRect) -> CGRect? {
-        func centre(_ length: CGFloat, tile: ClosedRange<CGFloat>, view: ClosedRange<CGFloat>) -> CGFloat? {
-            let half = min(length, tile.upperBound - tile.lowerBound) / 2
-            let low = max(tile.lowerBound + half, view.lowerBound + edgeInset + length / 2)
-            let high = min(tile.upperBound - half, view.upperBound - edgeInset - length / 2)
-            guard low <= high else { return nil }
-            return min(max((tile.lowerBound + tile.upperBound) / 2, low), high)
+    /// Placed pills bucketed by area, so the collision test asks only the
+    /// neighbourhood: planning the whole quilt on every zoom tick is then
+    /// linear in its tiles rather than quadratic.
+    private struct Buckets {
+        private struct Cell: Hashable { let x: Int; let y: Int }
+        private static let side: CGFloat = 128
+        private var cells: [Cell: [CGRect]] = [:]
+        private func span(_ rect: CGRect) -> (ClosedRange<Int>, ClosedRange<Int>) {
+            (Int((rect.minX / Self.side).rounded(.down))...Int((rect.maxX / Self.side).rounded(.down)),
+             Int((rect.minY / Self.side).rounded(.down))...Int((rect.maxY / Self.side).rounded(.down)))
         }
-        guard let x = centre(size.width, tile: tile.minX...tile.maxX, view: viewport.minX...viewport.maxX),
-              let y = centre(size.height, tile: tile.minY...tile.maxY, view: viewport.minY...viewport.maxY) else { return nil }
-        return CGRect(x: x - size.width / 2, y: y - size.height / 2, width: size.width, height: size.height)
+        func collides(_ rect: CGRect) -> Bool {
+            let (xs, ys) = span(rect)
+            for x in xs { for y in ys where cells[Cell(x: x, y: y)]?.contains(where: { rect.intersects($0) }) == true { return true } }
+            return false
+        }
+        mutating func insert(_ rect: CGRect) {
+            let (xs, ys) = span(rect)
+            for x in xs { for y in ys { cells[Cell(x: x, y: y), default: []].append(rect) } }
+        }
     }
 }
 
-/// The non-scrolling layer badges live in: screen space, above the canvas,
-/// the size of the safe area. Badges are placed inside it, less whatever
-/// floats over its edges (`chrome`), so none is cut off by a bar or hidden
-/// under a control. It takes no touches itself; the canvas hands a touch on a
-/// badge to the badge's patch.
+/// The layer badges live in: a sibling of the zoomed board inside the scroll
+/// view, so it scrolls with the quilt for free and a pan costs the badges
+/// nothing — no plan, no layout. It is not zoomed itself: its coordinates are
+/// the board's at the current zoom, so a pill keeps its point size while the
+/// tile under it grows, and the canvas re-plans it on every zoom tick. Only
+/// the badges near the screen are realised as views, so a quilt of hundreds
+/// does not carry hundreds of blurs; which ones exist is invisible, because
+/// the set itself never depends on the screen. It takes no touches; the
+/// canvas hands a touch on a badge to the badge's patch.
 final class BadgeLayer: UIView {
-    /// Controls floating over the canvas inside the safe area — the
-    /// Quilt/Map/List switch — that a badge must also keep clear of.
-    var chrome = UIEdgeInsets.zero
+    /// Called when the reader's text size changes, so the canvas re-plans.
+    var onTypeChange: (() -> Void)?
+    private var placements: [QuiltBadges.Placement] = []
     private var views: [String: BadgeView] = [:]
+    /// Badges fading out after a zoom took their room, kept apart so a touch
+    /// never lands on one and a returning name can take it back.
+    private var leaving: [String: BadgeView] = [:]
+    private var spare: [BadgeView] = []
     private var held = Set<String>()
     private var type = QuiltBadges.Typeface.current()
     private lazy var measurer = QuiltBadges.Measurer(type: type)
+    /// What is on screen, and the wider region whose badges exist as views.
+    private var visible = CGRect.null
+    private var realised = CGRect.null
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -212,32 +226,81 @@ final class BadgeLayer: UIView {
             layer.textSizeChanged()
         }
         isUserInteractionEnabled = false
-        clipsToBounds = true
+        accessibilityElementsHidden = true
+        clipsToBounds = false
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     /// The patch whose badge is under a point, if any.
     func badge(at point: CGPoint) -> String? {
-        views.first { $0.value.frame.contains(point) }?.key
+        views.first { !$0.value.isHidden && $0.value.frame.contains(point) }?.key
     }
 
-    func apply(_ candidates: [QuiltBadges.Candidate]) {
-        let placements = QuiltBadges.plan(candidates, held: held, viewport: bounds.inset(by: chrome), type: type, shapes: measurer.shapes)
+    /// A new plan for a new zoom, a new quilt or a new text size. With `fade`
+    /// a badge that comes or goes does so over a moment, unless the reader
+    /// has asked for less motion.
+    func plan(_ candidates: [QuiltBadges.Candidate], visible: CGRect, fade: Bool) {
+        placements = QuiltBadges.plan(candidates, held: held, type: type, shapes: measurer.shapes)
         held = Set(placements.map(\.id))
-        for placement in placements {
-            let view = views[placement.id] ?? {
-                let view = BadgeView()
-                addSubview(view)
-                views[placement.id] = view
-                return view
-            }()
+        self.visible = visible
+        sync(fade: fade && !UIAccessibility.isReduceMotionEnabled)
+    }
+
+    /// The screen moved over the quilt. Nothing is planned; badges only come
+    /// into being as views when the screen nears them.
+    func reveal(_ visible: CGRect) {
+        self.visible = visible
+        if realised.contains(visible) { return }
+        sync(fade: false)
+    }
+
+    private func sync(fade: Bool) {
+        guard !visible.isNull, !visible.isEmpty else { return }
+        realised = visible.insetBy(dx: -visible.width / 2, dy: -visible.height / 2)
+        var wanted = Set<String>()
+        for placement in placements where placement.rect.intersects(realised) {
+            wanted.insert(placement.id)
+            let view: BadgeView
+            if let live = views[placement.id] {
+                view = live
+            } else if let returning = leaving.removeValue(forKey: placement.id) {
+                returning.layer.removeAllAnimations()
+                returning.alpha = 1
+                view = returning
+            } else {
+                view = spare.popLast() ?? { let made = BadgeView(); addSubview(made); return made }()
+                view.isHidden = false
+                view.alpha = 1
+                if fade && placement.rect.intersects(visible) {
+                    view.alpha = 0
+                    UIView.animate(withDuration: 0.18, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { view.alpha = 1 }
+                }
+            }
+            views[placement.id] = view
             view.configure(name: placement.name, shape: placement.shape, type: type)
             view.frame = placement.rect
         }
-        for (id, view) in views where !held.contains(id) {
-            view.removeFromSuperview()
+        for (id, view) in views where !wanted.contains(id) {
             views[id] = nil
+            if fade && !held.contains(id) && view.frame.intersects(visible) {
+                leaving[id] = view
+                UIView.animate(withDuration: 0.18, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { view.alpha = 0 } completion: { [weak self] _ in
+                    guard let self, self.leaving[id] === view else { return }
+                    self.leaving[id] = nil
+                    self.retire(view)
+                }
+            } else {
+                retire(view)
+            }
         }
+    }
+
+    /// A badge no longer wanted goes back to the pool hidden, so the next
+    /// one to appear does not pay for a new blur.
+    private func retire(_ view: BadgeView) {
+        view.layer.removeAllAnimations()
+        view.isHidden = true
+        if spare.count < 48 { spare.append(view) } else { view.removeFromSuperview() }
     }
 
     /// A new text size re-measures every badge: the type is the reader's.
@@ -245,6 +308,7 @@ final class BadgeLayer: UIView {
         type = .current()
         measurer.reset(type: type)
         held = []
+        onTypeChange?()
     }
 }
 
