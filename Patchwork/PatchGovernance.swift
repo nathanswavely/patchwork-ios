@@ -16,9 +16,11 @@ import SwiftUI
 /// the rows here lead to; a member who owes a ballot is told so at the top,
 /// as a door into the open proposals. A member or an admin raises a proposal
 /// from the bar at the foot, here and in the proposals room; the form is
-/// what the patch's rules make it (`ProposalPosting`). Changing a document
-/// or the rules, nominating, and deciding somebody else's proposal stay the
-/// website's.
+/// what the patch's rules make it (`ProposalPosting`). The rules have their
+/// own door under how decisions are made (`RulesChangeSheet`), a document
+/// its own on the document (`DocumentAmendmentSheet`), and an admin writes
+/// a new one from the documents room. What stays the website's is named
+/// once, to the patch's admins.
 struct PatchGovernanceHome: View {
     @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
@@ -28,6 +30,7 @@ struct PatchGovernanceHome: View {
     @State private var loading = true
     @State private var error: String?
     @State private var composing = false
+    @State private var changingRules = false
     /// A proposal the form made, waiting for the form to leave before it is
     /// opened; and the one opened.
     @State private var made: Proposal?
@@ -40,6 +43,7 @@ struct PatchGovernanceHome: View {
     private var signedIn: Bool { quilt.url == session.quilt.url && session.me != nil }
     private var standing: Standing? { session.standing(for: patch.slug) }
     private var door: String? { ProposalPosting.door(signedIn: signedIn, standing: standing, rules: overview?.rules) }
+    private var rulesDoor: RulesChange.Door? { RulesChange.door(signedIn: signedIn, standing: standing, rules: overview?.rules) }
     /// The patch's own setting decides until the overview answers; then the
     /// overview does, because it is answered for this reader — a member of
     /// a patch that keeps its record to the room is in the room, and must
@@ -79,9 +83,26 @@ struct PatchGovernanceHome: View {
                         .accessibilityIdentifier("electionNominating")
                     }
                 }
-                if !overview.decisionNarrative.isEmpty {
+                if !overview.decisionNarrative.isEmpty || rulesDoor != nil {
                     Section("How decisions are made") {
-                        Text(overview.decisionNarrative).fixedSize(horizontal: false, vertical: true)
+                        if !overview.decisionNarrative.isEmpty {
+                            Text(overview.decisionNarrative).fixedSize(horizontal: false, vertical: true)
+                        }
+                        // The way into the rules sits under what they say,
+                        // as on the web's overview.
+                        switch rulesDoor {
+                        case .open(let label):
+                            Button { changingRules = true } label: {
+                                Text(label).font(Font.pw.subheadlineMedium).inkAction("slider.horizontal.3").tapTarget()
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("rulesDoor")
+                        case .note(let line):
+                            Text(line).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                                .accessibilityIdentifier("rulesDoorNote")
+                        case nil:
+                            EmptyView()
+                        }
                     }
                 }
                 Section("Leadership: \(overview.leadershipLabel)") {
@@ -144,8 +165,10 @@ struct PatchGovernanceHome: View {
                         .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
                 }
             }
-            Section {
-                WebsiteOnlyNote(text: ProposalPosting.documentsNote)
+            if standing == .active(.admin) && overview != nil {
+                Section {
+                    WebsiteOnlyNote(text: Self.websiteNote)
+                }
             }
             }.listRows()
         }
@@ -161,7 +184,13 @@ struct PatchGovernanceHome: View {
         // room's own stack, so Back is the room with it already counted.
         .sheet(isPresented: $composing, onDismiss: { if let made { opened = made; self.made = nil } }) {
             ProposalFormSheet(slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [],
-                              isPatchAdmin: standing == .active(.admin)) { proposal in
+                              nextContestOpens: overview?.nextContestOpens, isPatchAdmin: standing == .active(.admin)) { proposal in
+                made = proposal
+                stale = true
+            }
+        }
+        .sheet(isPresented: $changingRules, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            RulesChangeSheet(slug: patch.slug, isPatchAdmin: standing == .active(.admin)) { proposal in
                 made = proposal
                 stale = true
             }
@@ -173,8 +202,12 @@ struct PatchGovernanceHome: View {
     /// The proposals room, handed the rules this room already holds, so its
     /// own door opens the same form.
     private var proposalList: some View {
-        PatchProposalList(quilt: quilt, slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [], close: close) { stale = true }
+        PatchProposalList(quilt: quilt, slug: patch.slug, rules: overview?.rules, seats: overview?.seats ?? [],
+                          nextContestOpens: overview?.nextContestOpens, close: close) { stale = true }
     }
+    /// What an admin of the patch still does on the website: rare desk
+    /// work, each a deliberate act on the whole patch's record.
+    static let websiteNote = "Publishing a document or making it members only, recording a text a meeting adopted, and adding a council seat happen on this quilt’s website."
     /// "1 proposal needs your vote", "3 proposals need your vote".
     static func needsVoteLine(_ count: Int) -> String {
         count == 1 ? "1 proposal needs your vote" : "\(count) proposals need your vote"
@@ -241,11 +274,21 @@ struct PatchGovernanceHome: View {
 /// wears is the server's. Only the profile's *glimpse* drops a pristine
 /// lining, because a row that is byte-identical on every patch on the quilt
 /// says nothing in a preview.
+///
+/// A patch's admin writes a new document from the bar at the foot, as the
+/// web's New Document button; it opens on its own screen once saved.
 struct GovernanceDocumentList: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let slug: String
     var close: (() -> Void)? = nil
     @State private var documents: [GovernanceDocument] = []
+    @State private var writing = false
+    @State private var made: GovernanceDocument?
+    @State private var opened: GovernanceDocument?
+    private var mayCreate: Bool {
+        NewDocument.mayCreate(signedIn: quilt.url == session.quilt.url && session.me != nil, standing: session.standing(for: slug))
+    }
     @State private var publishedOnly = false
     @State private var loading = true
     @State private var loaded = false
@@ -257,13 +300,14 @@ struct GovernanceDocumentList: View {
             // modifier does not reach them from the List itself.
             Group {
             ForEach(documents) { document in
-                NavigationLink { GovernanceDocumentDetail(quilt: quilt, initial: document, close: close) } label: {
+                NavigationLink { GovernanceDocumentDetail(quilt: quilt, initial: document, close: close) { Task { await load() } } } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(document.title).font(Font.pw.headline).foregroundStyle(Color.pwText)
                         HStack(spacing: 8) {
                             if let version = document.version { Text("v\(version)") }
                             if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
                             if document.kind == "lining" { Text("The lining") }
+                            else if document.visibility == "members" { Text("Members only") }
                         }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     }.padding(.vertical, 4)
                 }.accessibilityIdentifier("documentRow")
@@ -283,7 +327,22 @@ struct GovernanceDocumentList: View {
         }
         .groundedList()
         .navigationTitle("Documents").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if mayCreate {
+                ToolbarItem(placement: .bottomBar) {
+                    ProposalDoorButton(label: "New document") { writing = true }
+                        .accessibilityIdentifier("newDocumentDoor")
+                }
+            }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
+        .sheet(isPresented: $writing, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            NewDocumentSheet(slug: slug) { document in
+                made = document
+                Task { await load() }
+            }
+        }
+        .navigationDestination(item: $opened) { GovernanceDocumentDetail(quilt: quilt, initial: $0, close: close) { Task { await load() } } }
         .overlay {
             if loaded && !loading && error == nil && documents.isEmpty {
                 ContentUnavailableView(
@@ -309,14 +368,40 @@ struct GovernanceDocumentList: View {
     }
 }
 
+/// One document, its history, and — for a member or an admin — the door to
+/// changing it (`DocumentAmendmentSheet`). The door waits for the patch's
+/// rules, because they decide what the change will be, and is worded as
+/// the outcome: an admin of a patch whose admins decide changes it, anybody
+/// else proposes a change.
 struct GovernanceDocumentDetail: View {
+    @EnvironmentObject private var session: QuiltSession
     let quilt: Quilt
     let initial: GovernanceDocument
     var close: (() -> Void)? = nil
+    /// The rooms behind this screen are out of date: a change was made.
+    var changed: () -> Void = {}
     @State private var detail: GovernanceDocument?
     @State private var error: String?
+    @State private var rules: GovernanceRules?
+    @State private var amending = false
+    @State private var made: Proposal?
+    @State private var opened: Proposal?
     private var document: GovernanceDocument { detail ?? initial }
     private var api: PatchworkAPI { PatchworkAPI(base: quilt.url) }
+    private var signedIn: Bool { quilt.url == session.quilt.url && session.me != nil }
+    /// The patch, by the document's own `node_id`: a document is opened from
+    /// a room, a glimpse and a notification alike, and only the payload
+    /// names its patch on all three.
+    private var slug: String? {
+        guard let node = document.nodeId, !node.isEmpty else { return nil }
+        if let slug = session.memberships.first(where: { $0.nodeId == node })?.nodeSlug, !slug.isEmpty { return slug }
+        return (session.wholeQuilt + session.patches).first { $0.id == node }?.slug
+    }
+    private var standing: Standing? { slug.flatMap { session.standing(for: $0) } }
+    private var door: String? {
+        guard detail != nil else { return nil }
+        return DocumentAmending.door(signedIn: signedIn, standing: standing, rules: rules)
+    }
     var body: some View {
         List {
             // One Group so every section's rows take the card surface: the
@@ -327,11 +412,19 @@ struct GovernanceDocumentDetail: View {
                 HStack(spacing: 10) {
                     if let version = document.version { Text("v\(version)") }
                     if let updated = ProfileDate.day(document.updatedAt) { Text("Updated \(updated)") }
+                    if document.visibility == "members", document.kind != "lining" { Text("Members only") }
                 }.font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                 if document.kind == "lining" {
                     Text("The shared baseline every patch on this quilt starts with.")
                         .font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
                 }
+                NavigationLink {
+                    GovernanceVersionHistory(quilt: quilt, document: document, close: close)
+                } label: {
+                    Label(DocumentHistory.doorLabel(document.version), systemImage: "clock.arrow.circlepath")
+                        .font(Font.pw.subheadline)
+                }
+                .accessibilityIdentifier("documentHistory")
             }
             if let body = document.body, !body.isEmpty {
                 Section { DocumentBody(text: body) }
@@ -349,13 +442,39 @@ struct GovernanceDocumentDetail: View {
         }
         .groundedList()
         .navigationTitle("Document").navigationBarTitleDisplayMode(.inline)
-        .toolbar { if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } } }
+        .toolbar {
+            if let door {
+                ToolbarItem(placement: .bottomBar) {
+                    ProposalDoorButton(label: door) { amending = true }
+                        .accessibilityIdentifier("documentChangeDoor")
+                }
+            }
+            if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
+        }
+        .sheet(isPresented: $amending, onDismiss: { if let made { opened = made; self.made = nil } }) {
+            if let slug {
+                DocumentAmendmentSheet(slug: slug, document: document, rules: rules,
+                                       isPatchAdmin: standing == .active(.admin)) { proposal in
+                    made = proposal
+                    changed()
+                    // A direct change has already rewritten the document.
+                    Task { await load() }
+                }
+            }
+        }
+        .navigationDestination(item: $opened) { ProposalDetailView(quilt: quilt, initial: $0, close: close) { changed(); Task { await load() } } }
         .task { await load() }
     }
     private func load() async {
         error = nil
         do { detail = try await api.get("governance/\(initial.id)") }
         catch { if !Task.isCancelled && (initial.body ?? "").isEmpty { self.error = error.localizedDescription } }
+        await loadRules()
+    }
+    /// The overview's rules, asked for only where the door could be drawn.
+    private func loadRules() async {
+        guard signedIn, let slug, ProposalPosting.mayPropose(signedIn: signedIn, standing: standing) else { return }
+        if let overview: GovernanceOverview = try? await api.get("nodes/\(slug)/governance/overview") { rules = overview.rules }
     }
 }
 
@@ -370,6 +489,7 @@ struct PatchProposalList: View {
     /// form will be. Without them there is no door.
     var rules: GovernanceRules? = nil
     var seats: [GovernanceSeat] = []
+    var nextContestOpens: String? = nil
     var close: (() -> Void)? = nil
     /// Something here changed: whoever counts these is out of date.
     var changed: () -> Void = {}
@@ -452,7 +572,8 @@ struct PatchProposalList: View {
             if let close { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
         }
         .sheet(isPresented: $composing, onDismiss: { if let made { opened = made; self.made = nil } }) {
-            ProposalFormSheet(slug: slug, rules: rules, seats: seats, isPatchAdmin: standing == .active(.admin)) { proposal in
+            ProposalFormSheet(slug: slug, rules: rules, seats: seats, nextContestOpens: nextContestOpens,
+                              isPatchAdmin: standing == .active(.admin)) { proposal in
                 made = proposal
                 changed()
                 // Open is where a new proposal is, unless it was applied.

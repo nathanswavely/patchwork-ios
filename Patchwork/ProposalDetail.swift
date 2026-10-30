@@ -9,9 +9,10 @@ import SwiftUI
 /// the ground, with the decision within reach — the three buttons are in the
 /// vote card, and once that card has scrolled away they ride a bar at the
 /// foot, the web's sticky vote bar. Its author can withdraw an open one from
-/// the banner, as on the web. Deciding and applying a proposal, its
-/// revisions and the amendment's diff stay the website's, and nothing stands
-/// in for them here.
+/// the banner, as on the web, and a patch admin decides or makes official
+/// from the same banner (`ProposalDeciding`). An amendment shows what it
+/// changes (`DocumentChanges`, `RulesDiff`); its revisions stay the
+/// website's.
 ///
 /// Who sees what is the server's answer (`can_vote`) plus the reader's
 /// standing on the patch from the membership index. Nothing authenticated
@@ -51,6 +52,11 @@ struct ProposalDetailView: View {
     @State private var confirmingWithdraw = false
     @State private var withdrawBusy = false
     @State private var withdrawFailure: String?
+    /// The admin's act waiting on its confirmation, the one running, and
+    /// the server's sentence when one was refused.
+    @State private var confirmingAct: ProposalDeciding.Act?
+    @State private var actBusy: ProposalDeciding.Act?
+    @State private var actFailure: String?
 
     // The discussion's own state: one composer, one inline reply or edit at
     // a time, and one comment waiting on its confirmation.
@@ -98,6 +104,10 @@ struct ProposalDetailView: View {
     private var canNominate: Bool { acting && EventPosting.isMemberOrAdmin(standing) }
     /// Read off the full answer only: a list row carries no author id.
     private var mayWithdraw: Bool { detail != nil && acting && ProposalPosting.mayWithdraw(proposal, me: meID) }
+    /// Read off the full answer only: a list row carries no `can_decide`.
+    private var acts: [ProposalDeciding.Act] {
+        detail == nil ? [] : ProposalDeciding.acts(proposal, standing: standing, acting: acting)
+    }
 
     // MARK: The screen
 
@@ -132,6 +142,8 @@ struct ProposalDetailView: View {
                             .accessibilityIdentifier("proposalWithdraw")
                         }
                         if let withdrawFailure { refusal(withdrawFailure, id: "withdrawFailure") }
+                        if !acts.isEmpty { decisionActs }
+                        if let actFailure { refusal(actFailure, id: "decideFailure") }
                     }
                 }
                 header
@@ -139,6 +151,12 @@ struct ProposalDetailView: View {
                     // As the web renders it: Markdown, a single return a
                     // line break — what the form's preview showed its author.
                     Section { MarkdownText(source: body, base: quilt.url, hardBreaks: true) } header: { heading("Why this change") }
+                }
+                if detail != nil, !(proposal.targetDoc ?? "").isEmpty, !DocumentAmending.isRulesDoc(proposal.targetDoc) {
+                    DocumentChangesSection(proposal: proposal)
+                }
+                if detail != nil, DocumentAmending.isRulesDoc(proposal.targetDoc) {
+                    RulesChangesSection(proposal: proposal)
                 }
                 if let error {
                     Section {
@@ -179,6 +197,12 @@ struct ProposalDetailView: View {
         } message: {
             Text(ProposalPosting.withdrawMessage)
         }
+        .confirmationDialog(confirmingAct?.question ?? "", isPresented: confirmingActBinding, titleVisibility: .visible, presenting: confirmingAct) { act in
+            Button(act.confirmLabel, role: act.destructive ? .destructive : nil) { perform(act) }
+            Button("Cancel", role: .cancel) {}
+        } message: { act in
+            Text(ProposalDeciding.message(act, for: proposal))
+        }
         .confirmationDialog("Delete this comment?", isPresented: deletingBinding, titleVisibility: .visible, presenting: deleting) { comment in
             Button("Delete", role: .destructive) { remove(comment) }
             Button("Cancel", role: .cancel) {}
@@ -193,6 +217,10 @@ struct ProposalDetailView: View {
         // `me` on a reaction are answered again for the new reader.
         .onChange(of: session.me?.id) { _, _ in Task { await load(); await loadComments() } }
         .onChange(of: standing) { _, _ in Task { await readPermissions() } }
+    }
+
+    private var confirmingActBinding: Binding<Bool> {
+        Binding(get: { confirmingAct != nil }, set: { if !$0 { confirmingAct = nil } })
     }
 
     private var deletingBinding: Binding<Bool> {
@@ -220,8 +248,16 @@ struct ProposalDetailView: View {
                 }
                 .foregroundStyle(Color.pwTextMuted)
                 if let target = proposal.targetDoc, !target.isEmpty {
-                    Label("\(proposal.isDirectChange ? "Change" : "Amendment") to \(target)", systemImage: "doc.text")
+                    // The document's own title where the payload carries it
+                    // (the web's `docLabel`), never a bare filename.
+                    let name = DocumentAmending.isRulesDoc(target) ? "the governance rules" : ((proposal.proposedTitle ?? "").isEmpty ? target : proposal.proposedTitle!)
+                    Label("\(proposal.isDirectChange ? "Change" : "Amendment") to \(name)", systemImage: "doc.text")
                         .font(Font.pw.subheadline)
+                }
+                if let nominee = proposal.targetUserName, !nominee.isEmpty {
+                    Label("Nominates \(nominee) for admin", systemImage: "person.badge.plus")
+                        .font(Font.pw.subheadline)
+                        .accessibilityIdentifier("proposalNominee")
                 }
                 if let type = proposal.proposalType, !type.isEmpty, type != "other", !proposal.isElection {
                     Label(type.capitalized, systemImage: "tag").font(Font.pw.subheadline)
@@ -442,6 +478,66 @@ struct ProposalDetailView: View {
                 withdrawFailure = Self.sentence(error, fallback: "Failed to withdraw")
                 await load()
             }
+        }
+    }
+
+    // MARK: Deciding
+
+    /// The admin's acts, under the sentence that says why they are asked
+    /// for: Approve and Decline side by side, the way the web stands them,
+    /// and Ask the members as a quieter row beneath; Make this official
+    /// alone, as the one thing left to do.
+    @ViewBuilder private var decisionActs: some View {
+        let quiet = acts.filter { $0 == .askMembers }
+        let main = acts.filter { $0 != .askMembers }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                ForEach(main) { act in
+                    let busy = actBusy == act
+                    Button { confirmingAct = act } label: {
+                        Text(busy ? act.busyLabel : act.label)
+                            .font(Font.pw.subheadlineSemibold)
+                            .foregroundStyle(act == main.first ? Color.pwOnAccent : (act.destructive ? Color.pwDestructive : Color.pwText))
+                            .frame(maxWidth: .infinity, minHeight: 30)
+                    }
+                    .modifier(DecisionButtonStyle(prominent: act == main.first, destructive: act.destructive))
+                    .controlSize(.large)
+                    .accessibilityIdentifier(act.identifier)
+                }
+            }
+            ForEach(quiet) { act in
+                Button { confirmingAct = act } label: {
+                    Text(actBusy == act ? act.busyLabel : act.label)
+                        .font(Font.pw.subheadlineMedium).inkAction("person.3")
+                        .tapTarget()
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(act.identifier)
+            }
+        }
+        .disabled(actBusy != nil)
+        .padding(.vertical, 4)
+    }
+
+    /// The act, then the proposal read again: the banner, the tally and the
+    /// byline are the server's to say once it has moved. The rooms behind
+    /// are told, because what is open and what is settled has changed.
+    private func perform(_ act: ProposalDeciding.Act) {
+        guard actBusy == nil else { return }
+        confirmingAct = nil
+        actBusy = act
+        actFailure = nil
+        Task {
+            do {
+                try await api.run(act, proposal: proposal.id)
+                changed()
+            } catch APIError.unauthenticated {
+                session.signedOut()
+            } catch {
+                actFailure = Self.sentence(error, fallback: act.fallback)
+            }
+            await load()
+            actBusy = nil
         }
     }
 
@@ -789,6 +885,17 @@ struct VoteButtons: View {
             .accessibilityValue(filled ? "Your vote" : "")
             .accessibilityIdentifier(identified ? value.identifier : "bar-" + value.identifier)
         }
+    }
+}
+
+/// The first of the admin's acts filled, the second outlined — in the
+/// destructive tint for a decline, which a phone should not make easy.
+private struct DecisionButtonStyle: ViewModifier {
+    let prominent: Bool
+    let destructive: Bool
+    func body(content: Content) -> some View {
+        if prominent { content.buttonStyle(.borderedProminent).tint(Color.pwAccent) }
+        else { content.buttonStyle(.bordered).tint(destructive ? Color.pwDestructive : Color.pwAccent) }
     }
 }
 
