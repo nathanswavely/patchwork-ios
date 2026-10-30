@@ -155,7 +155,26 @@ struct LaunchLens: Equatable {
     /// hold their own copy, and read it again when this moves.
     @Published private(set) var adminRevision = 0
     func adminChanged() { adminRevision += 1 }
-    init(quilt: Quilt) { self.quilt = quilt; api = PatchworkAPI(base: quilt.url) }
+    /// Whether what is on screen is what was kept from the last launch
+    /// (QuiltKeep) rather than what the quilt has said this time.
+    private var drawnFromKeep = false
+    /// This session's own reads of the description and icon, which a kept
+    /// copy stands in for until they answer.
+    private var instanceRead = false
+    private var iconRead = false
+    init(quilt: Quilt) {
+        self.quilt = quilt; api = PatchworkAPI(base: quilt.url)
+        // The quilt as it was last seen, drawn before anything is asked, so a
+        // launch opens on the quilt rather than on a spinner. `load` reads it
+        // all again behind the drawing.
+        if let kept = QuiltKeep.read(.instance, of: quilt) { instance = try? PatchworkAPI.decode(kept) }
+        if let kept = QuiltKeep.read(.tree, of: quilt), let tree: TreeResponse = try? PatchworkAPI.decode(kept) {
+            show(tree, asked: .whole)
+            loading = false
+            drawnFromKeep = true
+        }
+        if let kept = QuiltKeep.read(.icon, of: quilt), let image = UIImage(data: kept) { showIcon(image) }
+    }
     func apply(colorMode next: ColorMode) {
         QuiltTheme.colorMode = next
         guard colorMode != next else { return }
@@ -205,15 +224,23 @@ struct LaunchLens: Equatable {
     }
     func load() async {
         await loadTree()
-        if instance == nil { instance = try? await api.get("instance") }
+        if !instanceRead, let answer: (Instance, Data?) = try? await api.getKeeping("instance") {
+            instance = answer.0
+            instanceRead = true
+            if let bytes = answer.1 { QuiltKeep.write(bytes, as: .instance, of: quilt) }
+        }
         if tagTerms.isEmpty, let terms: [TagTerm] = try? await api.get("tags") {
             tagTerms = terms
             tagMotifs = Dictionary(terms.compactMap { term in term.motif.map { (term.name, $0) } }, uniquingKeysWith: { a, _ in a })
         }
-        if icon == nil, let data = try? await api.data("instance/icon") {
+        if !iconRead, let data = try? await api.data("instance/icon") {
             var image = UIImage(data: data)
             if image == nil { image = await SVGRasterizer().render(data, side: 50) }
-            if let image { icon = image; tabIcon = image.tabIcon(); tabIconDim = image.tabIcon(dimmed: true) }
+            if let image {
+                showIcon(image)
+                iconRead = true
+                QuiltKeep.write(data, as: .icon, of: quilt)
+            }
         }
         await refreshAccount()
     }
@@ -236,13 +263,29 @@ struct LaunchLens: Equatable {
                 wholeQuilt = whole.tree.children ?? []
                 wholeBaseline = QuiltLayout.pack(wholeQuilt, affinity: whole.affinity ?? [])
             }
-            let result: TreeResponse = try await api.get("nodes/tree", query: asked.query)
+            let (result, bytes): (TreeResponse, Data?) = try await api.getKeeping("nodes/tree", query: asked.query)
             guard asked == scope else { return }
-            patches = result.tree.children ?? []; affinity = result.affinity ?? []
-            baseline = QuiltLayout.pack(patches, affinity: affinity)
-            if asked == .whole { wholeQuilt = patches; wholeBaseline = baseline }
-            repack()
-        } catch { if !Task.isCancelled, asked == scope { self.error = error.localizedDescription } }
+            show(result, asked: asked)
+            // Only the whole quilt is kept: it is what a launch opens on.
+            if asked == .whole {
+                drawnFromKeep = false
+                if let bytes { QuiltKeep.write(bytes, as: .tree, of: quilt) }
+            }
+        } catch {
+            // A whole quilt drawn from the last launch stays drawn when this
+            // launch cannot reach it: last week's quilt, readable, beats an
+            // error standing where it was.
+            if !Task.isCancelled, asked == scope, !(drawnFromKeep && asked == .whole) { self.error = error.localizedDescription }
+        }
+    }
+    private func show(_ result: TreeResponse, asked: QuiltScope) {
+        patches = result.tree.children ?? []; affinity = result.affinity ?? []
+        baseline = QuiltLayout.pack(patches, affinity: affinity)
+        if asked == .whole { wholeQuilt = patches; wholeBaseline = baseline }
+        repack()
+    }
+    private func showIcon(_ image: UIImage) {
+        icon = image; tabIcon = image.tabIcon(); tabIconDim = image.tabIcon(dimmed: true)
     }
 
     // MARK: The account

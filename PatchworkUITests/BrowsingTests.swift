@@ -7,22 +7,27 @@ final class BrowsingTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro"]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Choose your quilts"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["exploreQuilt"].exists)
+        // The first launch is a window onto the featured quilt; another
+        // quilt is a door off it, into the full picker.
+        XCTAssertTrue(app.otherElements["firstLook"].waitForExistence(timeout: 10))
+        app.buttons["findAnotherQuilt"].tap()
+        XCTAssertTrue(app.navigationBars["Choose a quilt"].waitForExistence(timeout: 10))
+        // The picker's search bar sits at the sheet's foot, over the address
+        // field until the list is scrolled up.
+        app.collectionViews.firstMatch.swipeUp()
         let address = app.textFields["Quilt address"]
         address.tap()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { address.tap() }
         address.typeText("http://example.org")
         app.buttons["Find quilt"].tap()
         XCTAssertTrue(app.staticTexts["connectionError"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["exploreQuilt"].exists)
     }
 
     func testBrowsePatchEventAndSwitchQuilt() {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro"]
         app.launch()
-        capture(app, "01 Choose a quilt")
-        app.buttons["quiltChoice"].firstMatch.tap()
+        capture(app, "01 First look")
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         explore.tap()
@@ -256,7 +261,6 @@ final class BrowsingTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro"]
         app.launch()
-        app.buttons["quiltChoice"].firstMatch.tap()
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         explore.tap()
@@ -315,7 +319,6 @@ final class BrowsingTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro"]
         app.launch()
-        app.buttons["quiltChoice"].firstMatch.tap()
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         explore.tap()
@@ -380,24 +383,20 @@ final class BrowsingTests: XCTestCase {
         capture(app, "11a Add to calendar")
     }
 
-    /// The one thing this client says unprompted: a card on the foot of the
-    /// quilt, the first time a quilt opens, offering the About page and a
-    /// worded way to say no. It never blocks the quilt, and it is offered
-    /// once — the decline is an answer, not a postponement.
-    func testOrientationCardIsOfferedOnceAndNeverBlocksTheQuilt() {
+    /// The first launch opens on the featured quilt itself, its bars folded
+    /// away under a welcome. The quilt is live under it, the About page is a
+    /// tap away, and choosing the quilt unfolds the app around the same
+    /// canvas — without the smaller orientation card following the welcome.
+    func testFirstLookIsTheQuiltAndHandsOverWithoutASecondCard() {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--forget-intro"]
         app.launch()
-        app.buttons["quiltChoice"].firstMatch.tap()
-        let explore = app.buttons["exploreQuilt"]
-        XCTAssertTrue(explore.waitForExistence(timeout: 10))
-        explore.tap()
-        XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
-
-        let card = app.otherElements["introCard"]
-        XCTAssertTrue(card.waitForExistence(timeout: 10), "a first landing is greeted once")
-        capture(app, "14 Orientation card")
-        // Non-blocking: the quilt underneath is still live while it is up.
+        // The first launch is the quilt itself under a welcome, with no bars.
+        let card = app.otherElements["firstLook"]
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "a first launch is greeted")
+        XCTAssertFalse(app.tabBars.firstMatch.exists, "the app's chrome waits for a choice")
+        capture(app, "14 First look")
+        // Non-blocking: the quilt underneath is a window, not a picture.
         let tile = app.buttons["quiltTile-common-thread"]
         XCTAssertTrue(tile.waitForExistence(timeout: 10))
         tile.tap()
@@ -412,17 +411,15 @@ final class BrowsingTests: XCTestCase {
         capture(app, "14a What is Patchwork?")
         app.buttons["Done"].tap()
 
-        // Answered, so it is gone — and stays gone on the next launch.
-        XCTAssertFalse(card.waitForExistence(timeout: 3), "an answered card does not come back")
-        app.terminate()
-        app.launchArguments = ["--preview"]
-        app.launch()
-        app.buttons["quiltChoice"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["exploreQuilt"].waitForExistence(timeout: 10))
+        // Reading About is not a choice: the welcome is still there to answer.
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
         app.buttons["exploreQuilt"].tap()
         XCTAssertTrue(app.navigationBars["Sample quilt"].waitForExistence(timeout: 10))
-        XCTAssertTrue(tile.waitForExistence(timeout: 10))
-        XCTAssertFalse(card.exists, "offered once, never again")
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5), "choosing unfolds the app around the same quilt")
+        XCTAssertTrue(tile.exists)
+        XCTAssertFalse(card.exists)
+        // The welcome was this quilt's orientation; the smaller card does not follow it.
+        XCTAssertFalse(app.otherElements["introCard"].waitForExistence(timeout: 3), "greeted once, not twice")
     }
 
     /// The one authenticated act this client has: a code in the email, six
@@ -736,7 +733,6 @@ final class BrowsingTests: XCTestCase {
     }
 
     private func openSampleQuilt(_ app: XCUIApplication) {
-        app.buttons["quiltChoice"].firstMatch.tap()
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         explore.tap()
@@ -747,10 +743,8 @@ final class BrowsingTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL", "--dark-preview"]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Choose your quilts"].waitForExistence(timeout: 10))
-        capture(app, "06 Large text quilt selection")
-        app.swipeUp()
-        app.buttons["quiltChoice"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["firstLook"].waitForExistence(timeout: 10))
+        capture(app, "06 Large text first look")
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         capture(app, "07 Large text confirmation")

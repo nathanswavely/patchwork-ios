@@ -14,6 +14,9 @@ struct Quilt: Codable, Identifiable, Hashable {
         #endif
         return [Quilt(url: URL(string: "https://lancasterpatchwork.org")!, name: "Lancaster Patchwork")]
     }
+    /// The quilt a first launch opens a window onto, before anybody has
+    /// chosen one: the directory's head.
+    static var featured: Quilt { directory[0] }
 }
 
 struct Instance: Decodable {

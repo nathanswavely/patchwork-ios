@@ -5,6 +5,10 @@ import UIKit
 
 struct QuiltHome: View {
     @StateObject private var session: QuiltSession
+    @EnvironmentObject private var store: QuiltStore
+    /// Nothing has been chosen yet: this is the featured quilt, open as a
+    /// window under the first launch's welcome rather than as the app.
+    let firstLook: Bool
     @State private var pane = Pane.quilt
     /// Where the reader was before Search, which is where the X takes them.
     @State private var lastPane = Pane.quilt
@@ -26,7 +30,10 @@ struct QuiltHome: View {
     /// and would have started four polls.
     @Environment(\.scenePhase) private var scenePhase
     enum Pane: Hashable { case quilt, events, discover, dashboard, search }
-    init(quilt: Quilt) { _session = StateObject(wrappedValue: QuiltSession(quilt: quilt)) }
+    init(quilt: Quilt, firstLook: Bool = false) {
+        _session = StateObject(wrappedValue: QuiltSession(quilt: quilt))
+        self.firstLook = firstLook
+    }
     var body: some View {
         Group {
             if #available(iOS 18.0, *) {
@@ -104,9 +111,13 @@ struct QuiltHome: View {
         .onAppear {
             session.apply(colorMode: ColorMode(rawValue: colors) ?? .standard)
             // Shown is seen: the card stays up for this visit until it is
-            // answered, but no later launch brings it back.
-            if !IntroState.seen(session.quilt) { intro = true; IntroState.markSeen(session.quilt) }
+            // answered, but no later launch brings it back. A first look has
+            // its own welcome, which says the same things and more.
+            if !firstLook, !IntroState.seen(session.quilt) { intro = true; IntroState.markSeen(session.quilt) }
         }
+        // The welcome was this quilt's orientation, so choosing it does not
+        // bring the smaller card up behind it.
+        .onChange(of: firstLook) { _, now in if !now { IntroState.markSeen(session.quilt) } }
         .onChange(of: colors) { _, now in session.apply(colorMode: ColorMode(rawValue: now) ?? .standard) }
         // Coming back to the app reads the count again and restarts the
         // reconciliation; leaving it stops.
@@ -125,9 +136,16 @@ struct QuiltHome: View {
     /// corner view switcher while it is up, which is fine: it asks to be
     /// answered, and the switcher is back the moment it is.
     private var quiltPane: some View {
-        NavigationStack { QuiltBrowser(openDiscover: { pane = .discover }) }
+        NavigationStack { QuiltBrowser(openDiscover: { pane = .discover }, firstLook: firstLook) }
             .overlay(alignment: .bottom) {
-                if intro, !session.searching {
+                if firstLook {
+                    FirstLookCard(quiltName: session.instance?.name ?? session.quilt.name, instance: session.instance) {
+                        // The quilt is kept under the name it gives itself.
+                        let chosen = Quilt(url: session.quilt.url, name: session.instance?.name ?? session.quilt.name)
+                        withAnimation(.smooth(duration: 0.4)) { store.adopt([chosen]) }
+                    } elsewhere: { finding = true }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if intro, !session.searching {
                     IntroCard(quiltName: session.instance?.name ?? session.quilt.name) {
                         IntroState.markSeen(session.quilt)
                         withAnimation { intro = false }

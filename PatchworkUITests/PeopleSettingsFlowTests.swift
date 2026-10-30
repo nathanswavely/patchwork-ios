@@ -146,7 +146,6 @@ final class PeopleSettingsFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--preview", "--skip-intro"]
         app.launch()
-        app.buttons["quiltChoice"].firstMatch.tap()
         let explore = app.buttons["exploreQuilt"]
         XCTAssertTrue(explore.waitForExistence(timeout: 10))
         explore.tap()

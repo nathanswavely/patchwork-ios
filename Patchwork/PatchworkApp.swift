@@ -12,13 +12,13 @@ import SwiftUI
     @AppStorage(DisplayDefaults.themeKey) private var theme = ThemeChoice.system.rawValue
     var body: some Scene {
         WindowGroup {
-            Group {
-                if let quilt = quilts.selected {
-                    QuiltHome(quilt: quilt).id(quilt.id)
-                } else {
-                    QuiltOnboarding()
-                }
-            }
+            // With nothing chosen yet the app opens on the featured quilt
+            // itself, its chrome folded away under a welcome (FirstLookCard).
+            // Choosing it keeps the same view, so the quilt already on screen
+            // is the one explored rather than a second copy loaded behind a
+            // spinner; choosing another quilt swaps it out.
+            let quilt = quilts.selected ?? Quilt.featured
+            QuiltHome(quilt: quilt, firstLook: quilts.selected == nil).id(quilt.id)
             .preferredColorScheme(previewColorScheme ?? (ThemeChoice(rawValue: theme) ?? .system).scheme)
             .environmentObject(quilts)
             // The body face is the default for every descendant that does not

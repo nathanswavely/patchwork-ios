@@ -6,6 +6,9 @@ struct QuiltBrowser: View {
     /// The door to Discover, which is not scoped: where My Quilt is empty,
     /// the whole quilt's question is the natural next place to look.
     var openDiscover: (() -> Void)? = nil
+    /// The first launch's window onto the quilt: the canvas alone, with no
+    /// bars and no corner switcher, under the welcome that QuiltHome lays on it.
+    var firstLook = false
     @State private var mode = "Quilt"
     @State private var sort = PatchOrder.quilt
     @State private var filtering = false
@@ -88,12 +91,13 @@ struct QuiltBrowser: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottomTrailing) { if !session.loading && session.error == nil && !session.patches.isEmpty && !session.searching { pill } }
+        .overlay(alignment: .bottomTrailing) { if !firstLook && !session.loading && session.error == nil && !session.patches.isEmpty && !session.searching { pill } }
         .navigationTitle(session.quilt.name).navigationBarTitleDisplayMode(.inline)
         // Over the canvas the bar paints nothing; the controls carry their own glass.
         .toolbarBackground(mode == "List" || session.searching ? .automatic : .hidden, for: .navigationBar)
         .modifier(NoEdgeEffect(active: mode != "List" && !session.searching))
         .modifier(DiscoveryToolbar(filter: $filtering))
+        .toolbar(firstLook ? .hidden : .automatic, for: .navigationBar, .tabBar)
         .sheet(isPresented: $filtering, onDismiss: { if let patch = pending { pending = nil; session.open(patch) } }) { FilterSheet() }
     }
     /// One temporary overlay at a time: a tap on the surface behind the filter

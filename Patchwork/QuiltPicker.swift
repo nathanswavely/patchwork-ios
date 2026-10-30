@@ -134,7 +134,7 @@ struct QuiltPicker: View {
             }
         }
         .toolbar {
-            if store.selected != nil { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+            ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
         }
     }
     private func heading(_ text: String) -> some View {
