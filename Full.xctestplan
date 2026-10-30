@@ -1,0 +1,35 @@
+{
+  "configurations": [
+    {
+      "id": "5B1E3C2A-0002-4A6E-9C11-5A0E5A0E5A02",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "targetForVariableExpansion": {
+      "containerPath": "container:Patchwork.xcodeproj",
+      "identifier": "6FC2263C261E412B7E2F41CC",
+      "name": "Patchwork"
+    }
+  },
+  "testTargets": [
+    {
+      "parallelizable": true,
+      "target": {
+        "containerPath": "container:Patchwork.xcodeproj",
+        "identifier": "8977A4225AE3FD1CE633B023",
+        "name": "PatchworkTests"
+      }
+    },
+    {
+      "parallelizable": true,
+      "target": {
+        "containerPath": "container:Patchwork.xcodeproj",
+        "identifier": "A8001EB949FA4D95BB51D730",
+        "name": "PatchworkUITests"
+      }
+    }
+  ],
+  "version": 1
+}

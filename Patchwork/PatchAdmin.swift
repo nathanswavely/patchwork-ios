@@ -10,9 +10,10 @@ import Foundation
 // `ListNodeEventSubmissions` and `ReviewEventSubmission`, and web ADRs 026,
 // 040, 081, 093 and 098.
 //
-// None of it is step-up gated. Role changes are left on the website: the
-// server refuses most promotions with a sentence about how the patch makes
-// its admins, and the web's council note carries context a phone row cannot.
+// None of it is step-up gated. Role changes are in `PatchSettings.swift`:
+// the server refuses most promotions with a sentence about how the patch
+// makes its admins, so a promotion is offered only where the patch's rules
+// say it would be honoured.
 
 // MARK: - The shapes
 
@@ -274,7 +275,6 @@ enum PatchAdmin {
 
     static let approvedTier = "Approving publishes a suggestion to everyone. To keep it to followers or members, edit the event once it’s approved."
     static let declineConsequence = "Declining deletes the suggestion from this quilt. Whoever suggested it is told it was declined, with your note if you write one."
-    static let roleNote = "Changing someone’s role, or making them an admin, happens on this quilt’s website."
     static let inviteHelp = "They’re notified and join only if they accept."
 
     // MARK: Where a request notification goes

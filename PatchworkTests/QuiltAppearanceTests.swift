@@ -148,53 +148,67 @@ final class QuiltAppearanceTests: XCTestCase {
         let flat: (String) -> [QuiltBadges.Shape] = { _ in [QuiltBadges.Shape(textWidth: 60, lines: 1)] }
         let big = QuiltBadges.Candidate(id: "big", name: "Big", rect: CGRect(x: 50, y: 50, width: 100, height: 100))
         let small = QuiltBadges.Candidate(id: "small", name: "Small", rect: CGRect(x: 300, y: 50, width: 50, height: 50))
-        let viewport = CGRect(x: 0, y: 0, width: 800, height: 600)
-        var plan = QuiltBadges.plan([big, small], held: [], viewport: viewport, type: type, shapes: flat)
+        var plan = QuiltBadges.plan([big, small], held: [], type: type, shapes: flat)
         XCTAssertEqual(plan.map(\.id), ["big"], "a tile earns a badge at 52pt on screen")
-        plan = QuiltBadges.plan([big, small], held: ["small"], viewport: viewport, type: type, shapes: flat)
+        plan = QuiltBadges.plan([big, small], held: ["small"], type: type, shapes: flat)
         XCTAssertEqual(plan.map(\.id), ["small", "big"], "an incumbent holds down to 44pt and is placed first")
         XCTAssertEqual(plan[1].rect, CGRect(x: 100 - 36, y: 100 - 11, width: 72, height: 22))
-        let offscreen = QuiltBadges.Candidate(id: "off", name: "Off", rect: CGRect(x: -400, y: 50, width: 100, height: 100))
-        XCTAssertTrue(QuiltBadges.plan([offscreen], held: [], viewport: viewport, type: type, shapes: flat).isEmpty)
     }
 
-    func testBadgesRideTheVisiblePartOfTheirTile() throws {
+    func testBadgesArePinnedToTheirTilesAndBlindToTheScreen() throws {
         let type = QuiltBadges.Typeface(size: 12)
         let flat: (String) -> [QuiltBadges.Shape] = { _ in [QuiltBadges.Shape(textWidth: 60, lines: 1)] }
-        let viewport = CGRect(x: 0, y: 0, width: 400, height: 600)
-        // A tile whose centre has gone under the top bar: its name is held
-        // inside the viewport, still on the tile, rather than cut in half.
-        let under = QuiltBadges.Candidate(id: "u", name: "Under", rect: CGRect(x: 100, y: -80, width: 120, height: 120))
-        let pinned = try XCTUnwrap(QuiltBadges.plan([under], held: [], viewport: viewport, type: type, shapes: flat).first)
-        XCTAssertEqual(pinned.rect.minY, QuiltBadges.edgeInset)
-        XCTAssertEqual(pinned.rect.midX, 160, "only the axis that crosses the edge moves")
-        // Off the left edge, the same.
-        let left = QuiltBadges.Candidate(id: "l", name: "Left", rect: CGRect(x: -40, y: 200, width: 120, height: 120))
-        let held = try XCTUnwrap(QuiltBadges.plan([left], held: [], viewport: viewport, type: type, shapes: flat).first)
-        XCTAssertEqual(held.rect.minX, QuiltBadges.edgeInset)
-        // Too little of the tile left to hold the whole pill: it waits.
-        let sliver = QuiltBadges.Candidate(id: "s", name: "Sliver", rect: CGRect(x: 100, y: -110, width: 120, height: 120))
-        XCTAssertTrue(QuiltBadges.plan([sliver], held: [], viewport: viewport, type: type, shapes: flat).isEmpty)
-        // The viewport's own inset edge — the view switcher at the foot — is kept clear too.
-        let foot = QuiltBadges.Candidate(id: "f", name: "Foot", rect: CGRect(x: 100, y: 500, width: 120, height: 120))
-        let footed = try XCTUnwrap(QuiltBadges.plan([foot], held: [], viewport: CGRect(x: 0, y: 0, width: 400, height: 544), type: type, shapes: flat).first)
-        XCTAssertEqual(footed.rect.maxY, 544 - QuiltBadges.edgeInset)
+        // A tile whose centre is far off any screen, or half under a bar, is
+        // planned exactly as one in plain view: the plan has no viewport.
+        let off = QuiltBadges.Candidate(id: "off", name: "Off", rect: CGRect(x: -400, y: -80, width: 120, height: 120))
+        let badge = try XCTUnwrap(QuiltBadges.plan([off], held: [], type: type, shapes: flat).first)
+        XCTAssertEqual(badge.rect.midX, off.rect.midX)
+        XCTAssertEqual(badge.rect.midY, off.rect.midY, "a badge sits at its tile's centre and is cut where the tile is")
+        // The same quilt seen from anywhere wears the same names in the same
+        // shapes, each moved with its tile: a pan can only translate them.
+        let quilt: [QuiltBadges.Candidate] = (0..<12).map { (i: Int) -> QuiltBadges.Candidate in
+            let side: CGFloat = i % 3 == 0 ? 90 : 60
+            let origin = CGPoint(x: CGFloat(i % 4) * 90, y: CGFloat(i / 4) * 90)
+            return QuiltBadges.Candidate(id: "t\(i)", name: "Patch \(i)", rect: CGRect(origin: origin, size: CGSize(width: side, height: side)))
+        }
+        let shifted = quilt.map { QuiltBadges.Candidate(id: $0.id, name: $0.name, rect: $0.rect.offsetBy(dx: -517, dy: 233)) }
+        let here = QuiltBadges.plan(quilt, held: [], type: type, shapes: flat)
+        let there = QuiltBadges.plan(shifted, held: [], type: type, shapes: flat)
+        XCTAssertFalse(here.isEmpty)
+        XCTAssertEqual(here.map(\.id), there.map(\.id))
+        XCTAssertEqual(here.map(\.shape), there.map(\.shape))
+        XCTAssertEqual(here.map { $0.rect.offsetBy(dx: -517, dy: 233) }, there.map(\.rect))
+    }
+
+    /// Only badges near the screen exist as views, and panning makes the
+    /// rest without re-planning: the set is the plan's, the views are not.
+    func testBadgeLayerRealisesOnlyWhatIsNearTheScreen() {
+        let layer = BadgeLayer(frame: CGRect(x: 0, y: 0, width: 4000, height: 800))
+        let near = QuiltBadges.Candidate(id: "near", name: "Near", rect: CGRect(x: 100, y: 100, width: 120, height: 120))
+        let far = QuiltBadges.Candidate(id: "far", name: "Far", rect: CGRect(x: 3000, y: 100, width: 120, height: 120))
+        layer.plan([near, far], visible: CGRect(x: 0, y: 0, width: 400, height: 800), fade: false)
+        XCTAssertEqual(layer.badge(at: CGPoint(x: 160, y: 160)), "near")
+        XCTAssertNil(layer.badge(at: CGPoint(x: 3060, y: 160)), "a badge a screen and more away is planned but not made")
+        layer.reveal(CGRect(x: 2800, y: 0, width: 400, height: 800))
+        XCTAssertEqual(layer.badge(at: CGPoint(x: 3060, y: 160)), "far", "panning to it makes it, where the plan put it")
+        XCTAssertNil(layer.badge(at: CGPoint(x: 160, y: 160)), "and lets the one left behind go")
+        layer.reveal(CGRect(x: 0, y: 0, width: 400, height: 800))
+        XCTAssertEqual(layer.badge(at: CGPoint(x: 160, y: 160)), "near", "coming back finds it where it was")
     }
 
     func testBadgesStackBeforeTheyGiveUp() {
         let type = QuiltBadges.Typeface(size: 12)
         let left = QuiltBadges.Candidate(id: "l", name: "Left", rect: CGRect(x: 50, y: 50, width: 100, height: 100))
         let right = QuiltBadges.Candidate(id: "r", name: "Right", rect: CGRect(x: 150, y: 50, width: 100, height: 100))
-        let viewport = CGRect(x: 0, y: 0, width: 800, height: 600)
         let flat: (String) -> [QuiltBadges.Shape] = { _ in [QuiltBadges.Shape(textWidth: 60, lines: 1)] }
-        XCTAssertEqual(QuiltBadges.plan([left, right], held: [], viewport: viewport, type: type, shapes: flat).map(\.id), ["l"],
+        XCTAssertEqual(QuiltBadges.plan([left, right], held: [], type: type, shapes: flat).map(\.id), ["l"],
                        "two pills 100pt apart cannot both clear a 32pt gap")
         let stacking: (String) -> [QuiltBadges.Shape] = { _ in [QuiltBadges.Shape(textWidth: 60, lines: 1), QuiltBadges.Shape(textWidth: 20, lines: 2)] }
-        let plan = QuiltBadges.plan([left, right], held: [], viewport: viewport, type: type, shapes: stacking)
+        let plan = QuiltBadges.plan([left, right], held: [], type: type, shapes: stacking)
         XCTAssertEqual(plan.map(\.id), ["l", "r"])
         XCTAssertEqual(plan[0].shape.lines, 1, "the first badge wears the flat pill")
         XCTAssertEqual(plan[1].shape.lines, 2, "the second stacks to clear its neighbour")
-        let held = QuiltBadges.plan([left, right], held: ["r"], viewport: viewport, type: type, shapes: flat)
+        let held = QuiltBadges.plan([left, right], held: ["r"], type: type, shapes: flat)
         XCTAssertEqual(held.map(\.id), ["r"], "an incumbent keeps its spot against a rival of equal size")
     }
 

@@ -15,7 +15,7 @@ import Foundation
 //
 // The values and the calls live in this file; the screens are in
 // `PatchNoticeboard.swift` and `NoticeDetail.swift`. The board's settings
-// and its report queue are an admin's, and stay the website's.
+// and its report queue are its admins', in `NoticeReports.swift`.
 
 // MARK: - The payload's parts
 

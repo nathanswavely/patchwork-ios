@@ -184,9 +184,12 @@ enum NotificationLink {
         case governance(slug: String)
         case proposal(slug: String, id: String)
         case document(slug: String, id: String)
-        /// A patch's noticeboard, and one notice on it (web ADR 081). The
-        /// board's settings and report queue are still the website's.
+        /// A patch's noticeboard, and one notice on it (web ADR 081).
         case noticeboard(slug: String)
+        /// The board's settings page, where the web keeps the report queue:
+        /// `notice.reported` links there. An admin is shown the queue; who
+        /// else the link reaches is decided where the reader is known.
+        case noticeReports(slug: String)
         case notice(slug: String, id: String)
         case event(id: String)
         case remotePatch(host: String, slug: String)
@@ -219,6 +222,8 @@ enum NotificationLink {
                 case "claim", "setup": return .claim(slug: slug)
                 default: break
                 }
+            case 4 where parts[2] == "settings" && parts[3] == "noticeboard":
+                return .noticeReports(slug: slug)
             case 4 where parts[2] == "noticeboard":
                 // `/noticeboard/new` is the web's compose page, which here
                 // is a sheet over the board; anything else is a notice's id.
@@ -652,6 +657,11 @@ extension NotificationLink.Destination {
         case .proposal(_, let id): return .proposal(try await session.api.get("proposals/\(id)"))
         case .document(_, let id): return .document(try await session.api.get("governance/\(id)"))
         case .noticeboard(let slug): return .noticeboard(try await patch(slug))
+        // The queue is the patch's own admin's; anybody else is shown the
+        // board the reports were about.
+        case .noticeReports(let slug):
+            if PatchAdmin.runs(session.standing(for: slug)) { return .noticeReports(slug) }
+            return .noticeboard(try await patch(slug))
         // The notice's screen reads itself, and is the one that knows how to
         // say it was taken down — so it is pushed on its id.
         case .notice(_, let id): return .notice(Notice(id: id))
@@ -681,6 +691,7 @@ struct RouteScreen: View {
         case .proposal(let proposal): ProposalDetailView(quilt: session.quilt, initial: proposal)
         case .document(let document): GovernanceDocumentDetail(quilt: session.quilt, initial: document)
         case .noticeboard(let patch): PatchNoticeboard(quilt: session.quilt, patch: patch)
+        case .noticeReports(let slug): NoticeReportsView(slug: slug)
         case .notice(let notice): NoticeDetailView(quilt: session.quilt, initial: notice)
         case .event(let event): EventDetail(quilt: session.quilt, initial: event)
         case .remote(let host, let slug): RemotePatchView(host: host, slug: slug)
@@ -706,6 +717,7 @@ enum NotificationRoute: Hashable {
     case proposal(Proposal)
     case document(GovernanceDocument)
     case noticeboard(Patch)
+    case noticeReports(String)
     case notice(Notice)
     case event(PatchworkEvent)
     case remote(host: String, slug: String)
