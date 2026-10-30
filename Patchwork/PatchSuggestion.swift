@@ -268,10 +268,10 @@ struct SuggestPatchForm: View {
     private var foot: some View {
         Button { if waiting { dismiss() } else { submit() } } label: {
             Group {
-                if busy { ProgressView().tint(.white) } else { Text(waiting ? "Done" : "Submit").font(Font.pw.headline) }
+                if busy { ProgressView().tint(Color.pwOnAccent) } else { Text(waiting ? "Done" : "Submit").font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
-            .foregroundStyle(busy ? Color.pwTextMuted : Color.white)
+            .foregroundStyle(busy ? Color.pwTextMuted : Color.pwOnAccent)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)

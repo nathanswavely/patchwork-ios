@@ -196,7 +196,7 @@ struct SettingsIndex: View {
                     NavigationLink { DeleteAccountSettings(onExit: onExit) } label: {
                         Label("Delete account", systemImage: "trash")
                             .font(Font.pw.body)
-                            .foregroundStyle(Color(.systemRed))
+                            .foregroundStyle(Color.pwDestructive)
                     }
                     .accessibilityIdentifier("settingsDelete")
                 }
@@ -528,6 +528,7 @@ struct SecuritySettings: View {
                         if sessions.contains(where: { !$0.isCurrent }) {
                             Button(role: .destructive) { confirmOthers = true } label: {
                                 Text("Sign out other devices").font(Font.pw.body)
+                                    .frame(maxWidth: .infinity, alignment: .leading).tapTarget()
                             }
                             .disabled(busy)
                             .accessibilityIdentifier("sessionsSignOutOthers")
@@ -560,23 +561,35 @@ struct SecuritySettings: View {
 
     private func sessionRow(_ row: AccountSession) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(row.label?.isEmpty == false ? row.label! : "Unknown device").font(Font.pw.body).foregroundStyle(Color.pwText)
-                if row.isCurrent {
-                    Text("This device")
-                        .font(Font.pw.caption2Semibold).foregroundStyle(Color.pwTextMuted)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
-                        .accessibilityIdentifier("sessionThisDevice")
+            // The device and its times are one element, at least 44pt
+            // tall: the row's swipe action makes VoiceOver treat its words
+            // as something to act on, and the times line alone was 17pt.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(row.label?.isEmpty == false ? row.label! : "Unknown device").font(Font.pw.body).foregroundStyle(Color.pwText)
+                    if row.isCurrent {
+                        Text("This device")
+                            .font(Font.pw.caption2Semibold).foregroundStyle(Color.pwTextMuted)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .overlay(Capsule().strokeBorder(Color.pwBorder, lineWidth: 1))
+                    }
                 }
+                let line = AccountDate.sessionLine(row)
+                if !line.isEmpty { Text(line).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
             }
-            let line = AccountDate.sessionLine(row)
-            if !line.isEmpty { Text(line).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
+            .frame(minHeight: 44, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(row.isCurrent ? "sessionThisDevice" : "sessionRow")
             // This one is signing out *here*: that is the account menu's job,
             // not a row's.
             if !row.isCurrent {
                 Button { Task { await revoke(row) } } label: {
-                    Text("Sign out").font(Font.pw.footnote).inkAction("xmark.circle")
+                    // The word alone: in this row any glyph beside it stood
+                    // apart to VoiceOver as a small element of its own.
+                    Text("Sign out")
+                        .font(Font.pw.footnote).foregroundStyle(Color.pwText).underline()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .tapTarget()
                 }
                 .buttonStyle(.borderless)
                 .disabled(busy)
@@ -748,13 +761,13 @@ struct DeleteAccountSettings: View {
                 }
                 Button(role: .destructive) { asking = true } label: {
                     Group {
-                        if deleting { ProgressView().tint(.white) } else { Text("Delete my account").font(Font.pw.headline) }
+                        if deleting { ProgressView().tint(Color.pwOnAccent) } else { Text("Delete my account").font(Font.pw.headline) }
                     }
                     .frame(maxWidth: .infinity, minHeight: 28)
-                    .foregroundStyle(matches ? Color.white : Color.pwTextMuted)
+                    .foregroundStyle(matches ? Color.pwOnAccent : Color.pwTextMuted)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(.systemRed))
+                .tint(Color.pwDestructive)
                 .controlSize(.large)
                 .disabled(!matches || deleting)
                 .accessibilityIdentifier("deleteAccount")

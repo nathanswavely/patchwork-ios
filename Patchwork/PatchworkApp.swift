@@ -58,7 +58,9 @@ struct FailureView: View {
         } description: {
             Text(message).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
         } actions: {
-            Button("Try again", action: retry).font(Font.pw.headline).buttonStyle(.borderedProminent)
+            // The app's ink would win over the button's own white; on the
+            // rust the word is pwOnAccent.
+            Button("Try again", action: retry).font(Font.pw.headline).buttonStyle(.borderedProminent).foregroundStyle(Color.pwOnAccent)
         }
     }
 }

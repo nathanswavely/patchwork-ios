@@ -337,10 +337,10 @@ struct ClaimPatchView: View {
     private func primary(_ title: String, identifier: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Group {
-                if busy { ProgressView().tint(.white) } else { Text(title).font(Font.pw.headline) }
+                if busy { ProgressView().tint(Color.pwOnAccent) } else { Text(title).font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
-            .foregroundStyle(enabled && !busy ? Color.white : Color.pwTextMuted)
+            .foregroundStyle(enabled && !busy ? Color.pwOnAccent : Color.pwTextMuted)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)

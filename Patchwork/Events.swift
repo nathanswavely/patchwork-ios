@@ -8,6 +8,7 @@ import SwiftUI
 /// by day made a quiet week look like a wall of empty headings.
 struct EventList: View {
     @EnvironmentObject private var session: QuiltSession
+    @Environment(\.dynamicTypeSize) private var textSize
     let quilt: Quilt
     /// Set when this list is one patch's own calendar, which is also where
     /// the standing subscriptions belong.
@@ -107,10 +108,16 @@ struct EventList: View {
             Divider()
             Button("Custom range…") { pickingRange = true }
         } label: {
+            // A menu is a control, and its label is still words: ink, with
+            // the control's own glyph doing what the colour did. At the
+            // accessibility sizes the menu squeezed "Date" until it broke
+            // mid-word, so there the calendar glyph stands for the word.
             HStack {
-                // A menu is a control, and its label is still words: ink,
-                // with the control's own glyph doing what the colour did.
-                Label("Date", systemImage: "calendar").font(Font.pw.subheadlineMedium).foregroundStyle(Color.pwText)
+                if textSize.isAccessibilitySize {
+                    Image(systemName: "calendar").font(Font.pw.subheadlineMedium).foregroundStyle(Color.pwText)
+                } else {
+                    Label("Date", systemImage: "calendar").font(Font.pw.subheadlineMedium).foregroundStyle(Color.pwText)
+                }
                 Spacer()
                 Text(dates.label(timeZone: zone)).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                 Image(systemName: "chevron.up.chevron.down").font(Font.pw.caption2).foregroundStyle(Color.pwTextMuted)
@@ -138,7 +145,7 @@ struct EventList: View {
                     Text("Nothing from the patches you follow or join matches what you picked\(forRange).")
                 } actions: {
                     Button("Clear filter") { session.clearFilters() }
-                        .font(Font.pw.headline).buttonStyle(.borderedProminent)
+                        .font(Font.pw.headline).buttonStyle(.borderedProminent).foregroundStyle(Color.pwOnAccent)
                     Button("Show the whole quilt") { session.scope = .whole }
                         .font(Font.pw.subheadlineMedium).accessibilityIdentifier("showWholeQuilt")
                 }
@@ -160,7 +167,7 @@ struct EventList: View {
                     Text("Nothing on this quilt matches what you picked\(forRange).")
                 } actions: {
                     Button("Clear filter") { session.clearFilters() }
-                        .font(Font.pw.headline).buttonStyle(.borderedProminent)
+                        .font(Font.pw.headline).buttonStyle(.borderedProminent).foregroundStyle(Color.pwOnAccent)
                 }
                 .accessibilityIdentifier("eventsFilteredEmpty")
             } else {
@@ -399,12 +406,15 @@ struct EventDetail: View {
                 // Nothing to add while a submission is still in the queue:
                 // the endpoint 404s and there is no night to keep.
                 if !event.awaitingReview { AddToCalendarMenu(event: event, permalink: permalink, api: api) }
+                // The face named here, as every other line on this page
+                // names its own, rather than left to the app's root.
                 if let url = event.externalURL {
                     Link(destination: url) {
                         Label("Tickets & details on \(url.host()?.replacingOccurrences(of: "www.", with: "") ?? "the web")", systemImage: "arrow.up.right.square")
+                            .font(Font.pw.body)
                     }.exitLink()
                 }
-                Link("Open on quilt website", destination: permalink).exitLink()
+                Link(destination: permalink) { Text("Open on quilt website").font(Font.pw.body) }.exitLink()
             }
             if let error {
                 Section {
@@ -587,10 +597,18 @@ struct EventDetail: View {
             .frame(height: 150)
             .listRowInsets(EdgeInsets())
             .accessibilityLabel("Map of \(event.location ?? event.title)")
-            Button { mapItem(coordinate).openInMaps() } label: { Label("Open in Maps", systemImage: "map") }
+            // Worded acts in ink, as every other on this page: the tint's
+            // rust as words sat at the edge of AA on the card.
+            Button { mapItem(coordinate).openInMaps() } label: {
+                Text("Open in Maps").font(Font.pw.body).inkAction("map")
+            }
+            .buttonStyle(.plain)
             Button {
                 mapItem(coordinate).openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
-            } label: { Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond") }
+            } label: {
+                Text("Directions").font(Font.pw.body).inkAction("arrow.triangle.turn.up.right.diamond")
+            }
+            .buttonStyle(.plain)
         }
     }
     private func mapItem(_ coordinate: CLLocationCoordinate2D) -> MKMapItem {

@@ -101,6 +101,10 @@ struct InviteSheet: View {
     private var quiltName: String { session.instance?.name ?? session.quilt.name }
     private var emailEnabled: Bool { session.instance?.emailEnabled == true }
 
+    /// The recovery codes are on screen: the one step that cannot be left
+    /// until they are saved.
+    private var holdingCodes: Bool { if case .codes = step { return true } else { return false } }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -128,14 +132,16 @@ struct InviteSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
-                if case .codes = step {} else {
+                // A condition with only one branch: an empty branch is an
+                // `EmptyView` as toolbar content, which only iOS 27 accepts.
+                if !holdingCodes {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) }
                 }
             }
         }
         // The codes are the only way back in on a quilt with no mail: the
         // sheet is not let go of until they are saved.
-        .interactiveDismissDisabled(busy || { if case .codes = step { return true } else { return false } }())
+        .interactiveDismissDisabled(busy || holdingCodes)
     }
 
     // MARK: Steps

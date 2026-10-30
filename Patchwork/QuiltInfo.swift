@@ -142,17 +142,11 @@ struct QuiltInfoFooter: View {
         [(.label, "The Label"), (.about, "About"), (.privacy, "Privacy"), (.terms, "Terms")]
     @State private var opened: InfoPage?
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(Array(pages.enumerated()), id: \.offset) { index, entry in
-                if index > 0 { Text("·").foregroundStyle(Color.pwTextMuted) }
-                Button(entry.title) { opened = entry.page }
-                    .buttonStyle(.plain)
-                    // Ink with a rule under it, not a coloured phrase: four
-                    // tinted words in a row read as a toolbar, not a footer.
-                    .foregroundStyle(Color.pwText)
-                    .underline()
-                    .accessibilityIdentifier("footer-" + entry.page.identifier)
-            }
+        // One row where it fits; at the larger text sizes, where four words
+        // in a line would each be cut short, a column of them.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { links(separated: true) }
+            VStack(spacing: 0) { links(separated: false) }
         }
         .font(Font.pw.footnote)
         .lineLimit(1)
@@ -161,6 +155,21 @@ struct QuiltInfoFooter: View {
         .textCase(nil)
         .sheet(item: $opened) { page in
             NavigationStack { page.view.modifier(SheetDone()) }
+        }
+    }
+}
+
+extension QuiltInfoFooter {
+    @ViewBuilder private func links(separated: Bool) -> some View {
+        ForEach(Array(pages.enumerated()), id: \.offset) { index, entry in
+            if separated && index > 0 { Text("·").foregroundStyle(Color.pwTextMuted).accessibilityHidden(true) }
+            Button { opened = entry.page } label: {
+                // Ink with a rule under it, not a coloured phrase: four
+                // tinted words in a row read as a toolbar, not a footer.
+                Text(entry.title).underline().foregroundStyle(Color.pwText).tapTarget()
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("footer-" + entry.page.identifier)
         }
     }
 }

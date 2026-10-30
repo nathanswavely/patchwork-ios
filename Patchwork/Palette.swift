@@ -26,15 +26,20 @@ import UIKit
 /// | `pwSurface`    | `#FAF6EE` | `#1C2028` | `#FFFFFF`       | `#242A33`      |
 /// | `pwBorder`     | `#DDD8CC` | `#2A2E38` | `#A9A294`       | `#4A5060`      |
 /// | `pwText`       | `#2A2520` | `#E0DBD4` | `#1A1510`       | `#F5F2EC`      |
-/// | `pwTextMuted`  | `#6B655C` | `#9B958C` | `#4E483F`       | `#BAB4AA`      |
+/// | `pwTextMuted`  | `#57514A` | `#ADA79E` | `#4E483F`       | `#BAB4AA`      |
 ///
 /// Contrast (WCAG, against the ground): text 13.4:1 light / 12.9:1 dark;
-/// muted 5.1:1 light / 5.5:1 dark — AA for body text at both ends, and the
-/// Increase Contrast variants only ever move further from the ground.
+/// muted 6.9:1 light / 7.4:1 dark — AA for body text at both ends, and the
+/// Increase Contrast variants only ever move further from the ground. The
+/// muted pair was `#6B655C` / `#9B958C` (5.1:1 / 6.0:1) until the
+/// accessibility audit measured it: the text face's thin strokes render
+/// lighter than their colour, and captions in it fell short on screen.
 ///
 /// **The one tint rule still stands.** None of these is a tint: the single
-/// accent is `AccentColor` (`#0272B5` light, `#39B4F6` dark — the web's
-/// `--color-primary`), and nothing else in the chrome may stand for action.
+/// accent is `AccentColor` (`#C43D07` light, `#E8734A` dark — the web's
+/// `--color-accent`), and nothing else in the chrome may stand for action.
+/// A word on its fill is `pwOnAccent`, not white: white on the dark rust is
+/// 3:1, short of AA.
 extension Color {
     /// The ground everything is laid on: the textile canvas.
     static let pwGround = Color("PWGround")
@@ -51,6 +56,19 @@ extension Color {
     /// environment is carrying, which is the system's blue until something
     /// sets it, and the app was quietly drawing iOS blue because of it.
     static let pwAccent = Color("AccentColor")
+    /// A word on the accent's fill: white on the light rust, and ink on the
+    /// dark one, which is too light for white to reach AA on it (3:1).
+    static let pwOnAccent = Color(UIColor { $0.userInterfaceStyle == .dark ? .black : .white })
+    /// The one act that cannot be taken back: deleting, declining, leaving.
+    /// The system's red is 3.4:1 as words on the light surface and 3.6:1
+    /// under white, so light mode takes a deeper red that reaches AA both
+    /// ways; dark mode keeps the system's, which does. A word on its fill
+    /// is `pwOnAccent`, like a word on the accent's.
+    static let pwDestructive = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.systemRed.resolvedColor(with: traits)
+            : UIColor(red: 0.769, green: 0.153, blue: 0.114, alpha: 1)
+    })
 }
 
 extension UIColor {
@@ -176,7 +194,24 @@ struct FieldStyle: ViewModifier {
     }
 }
 
+/// A word worn as a chip: a role, a notice's state, an outcome, a vote. The
+/// word is ink and any colour is in the fill — a tinted or muted word on a
+/// tinted fill fell short of AA at caption size, and the word says the
+/// thing whatever its colour.
+struct ChipFace: ViewModifier {
+    var fill = Color(.secondarySystemFill)
+    func body(content: Content) -> some View {
+        content
+            .font(Font.pw.caption2Semibold)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(fill, in: Capsule())
+            .foregroundStyle(Color.pwText)
+    }
+}
+
 extension View {
+    /// A word worn as a chip, its colour (if any) in the fill.
+    func chipFace(fill: Color = Color(.secondarySystemFill)) -> some View { modifier(ChipFace(fill: fill)) }
     func cardSurface(padding: CGFloat = PatchworkCard.padding) -> some View { modifier(CardSurface(padding: padding)) }
     /// A text field in the app's own clothes: surface, hairline, 10pt radius.
     func fieldStyle() -> some View { modifier(FieldStyle()) }
@@ -198,4 +233,8 @@ extension View {
     func inkRow(fills: Bool = true) -> some View { modifier(InkRow(fills: fills)) }
     /// A worded act — retry, load more, unfold — in ink, with its own glyph.
     func inkAction(_ symbol: String) -> some View { modifier(InkAction(symbol: symbol)) }
+    /// The 44pt the platform asks a tap to have, for a word pressed where it
+    /// stands — Reject, Reinstate, Unfollow — whose line is shorter than that.
+    /// Set on the label, which is what a plain or borderless button is hit by.
+    func tapTarget() -> some View { frame(minHeight: 44).contentShape(Rectangle()) }
 }

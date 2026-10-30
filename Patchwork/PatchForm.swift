@@ -195,7 +195,7 @@ struct PatchFormView: View {
             }
             if let suggestInstead {
                 Button(action: suggestInstead) {
-                    Text("Not yours to run? Suggest it instead").font(Font.pw.subheadline)
+                    Text("Not yours to run? Suggest it instead").font(Font.pw.subheadline).tapTarget()
                 }
                 .buttonStyle(.plain)
                 .inkAction("arrow.uturn.right")
@@ -299,7 +299,7 @@ struct PatchFormView: View {
                     }
                 } else {
                     Button { withAnimation { picking = true } } label: {
-                        Text("Put it on the map").font(Font.pw.subheadline)
+                        Text("Put it on the map").font(Font.pw.subheadline).tapTarget()
                     }
                     .buttonStyle(.plain)
                     .inkAction("mappin.and.ellipse")
@@ -345,7 +345,7 @@ struct PatchFormView: View {
                     .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     .fixedSize(horizontal: false, vertical: true)
                 NavigationLink { LiningView() } label: {
-                    Text("Read the lining").font(Font.pw.subheadline).inkRow(fills: false)
+                    Text("Read the lining").font(Font.pw.subheadline).inkRow(fills: false).tapTarget()
                 }
                 .accessibilityIdentifier("readLining")
             }
@@ -395,9 +395,13 @@ struct PatchFormView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 2) {
                 Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
-                if required { Text("*").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted).accessibilityLabel("required") }
+                if required { Text("*").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted) }
             }
-            .accessibilityElement(children: .combine)
+            // One element that says the word the asterisk stands for: a
+            // child labelled "required" over a one-glyph frame read to the
+            // audit as clipped text.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(required ? "\(title), required" : title)
             .accessibilityAddTraits(.isHeader)
             content()
             if let hint {
@@ -412,11 +416,11 @@ struct PatchFormView: View {
     private var foot: some View {
         Button { if finished { dismiss() } else { submit() } } label: {
             Group {
-                if busy { ProgressView().tint(.white) }
+                if busy { ProgressView().tint(Color.pwOnAccent) }
                 else { Text(finished ? "Done" : (setup ? "Finish setup" : "Create Patch")).font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
-            .foregroundStyle(busy ? Color.pwTextMuted : Color.white)
+            .foregroundStyle(busy ? Color.pwTextMuted : Color.pwOnAccent)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)
@@ -619,7 +623,7 @@ struct PlacePicker: View {
             HStack(spacing: 12) {
                 Button { if let center, center.isValid { onSave(center) } } label: {
                     Text(provisional ? "Use this spot" : "Save location").font(Font.pw.subheadlineSemibold)
-                        .foregroundStyle(center == nil ? Color.pwTextMuted : Color.white)
+                        .foregroundStyle(center == nil ? Color.pwTextMuted : Color.pwOnAccent)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.pwAccent)
@@ -729,7 +733,7 @@ struct TagPicker: View {
                 Text(text).font(Font.pw.footnoteSemibold)
                 Image(systemName: symbol).font(.caption2.weight(.bold)).accessibilityHidden(true)
             }
-            .foregroundStyle(filled ? Color.white : Color.pwText)
+            .foregroundStyle(filled ? Color.pwOnAccent : Color.pwText)
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(filled ? Color.pwAccent : Color.pwSurface, in: Capsule())
             .overlay(Capsule().strokeBorder(filled ? Color.clear : Color.pwBorder, style: StrokeStyle(lineWidth: 1, dash: dashed ? [3, 2] : [])))
@@ -880,7 +884,7 @@ private struct MotifSwatch: View {
                 Image(uiImage: image).renderingMode(.template).resizable().frame(width: 18, height: 18)
             }
         }
-        .foregroundStyle(selected ? Color.white : Color.pwText)
+        .foregroundStyle(selected ? Color.pwOnAccent : Color.pwText)
         .frame(width: 40, height: 40)
         .background(selected ? Color.pwAccent : Color.pwSurface, in: Circle())
         .overlay(Circle().strokeBorder(selected ? Color.clear : Color.pwBorder, lineWidth: 1))

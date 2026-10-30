@@ -392,14 +392,14 @@ struct EventFormSheet: View {
             if submitted { dismiss() } else { submit() }
         } label: {
             Group {
-                if busy { ProgressView().tint(.white) }
+                if busy { ProgressView().tint(Color.pwOnAccent) }
                 else { Text(submitted ? "Done" : actLabel).font(Font.pw.headline) }
             }
             .frame(maxWidth: .infinity, minHeight: 28)
             // The app's root sets ink on everything; a filled control's
             // label is the design's white (DESIGN.md, primary-action). A
             // disabled one has no fill to be white on, so it is muted ink.
-            .foregroundStyle(footEnabled ? Color.white : Color.pwTextMuted)
+            .foregroundStyle(footEnabled ? Color.pwOnAccent : Color.pwTextMuted)
         }
         .buttonStyle(.borderedProminent)
         .tint(Color.pwAccent)
