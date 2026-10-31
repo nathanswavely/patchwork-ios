@@ -15,7 +15,7 @@
   },
   "testTargets": [
     {
-      "parallelizable": true,
+      "parallelizable": false,
       "target": {
         "containerPath": "container:Patchwork.xcodeproj",
         "identifier": "8977A4225AE3FD1CE633B023",
@@ -23,7 +23,7 @@
       }
     },
     {
-      "parallelizable": true,
+      "parallelizable": false,
       "selectedTests": [
         "BrowsingTests/testBrowsePatchEventAndSwitchQuilt()",
         "BrowsingTests/testSignInByCodeAndSignOut()",

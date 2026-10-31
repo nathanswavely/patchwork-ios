@@ -146,7 +146,7 @@ The calls are `POST auth/webauthn/login/begin` and `/finish`, `POST auth/webauth
 
 Two test plans, checked in beside the project:
 
-- **Smoke** (`Smoke.xctestplan`, the default, so ⌘U runs it): every unit test, plus the seven paths that must never break — first launch to the quilt, a patch's rooms and an event and switching quilts; signing in by code and out; following from a card and letting go from the Dashboard; a member posting an event; voting and changing the vote; saving a profile and the next launch honouring it; putting up a notice and taking it down. A few minutes. It runs on every pull request.
+- **Smoke** (`Smoke.xctestplan`, the default, so ⌘U runs it): every unit test, plus the seven paths that must never break — first launch to the quilt, a patch's rooms and an event and switching quilts; signing in by code and out; following from a card and letting go from the Dashboard; a member posting an event; voting and changing the vote; saving a profile and the next launch honouring it; putting up a notice and taking it down. A few minutes, on one simulator: run in parallel, Xcode boots a clone of the simulator per worker, and on a busy Mac a dozen copies of iOS starved each other until nothing finished. It runs on every pull request.
 - **Full** (`Full.xctestplan`): every test, the accessibility audits included, with the UI tests spread across parallel simulators. It runs on every merge to main and before any release beyond internal TestFlight.
 
 While building, run only the classes a change touches (`-only-testing:PatchworkUITests/<Class>`). The tiers on Xcode Cloud: a pull-request workflow that runs Smoke, and a main workflow that runs Full and then archives for TestFlight, so every build testers receive has passed everything.
