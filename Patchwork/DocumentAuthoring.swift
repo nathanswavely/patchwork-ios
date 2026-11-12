@@ -124,7 +124,8 @@ struct DocumentAmendmentSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .disabled(busy)
                 }
-                .onChange(of: nudge) { _, now in withAnimation { proxy.scrollTo(now.target, anchor: .center) } }
+                .follows(nudge, in: proxy)
+                .clearsMissingAnswer($failure, answers: [aiUse])
             }
             .background(Color.pwGround.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)

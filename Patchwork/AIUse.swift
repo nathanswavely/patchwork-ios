@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import SwiftUI
+import UIKit
 
 // Whether AI made a post (web ADR 2026-10-20, "A post says whether AI made
 // it"). The surfaces that publish — events, patches, proposals, notices —
@@ -174,6 +175,33 @@ struct ScrollNudge: Equatable {
     private(set) var target = ""
     private(set) var count = 0
     mutating func to(_ id: String) { target = id; count += 1 }
+}
+
+extension View {
+    /// Scrolls to the question a refusal names. The keyboard goes first: a
+    /// focused field keeps itself in view, so with the title still being
+    /// typed the form would scroll straight back and the tap would seem to
+    /// do nothing.
+    func follows(_ nudge: ScrollNudge, in proxy: ScrollViewProxy) -> some View {
+        onChange(of: nudge) { _, now in
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                withAnimation { proxy.scrollTo(now.target, anchor: .center) }
+            }
+        }
+    }
+
+    /// Takes the "say whether AI was used" line down once the question it
+    /// pointed at is answered, rather than leaving it under an answer until
+    /// the next tap. Any other failure stays where it is.
+    func clearsMissingAnswer(_ failure: Binding<String?>, answers: [AIUse?]) -> some View {
+        onChange(of: answers) { _, _ in
+            guard let shown = failure.wrappedValue,
+                  shown == AIDisclosure.missingLine || shown == EventPosting.sentenceCased(AIDisclosure.missingLine) else { return }
+            failure.wrappedValue = nil
+        }
+    }
 }
 
 // MARK: - The tag

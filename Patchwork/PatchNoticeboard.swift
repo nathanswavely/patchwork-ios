@@ -385,7 +385,8 @@ struct NoticeFormSheet: View {
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .onChange(of: nudge) { _, now in withAnimation { proxy.scrollTo(now.target, anchor: .center) } }
+                .follows(nudge, in: proxy)
+                .clearsMissingAnswer($failure, answers: [draft.aiUse])
             }
             .background(Color.pwGround.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)

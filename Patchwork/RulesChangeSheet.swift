@@ -71,7 +71,8 @@ struct RulesChangeSheet: View {
                     }
                     .listRowBackground(Color.pwSurface)
                 }
-                .onChange(of: nudge) { _, now in withAnimation { proxy.scrollTo(now.target, anchor: .center) } }
+                .follows(nudge, in: proxy)
+                .clearsMissingAnswer($failure, answers: [aiUse])
             }
             .scrollContentBackground(.hidden)
             .background(Color.pwGround.ignoresSafeArea())
