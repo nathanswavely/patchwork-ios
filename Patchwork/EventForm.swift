@@ -134,6 +134,8 @@ struct EventFormSheet: View {
     @State private var movedTo: URL?
     /// The server held it for review: the form is replaced by the web's card.
     @State private var submitted = false
+    /// Where to scroll when the quilt requires an AI answer not yet given.
+    @State private var nudge = ScrollNudge()
 
     init(patch: Patch, right: EventPosting.Right, unclaimed: Bool, zone: TimeZone, followersAllowed: Bool,
          onPosted: @escaping (PatchworkEvent) -> Void) {
@@ -175,14 +177,19 @@ struct EventFormSheet: View {
     }
     private var changes: EventChanges? { original.map { draft.changes(from: $0, direct: direct) } }
 
+    private var ai: AIDisclosure { session.aiDisclosure }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if submitted { reviewCard } else { form }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if submitted { reviewCard } else { form }
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .onChange(of: nudge) { _, now in withAnimation { proxy.scrollTo(now.target, anchor: .center) } }
             }
             .background(Color.pwGround.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -198,6 +205,9 @@ struct EventFormSheet: View {
             .safeAreaInset(edge: .bottom) { foot }
         }
         .interactiveDismissDisabled(busy)
+        // A cleared image takes its answer with it, as the server drops it:
+        // a label left standing on a picture that is gone labels nothing.
+        .onChange(of: draft.hasImage) { _, has in if !has { draft.imageAI = nil } }
         // Signed out from under the form — a 401 — there is nobody left to
         // post as, so the form goes the way Settings goes.
         .onChange(of: session.me == nil) { _, gone in if gone { dismiss() } }
@@ -270,8 +280,22 @@ struct EventFormSheet: View {
                     .fieldStyle()
                     .accessibilityIdentifier("eventImageAlt")
             }
+            // Asked apart from the words (decision 3): the flyer's artwork
+            // and its description are often made by different hands.
+            if ai.asks {
+                field(AIUseQuestion.imageTitle, required: ai == .required) {
+                    AIUseQuestion(mode: ai, title: AIUseQuestion.imageTitle, answer: $draft.imageAI, identifier: "imageAI")
+                }
+                .id("imageAI")
+            }
         }
         timeFields
+        if ai.asks {
+            field(AIUseQuestion.title, required: ai == .required) {
+                AIUseQuestion(mode: ai, answer: $draft.aiUse)
+            }
+            .id("aiUse")
+        }
         if let failure {
             VStack(alignment: .leading, spacing: 8) {
                 Label { Text(failure).font(Font.pw.footnote) } icon: {
@@ -354,9 +378,9 @@ struct EventFormSheet: View {
         }
     }
 
-    private func field<Content: View>(_ title: String, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+    private func field<Content: View>(_ title: String, required: Bool = false, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+            FieldTitle(title: title, required: required, header: false)
             content()
             if let hint {
                 Text(hint).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
@@ -450,15 +474,16 @@ struct EventFormSheet: View {
         movedTo = nil
         if let editing, let changes { return save(editing, changes) }
         guard case .new(let patch, _) = mode else { return }
-        if let problem = draft.problem() {
+        if let problem = draft.problem(ai: ai) {
             failure = EventPosting.sentenceCased(problem)
+            if problem == AIDisclosure.missingLine { nudge.to(draft.unansweredAI) }
             return
         }
         busy = true
         Task {
             defer { busy = false }
             do {
-                let event = try await session.api.createEvent(draft.body(nodeId: patch.id, direct: direct))
+                let event = try await session.api.createEvent(draft.body(nodeId: patch.id, direct: direct, ai: ai))
                 // The server's answer decides the ending, not the door's
                 // prediction: a grant or a membership can change between
                 // the two, and the card must never promise a review that
@@ -485,8 +510,9 @@ struct EventFormSheet: View {
     /// the ending, as a post's does: back in review is the web's card, and
     /// anything else is the event page, already showing the change.
     private func save(_ event: PatchworkEvent, _ changes: EventChanges) {
-        if let problem = draft.editProblem(changes: changes) {
+        if let problem = draft.editProblem(changes: changes, ai: ai) {
             failure = EventPosting.sentenceCased(problem)
+            if problem == AIDisclosure.missingLine { nudge.to(draft.unansweredAI) }
             return
         }
         busy = true

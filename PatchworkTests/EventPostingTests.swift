@@ -139,7 +139,7 @@ final class EventPostingTests: XCTestCase {
         draft.title = "  Open mic  "
         draft.description = "   "
         draft.tier = .members
-        let body = try sent(draft.body(nodeId: "node-1", direct: false))
+        let body = try sent(draft.body(nodeId: "node-1", direct: false, ai: .off))
         XCTAssertEqual(body["node_id"] as? String, "node-1")
         XCTAssertEqual(body["title"] as? String, "Open mic", "trimmed")
         XCTAssertEqual(body["starts_at"] as? String, "2026-09-21T14:13:00.000Z", "an instant, to the minute, in the web's shape")
@@ -158,7 +158,7 @@ final class EventPostingTests: XCTestCase {
         draft.hasEnd = true
         draft.endsAt = start.addingTimeInterval(3 * 3600)
         draft.tier = .followers
-        let body = try sent(draft.body(nodeId: "node-1", direct: true))
+        let body = try sent(draft.body(nodeId: "node-1", direct: true, ai: .off))
         XCTAssertEqual(body["description"] as? String, "Bring the lamp.")
         XCTAssertEqual(body["location"] as? String, "4 Mill Lane")
         XCTAssertEqual(body["event_url"] as? String, "http://venue.example.org/fixit")
@@ -173,14 +173,14 @@ final class EventPostingTests: XCTestCase {
     func testAPublicDirectPostStillSaysSo() throws {
         var draft = EventDraft(start: start)
         draft.title = "A"
-        XCTAssertEqual(try sent(draft.body(nodeId: "n", direct: true))["visibility"] as? String, "public")
+        XCTAssertEqual(try sent(draft.body(nodeId: "n", direct: true, ai: .off))["visibility"] as? String, "public")
     }
 
     func testAnEndSwitchedOffIsNotSent() throws {
         var draft = EventDraft(start: start)
         draft.title = "A"
         draft.endsAt = start.addingTimeInterval(3600)
-        XCTAssertNil(try sent(draft.body(nodeId: "n", direct: true))["ends_at"])
+        XCTAssertNil(try sent(draft.body(nodeId: "n", direct: true, ai: .off))["ends_at"])
     }
 
     func testADescriptionWithNoPictureGoesNowhere() throws {
@@ -188,7 +188,7 @@ final class EventPostingTests: XCTestCase {
         draft.title = "A"
         draft.imageURL = "  "
         draft.imageAlt = "A flyer"
-        let body = try sent(draft.body(nodeId: "n", direct: false))
+        let body = try sent(draft.body(nodeId: "n", direct: false, ai: .off))
         XCTAssertNil(body["image_url"])
         XCTAssertNil(body["image_alt"])
     }

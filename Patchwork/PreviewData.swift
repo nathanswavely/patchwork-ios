@@ -77,7 +77,7 @@ enum PreviewData {
         {"id":"demo-event-3","node_id":"demo-patch-2","title":"Records and coffee",\
         "description":"Somebody brings a record, everybody listens to it.","location":"The Listening Room",\
         "starts_at":"\(instant(daysFromToday: 9))","timezone":"America/New_York",\
-        "recurrence":"","visibility":"members","status":"active","image_url":"","image_alt":"","event_url":"",\
+        "recurrence":"","visibility":"members","status":"active","image_url":"","image_alt":"","event_url":"","ai_use":"generated",\
         "node_name":"The Listening Room","node_slug":"listening-room","node_status":"unclaimed"}
         """
         let mine = """
@@ -85,7 +85,7 @@ enum PreviewData {
         "description":"Bring the toaster. We will look at it together.","location":"Repair Cafe back room",\
         "starts_at":"\(instant(daysFromToday: 4))","ends_at":"\(instant(daysFromToday: 4, hour: 20))",\
         "timezone":"America/New_York","recurrence":"monthly","visibility":"public","status":"active",\
-        "image_url":"","image_alt":"","event_url":"",\
+        "image_url":"","image_alt":"","event_url":"","ai_use":"none",\
         "node_name":"Repair Cafe","node_slug":"extra-6","node_status":"active"}
         """
         let imported = """
@@ -301,6 +301,20 @@ enum PreviewData {
     /// by nomination (the Collaborative template's leadership).
     static let marketSlug = "extra-5"
     private static let nominatorLaunch = ProcessInfo.processInfo.arguments.contains("--preview-nominator")
+    /// The sample quilt asks whether AI made a post and blocks nothing, as
+    /// the software ships (web ADR 2026-10-20). `--ai-required` makes it the
+    /// reference instance's setting, so a create without an answer is
+    /// refused here as the server refuses it.
+    private static let aiRequired = ProcessInfo.processInfo.arguments.contains("--ai-required")
+    /// `checkAIAnswer` on a create, in its words.
+    private static func aiRefusal(_ fields: [String: Any], _ field: String = "ai_use") throws {
+        let answer = (fields[field] as? String) ?? ""
+        if answer.isEmpty {
+            if aiRequired { throw APIError.message("\(field) is required: say whether AI was used (none, assisted or generated)", status: 400) }
+            return
+        }
+        guard AIUse(rawValue: answer) != nil else { throw APIError.message("\(field) must be none, assisted or generated", status: 400) }
+    }
     /// The extra the fixture reader is a member of: the Repair Cafe.
     static let memberSlug = "extra-6"
     /// The invite-only extra, the Food Share, whose admins ask the reader in
@@ -405,7 +419,7 @@ enum PreviewData {
         switch (method, path) {
         case ("PATCH", "auth/me"):
             var current = accountFields
-            for key in ["display_name", "bio", "links", "start_on_my_quilt", "hide_amended_linings"] {
+            for key in ["display_name", "bio", "links", "start_on_my_quilt", "hide_amended_linings", "hide_ai_work"] {
                 if let value = fields[key] { current[key] = value }
             }
             accountFields = current
@@ -744,6 +758,8 @@ enum PreviewData {
         var appearance: [String: Any]
         /// `active`, `unclaimed` or `pending_review`.
         var status: String
+        var aiUse: String? = nil
+        var aiWork: Bool? = nil
     }
     private static var madePatches: [MadePatch] = []
     /// The quilt's curated vocabulary, as `tags` serves it.
@@ -785,6 +801,13 @@ enum PreviewData {
         if !p.appearance.isEmpty { object["appearance"] = p.appearance }
         if let latitude = p.latitude, let longitude = p.longitude { object["latitude"] = latitude; object["longitude"] = longitude }
         if p.status == "unclaimed" { object["is_unclaimed"] = true; object["status"] = "unclaimed" }
+        if let aiUse = p.aiUse { object["ai_use"] = aiUse }
+        if let aiWork = p.aiWork { object["ai_work"] = aiWork }
+        // The AI answers an edit wrote since, so the workspace prompt goes
+        // once it has been answered.
+        for key in ["ai_use", "image_ai", "ai_work"] {
+            if let value = nodeEdits[p.slug]?[key] { object[key] = value is NSNull ? nil : value }
+        }
         // The id leads, as every fixture node's does: the tree's `scope=my`
         // narrowing finds a patch by the start of its JSON.
         return "{\"id\":\"\(p.id)\"," + serialize(object).dropFirst()
@@ -821,6 +844,7 @@ enum PreviewData {
         if let rotation = appearance["rotation"] as? Int, ![0, 90, 180, 270].contains(rotation) {
             throw APIError.message("appearance.rotation must be one of 0, 90, 180, 270", status: 400)
         }
+        try aiRefusal(fields)
         let tags = (fields["tags"] as? [String]) ?? []
         if let unknown = tags.first(where: { !vocabulary.contains($0) }) { throw APIError.message("unknown tag: \(unknown)", status: 400) }
         let slug = uniqueSlug(slug(for: name))
@@ -828,7 +852,8 @@ enum PreviewData {
                              description: (fields["description"] as? String) ?? "", address: (fields["address"] as? String) ?? "",
                              latitude: fields["latitude"] as? Double, longitude: fields["longitude"] as? Double,
                              website: (fields["website"] as? String) ?? "", tags: tags, policy: policy,
-                             appearance: appearance, status: "active")
+                             appearance: appearance, status: "active",
+                             aiUse: fields["ai_use"] as? String, aiWork: fields["ai_work"] as? Bool)
         madePatches.append(made)
         held[slug] = (role: "admin", status: "active")
         return madeJSON(made)
@@ -842,6 +867,7 @@ enum PreviewData {
         guard signedIn else { throw APIError.unauthenticated }
         let name = (fields["name"] as? String) ?? ""
         guard !name.isEmpty else { throw APIError.message("name is required", status: 400) }
+        try aiRefusal(fields)
         let tags = (fields["tags"] as? [String]) ?? []
         if let unknown = tags.first(where: { !vocabulary.contains($0) }) { throw APIError.message("unknown tag: \(unknown)", status: 400) }
         let base = slug(for: name)
@@ -858,7 +884,8 @@ enum PreviewData {
         let made = MadePatch(id: "suggested-\(madePatches.count + 1)", slug: base, name: name,
                              description: (fields["description"] as? String) ?? "", address: (fields["address"] as? String) ?? "",
                              latitude: nil, longitude: nil, website: (fields["website"] as? String) ?? "", tags: tags,
-                             policy: "invite_only", appearance: [:], status: trusted ? "unclaimed" : "pending_review")
+                             policy: "invite_only", appearance: [:], status: trusted ? "unclaimed" : "pending_review",
+                             aiUse: fields["ai_use"] as? String)
         madePatches.append(made)
         if trusted {
             return serialize(["status": "unclaimed", "node": ["id": made.id, "slug": made.slug, "name": made.name]])
@@ -1121,9 +1148,14 @@ enum PreviewData {
             guard let names = tags as? [String] else { throw APIError.message("tags must be an array of tag names", status: 400) }
             if let unknown = names.first(where: { !vocabulary.contains($0) }) { throw APIError.message("unknown tag: \(unknown)", status: 400) }
         }
+        if let raw = fields["ai_work"], !(raw is Bool) {
+            throw APIError.message("ai_work must be true, false or null", status: 400)
+        }
+        for field in ["ai_use", "image_ai"] where fields[field] is String { try aiRefusal(fields, field) }
         let allowed = ["name", "description", "latitude", "longitude", "address", "timezone", "website", "links", "visibility",
                        "appearance", "accept_event_suggestions", "notice_posting", "notice_replies_default",
-                       "public_member_list", "public_governance_record", "image_url", "image_alt", "tags"]
+                       "public_member_list", "public_governance_record", "image_url", "image_alt", "tags",
+                       "ai_use", "image_ai", "ai_work"]
         let written = allowed.filter { fields[$0] != nil }
         guard !written.isEmpty || fields["suggest_tags"] != nil else { throw APIError.message("no valid fields to update", status: 400) }
         for key in written {
@@ -1204,6 +1236,8 @@ enum PreviewData {
         guard !nodeId.isEmpty, !title.isEmpty, !starts.isEmpty else {
             throw APIError.message("node_id, title, and starts_at are required", status: 400)
         }
+        try aiRefusal(fields)
+        if !text("image_url").trimmingCharacters(in: .whitespaces).isEmpty { try aiRefusal(fields, "image_ai") }
         var visibility = text("visibility")
         if visibility.isEmpty { visibility = "public" }
         guard ["public", "followers", "members"].contains(visibility) else {
@@ -1236,6 +1270,8 @@ enum PreviewData {
             "image_alt": text("image_alt").trimmingCharacters(in: .whitespaces),
             "event_url": text("event_url").trimmingCharacters(in: .whitespaces), "status": status,
         ]
+        if !text("ai_use").isEmpty { event["ai_use"] = text("ai_use") }
+        if !text("image_ai").isEmpty && !text("image_url").isEmpty { event["image_ai"] = text("image_ai") }
         if let ends = fields["ends_at"] as? String { event["ends_at"] = ends }
         // The 201 is the bare event; the list and `events/{id}` add the
         // patch's name, slug and status beside it.
@@ -1313,7 +1349,8 @@ enum PreviewData {
             throw APIError.message(problem, status: 400)
         }
         let allowed = ["title", "description", "location", "latitude", "longitude", "starts_at", "ends_at", "timezone",
-                       "recurrence", "visibility", "image_url", "image_alt", "event_url"]
+                       "recurrence", "visibility", "image_url", "image_alt", "event_url", "ai_use", "image_ai"]
+        for field in ["ai_use", "image_ai"] where fields[field] is String { try aiRefusal(fields, field) }
         var edits = eventEdits[id] ?? [:]
         let sent = allowed.filter { fields.keys.contains($0) }
         guard !sent.isEmpty else { throw APIError.message("no valid fields to update", status: 400) }
@@ -1450,6 +1487,7 @@ enum PreviewData {
         var targetDoc = ""
         var proposedBody = ""
         var proposedTitle = ""
+        var aiUse: String? = nil
         var isElection: Bool { seats > 0 }
     }
 
@@ -1479,7 +1517,9 @@ enum PreviewData {
                 author: "Rowan Hale", authorId: "u1", status: "rejected", state: "lapsed",
                 createdMinutesAgo: 120 * day, endsInMinutes: -106 * day,
                 ballots: [FixtureBallot(userId: "u1", name: "Rowan Hale", username: "rowan", value: "approve"),
-                          FixtureBallot(userId: "u2", name: "Imani Osei", username: "imani", value: "approve")]),
+                          FixtureBallot(userId: "u2", name: "Imani Osei", username: "imani", value: "approve")],
+                // Its author said AI wrote it, so its page wears the tag.
+                aiUse: "generated"),
             FixtureProposal(
                 id: "demo-proposal-3", slug: "common-thread", nodeId: "demo-patch", title: "Amend the studio hours",
                 body: "Open at ten on Saturdays rather than nine: nobody comes before ten.",
@@ -1662,6 +1702,7 @@ enum PreviewData {
             "approve_count": counted.filter { $0.value == "approve" }.count,
             "reject_count": counted.filter { $0.value == "reject" }.count,
             "abstain_count": counted.filter { $0.value == "abstain" }.count,
+            "ai_use": p.aiUse.map { $0 as Any } ?? NSNull(),
         ]
     }
 
@@ -2203,6 +2244,7 @@ enum PreviewData {
         guard inRoom(slug) else { throw APIError.message("must be member of node", status: 403) }
         let title = (fields["title"] as? String) ?? ""
         guard !title.isEmpty else { throw APIError.message("title is required", status: 400) }
+        try aiRefusal(fields)
         var type = (fields["proposal_type"] as? String) ?? ""
         if type.isEmpty { type = "other" }
         guard ["amendment", "membership", "action", "other"].contains(type) else { throw APIError.message("invalid proposal_type", status: 400) }
@@ -2244,7 +2286,8 @@ enum PreviewData {
             targetName: marketRoster.first { $0.id == target }?.name ?? "",
             targetDoc: type == "amendment" ? targetDoc : "",
             proposedBody: type == "amendment" ? ((fields["proposed_body"] as? String) ?? "") : "",
-            proposedTitle: type == "amendment" ? ((fields["proposed_title"] as? String) ?? "") : "")
+            proposedTitle: type == "amendment" ? ((fields["proposed_title"] as? String) ?? "") : "",
+            aiUse: fields["ai_use"] as? String)
         if state == "in_effect" { applyAmendment(p, by: myName, message: (fields["change_summary"] as? String) ?? title) }
         proposals.append(p)
         var answer = listFields(p)
@@ -2293,6 +2336,7 @@ enum PreviewData {
         var membersTold = false
         let createdMinutesAgo: Int
         var editedMinutesAgo: Int?
+        var aiUse: String? = nil
     }
 
     private struct FixtureReply {
@@ -2345,6 +2389,11 @@ enum PreviewData {
                       title: "Soldering irons are back",
                       body: "Both irons are back from repair and on the bench by the window.\n\nPlease switch them off at the wall when you finish.",
                       membersTold: true, createdMinutesAgo: 9 * day),
+        // Said to be made with AI, so the board and the notice wear the tag.
+        FixtureNotice(id: "notice-r2", slug: memberSlug, authorId: "rc2", authorName: "Kofi Adu", authorUsername: "kofi",
+                      title: "Fix-it night poster",
+                      body: "The poster for next month, drafted with an image model and checked by hand.",
+                      createdMinutesAgo: 12 * day, aiUse: "generated"),
         // The Film Club's board, which its admin keeps on a
         // `--preview-admin` launch: one notice reported, and one whose
         // reply was.
@@ -2465,8 +2514,11 @@ enum PreviewData {
             let noticeId = report.entityType == "reply"
                 ? noticeReplies.first { $0.id == report.entityId }?.noticeId ?? report.entityId : report.entityId
             if let n = notices.firstIndex(where: { $0.id == noticeId }) { notices[n].repliesOpen = false }
+        case "label":
+            guard report.entityType == "notice" else { throw APIError.message("only a notice can be labelled", status: 400) }
+            if let n = notices.firstIndex(where: { $0.id == report.entityId }) { notices[n].aiUse = "generated" }
         default:
-            throw APIError.message("action must be dismiss, remove, or close_replies", status: 400)
+            throw APIError.message("action must be dismiss, remove, close_replies, or label", status: 400)
         }
         reports[index].status = status
         reports[index].note = (fields["resolution_note"] as? String) ?? ""
@@ -2482,6 +2534,7 @@ enum PreviewData {
             "updated_at": stamp(minutesAgo: n.editedMinutesAgo ?? n.createdMinutesAgo),
             "author_username": n.authorUsername, "author_display_name": n.authorName,
             "reply_count": noticeReplies.filter { $0.noticeId == n.id }.count,
+            "ai_use": n.aiUse.map { $0 as Any } ?? NSNull(),
         ]
     }
 
@@ -2564,6 +2617,7 @@ enum PreviewData {
             }
             let draft = noticeDraft(fields)
             if let problem = Noticeboard.problem(draft) { throw APIError.message(problem, status: 400) }
+            try aiRefusal(fields)
             noticeSerial += 1
             let notice = FixtureNotice(
                 id: "notice-\(noticeSerial)", slug: slug, authorId: me, authorName: myName,
@@ -2571,7 +2625,8 @@ enum PreviewData {
                 title: draft.title, body: draft.body, imageURL: draft.imageURL,
                 imageAlt: draft.imageURL.isEmpty ? "" : draft.imageAlt,
                 repliesOpen: (fields["replies_open"] as? Bool) ?? board.repliesDefault,
-                membersTold: (fields["tell_members"] as? Bool) ?? false, createdMinutesAgo: 0)
+                membersTold: (fields["tell_members"] as? Bool) ?? false, createdMinutesAgo: 0,
+                aiUse: fields["ai_use"] as? String)
             notices.insert(notice, at: 0)
             return serialize(noticeJSON(notice))
         }
@@ -2634,10 +2689,14 @@ enum PreviewData {
         guard parts.count == 2 else { throw APIError.status(405) }
         switch method {
         case "PATCH":
-            if ["title", "body", "image_url", "image_alt"].contains(where: { fields[$0] != nil }) {
+            if ["title", "body", "image_url", "image_alt", "ai_use"].contains(where: { fields[$0] != nil }) {
                 guard mine else { throw APIError.message("only the author can edit a notice", status: 403) }
                 let draft = noticeDraft(fields, over: notice)
                 if let problem = Noticeboard.problem(draft) { throw APIError.message(problem, status: 400) }
+                if fields["ai_use"] != nil {
+                    try aiRefusal(fields)
+                    notice.aiUse = fields["ai_use"] as? String
+                }
                 notice.title = draft.title; notice.body = draft.body
                 notice.imageURL = draft.imageURL; notice.imageAlt = draft.imageURL.isEmpty ? "" : draft.imageAlt
                 notice.editedMinutesAgo = 0
@@ -3421,11 +3480,18 @@ enum PreviewData {
             // One patch keeps its record to the room, so "not public" has
             // somewhere to be seen now the Listening Room publishes its own.
             let record = index == 1 ? ",\"public_governance_record\":\"nobody\"" : ""
+            // Neighborhood Books says its work relies heavily on AI, so a
+            // card and a head have the badge to wear (a claimed patch: an
+            // unclaimed listing carries no declaration); the Film Club has answered
+            // No, so its admin is not asked again. Market Friends, run on a
+            // `--preview-nominator` launch, has not answered, so its admin
+            // meets the one-time prompt.
+            let declared = index == 2 ? ",\"ai_work\":true" : (index == 7 ? ",\"ai_work\":false" : "")
             // Every extra keeps New York time and takes suggestions; the
             // Repair Cafe keeps its non-public events from followers, so
             // the tier's ceiling has somewhere to be seen offline.
             let posting = ",\"timezone\":\"America/New_York\",\"accept_event_suggestions\":true,\"follower_permissions\":{\"events\":\(index != 6),\"proposals\":true,\"charters\":false,\"members\":true}"
-            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(isUnclaimedExtra(index) ? ",\"is_unclaimed\":true" : "")\(moved)\(record)\(posting)}"
+            return "{\"id\":\"extra-\(index)\",\"name\":\"\(name)\",\"slug\":\"extra-\(index)\",\"tags\":[\"\(index % 2 == 0 ? "community" : "music")\"],\"member_count\":\(index + 1)\(isUnclaimedExtra(index) ? ",\"is_unclaimed\":true" : "")\(moved)\(record)\(posting)\(declared)}"
         }.enumerated().map { index, json in idFirst(edited(json, nodeEdits["extra-\(index)"])) }
         let members = #"{"items":[{"id":"m1","user_id":"u1","role":"admin","username":"rowan","display_name":"Rowan Hale"},{"id":"m2","user_id":"u2","role":"member","username":"imani","display_name":"Imani Osei"},{"id":"m3","user_id":"u3","role":"member","username":"theo"},{"id":"m5","user_id":"u7","role":"member","username":"wren","display_name":"Wren Adler"},{"id":"m4","user_id":"u4","role":"follower","username":"nobody-should-see-this"}],"next_cursor":"","member_count":12,"follower_count":34,"public_member_list":"everyone"}"#
         let withheldMembers = #"{"items":[],"next_cursor":"","member_count":8,"follower_count":15,"public_member_list":"nobody"}"#
@@ -3436,7 +3502,7 @@ enum PreviewData {
         let json: String
         if let governed = try adminRead(path, query: query) ?? governanceRead(path, query: query) ?? noticeboardRead(path, query: query) ?? peopleRead(path, query: query) ?? personRead(path) ?? claimRead(path) { json = governed } else {
         switch path {
-        case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York","latitude":40.04,"longitude":-76.3},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true,"email_enabled":true}"#
+        case "instance": json = #"{"name":"Sample quilt","description":"A fictional quilt for exploring the native app.","geography":{"timezone":"America/New_York","latitude":40.04,"longitude":-76.3},"neighbor_quilts":[{"name":"Neighbor quilt","url":"https://neighbor.example.org"}],"stats":{"node_count":12,"event_count":34,"member_count":5},"version":"v0.0.0-preview","submissions_enabled":true,"email_enabled":true,"ai_disclosure":"\#(aiRequired ? "required" : "optional")"}"#
         case "label": json = ###"{"published":true,"stewards":[{"username":"samplesteward","display_name":"Sample Steward","avatar_url":"","blurb":"Keeps the lights on and answers the email."}],"prose":"## Why this exists\n\nThis quilt is fictional, and so is everything on this page. It is here so the app has something to draw.\n\nThe figures below are **made up**, and *nobody* is billed for them. Even `code` and ***both at once*** are only here to be looked at.\n\n- No real money changes hands.\n- No real person is named.","cost_items":[{"service":"Sample Hosting","purpose":"the server (where all this lives)","why":"invented, for the preview","amount_minor":1200,"period":"monthly"},{"service":"Sample Domain","purpose":"the address","why":"also invented","amount_minor":1800,"period":"yearly"}],"currency":"USD","total_monthly_minor":1350,"stale":true,"stated_on":"2026-01-01","version":"v0.0.0-preview","federation":false,"multi_quilt":false,"support_url":"https://example.org/support","feedback_url":"https://example.org/feedback","seamripped_from_name":"","seamripped_from_url":""}"###
         case "instance/lining": json = ###"{"title":"Community Standards","body":"This fictional patch, like every patch on this fictional quilt, starts by agreeing to the lining.\n\n## Keep each other safe\n\nNobody is harmed, excluded, or diminished for who they are. We regulate actions, not identity.\n\n## Say what you are\n\nA patch describes itself honestly: who it is, what it does, and who it answers to.","version":1}"###
         case "legal/privacy": json = ###"{"doc":"privacy","title":"Privacy Policy","markdown":"## The short version\n\nNothing here is real, so nothing here is collected. This document exists so the app has a document to render.\n\n- No ads.\n- No trackers.","customized":true,"updated_at":"2026-01-01T00:00:00.000Z"}"###
@@ -3453,6 +3519,10 @@ enum PreviewData {
                 // The reader's own discovery filter (web ADR 037), which never
                 // narrows My Quilt: the studio is the patch whose lining diverged.
                 children.removeAll { $0.hasPrefix("{\"id\":\"demo-patch\"") }
+            }
+            // The declared-AI filter (web ADR 2026-10-20), on the same terms.
+            if signedIn, !query.contains(where: { $0.name == "scope" && $0.value == "my" }), accountFields["hide_ai_work"] as? Bool == true {
+                children.removeAll { $0.contains("\"ai_work\":true") }
             }
             json = "{\"tree\":{\"children\":[\(children.joined(separator: ","))]}}"
         // The node carries its own membership policy always, and who the

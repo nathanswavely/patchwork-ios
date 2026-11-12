@@ -100,11 +100,14 @@ enum NoticeReports {
     }
 
     /// The moderation kit (ADR 081, decision 2): three things, and nothing a
-    /// forum would add.
+    /// forum would add — and, for a notice, applying the AI label (web ADR
+    /// 2026-10-20, decision 7), which corrects rather than punishes, the
+    /// way resetting a tile does.
     enum Action: String, CaseIterable, Identifiable, Equatable {
         case dismiss
         case remove
         case closeReplies = "close_replies"
+        case label
         var id: String { rawValue }
         /// The web's option labels.
         func title(_ thing: String) -> String {
@@ -112,6 +115,7 @@ enum NoticeReports {
             case .dismiss: return "Dismiss, leave it up"
             case .remove: return "Remove the \(thing)"
             case .closeReplies: return "Switch replies off on the notice"
+            case .label: return "Apply the Made with AI label"
             }
         }
         /// What the option does that its label cannot say: what changes for
@@ -127,6 +131,8 @@ enum NoticeReports {
                 return thing == "reply"
                     ? "The reply stays up, and nobody can reply under its notice until its author or an admin switches replies back on."
                     : "The notice stays up, and nobody can reply to it until its author or an admin switches replies back on."
+            case .label:
+                return "The notice stays up and wears \u{201C}Made with AI\u{201D}, as if its author had said so. Whoever reported it is told it was reviewed, and nothing more."
             }
         }
         var destructive: Bool { self == .remove }
@@ -134,9 +140,11 @@ enum NoticeReports {
 
     /// What may be done about a report. Something already taken down can
     /// only be dismissed — the web offers nothing else, and there is nothing
-    /// left to remove or to close.
+    /// left to remove or to close. Only a notice can be labelled: a reply
+    /// carries no AI answer to correct, and the server refuses it.
     static func actions(for report: NoticeReport) -> [Action] {
-        report.gone ? [.dismiss] : Action.allCases
+        if report.gone { return [.dismiss] }
+        return report.entityType == "reply" ? [.dismiss, .remove, .closeReplies] : Action.allCases
     }
 
     /// `PATCH nodes/{slug}/reports/{id}`. The note always travels, trimmed
@@ -168,7 +176,7 @@ enum NoticeReports {
         return parts.joined(separator: " · ")
     }
     static let gone = "Already taken down."
-    static let intro = "Reports about notices and replies come to this patch’s admins. Three things can be done with one: dismiss it, remove what was reported, or switch replies off on the notice."
+    static let intro = "Reports about notices and replies come to this patch’s admins. Three things can be done with one: dismiss it, remove what was reported, or switch replies off on the notice. A notice can also be given the Made with AI label it should have carried."
     /// The web's toasts.
     static let done = "Report reviewed"
     static let failed = "Could not resolve the report"
@@ -342,12 +350,17 @@ struct PatchEditBody: Encodable, Equatable {
     var imageUrl: String?
     var imageAlt: String?
     var links: [PatchLink]?
+    /// The AI answers and the declaration, each only where it changed.
+    var aiUse: String?
+    var imageAi: String?
+    var aiWork: Bool?
 
     var isEmpty: Bool { self == PatchEditBody() }
 
     private enum CodingKeys: String, CodingKey {
         case name, description, address, website, latitude, longitude, tags, suggestTags, appearance
         case visibility, acceptEventSuggestions, timezone, timezoneEvents, imageUrl, imageAlt, links
+        case aiUse, imageAi, aiWork
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -374,6 +387,9 @@ struct PatchEditBody: Encodable, Equatable {
         try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try c.encodeIfPresent(imageAlt, forKey: .imageAlt)
         try c.encodeIfPresent(links, forKey: .links)
+        try c.encodeIfPresent(aiUse, forKey: .aiUse)
+        try c.encodeIfPresent(imageAi, forKey: .imageAi)
+        try c.encodeIfPresent(aiWork, forKey: .aiWork)
     }
 }
 
@@ -423,6 +439,8 @@ enum PatchEditing {
 
     static let saved = "Changes saved"
     static let failed = "Failed to save"
+    /// The web's Settings asks of the description in its own words.
+    static let descriptionAITitle = "Did you use AI to write the description?"
 }
 
 extension PatchDraft {
@@ -437,6 +455,8 @@ extension PatchDraft {
         imageURL = patch.imageUrl ?? ""
         imageAlt = patch.imageAlt ?? ""
         links = patch.links ?? []
+        imageAI = AIUse(stored: patch.imageAi)
+        aiWork = patch.aiWork
     }
 
     /// The fields that differ from the patch as it was loaded — nothing more.
@@ -465,17 +485,39 @@ extension PatchDraft {
         }
         let cleaned = links.map { PatchLink(url: trimmed($0.url), label: trimmed($0.label)) }.filter { !$0.url.isEmpty }
         if cleaned != original.links { body.links = cleaned }
+        // Absent keeps the stored answer (`checkPatchedAIAnswer`); a quilt
+        // with the question off never shows it, so nothing there changes.
+        // A cleared image takes its answer with it on the server.
+        body.aiUse = aiAnswerChange(aiUse, from: original.aiUse)
+        if hasImage { body.imageAi = aiAnswerChange(imageAI, from: original.imageAI) }
+        // The declaration's change is audited on its own line by the server
+        // (`node.ai_work_set`), so it is sent only when it moved.
+        if aiWork != original.aiWork { body.aiWork = aiWork }
         return body
     }
 
     /// The edit form's own checks, before anything is sent, in the words the
-    /// server or the web would use.
-    func editProblem() -> String? {
+    /// server or the web would use. On a quilt that requires the AI answer,
+    /// the web's Settings asks for the description's when the description is
+    /// saved, and the image's when the image is: so here an edit owes the
+    /// answer only for what it changes, and a new website owes nothing.
+    func editProblem(from original: PatchDraft? = nil, ai: AIDisclosure = .off) -> String? {
         if let problem = problem() { return problem }
         if let problem = PatchEditing.zoneProblem(timezone) { return problem }
         let url = imageURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !url.isEmpty, let problem = EventPosting.imageProblem(url: url, alt: imageAlt) { return sentenceCased(problem) }
-        return nil
+        guard let original else { return nil }
+        return ai.missing(owedAI(from: original).map(\.answer))
+    }
+
+    /// The answers an edit owes, and the question each is scrolled to by.
+    func owedAI(from original: PatchDraft) -> [(answer: AIUse?, id: String)] {
+        func trimmed(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var owed: [(answer: AIUse?, id: String)] = []
+        if trimmed(description) != trimmed(original.description) { owed.append((aiUse, "aiUse")) }
+        let imageMoved = trimmed(imageURL) != trimmed(original.imageURL) || trimmed(imageAlt) != trimmed(original.imageAlt)
+        if hasImage && imageMoved { owed.append((imageAI, "imageAI")) }
+        return owed
     }
 }
 

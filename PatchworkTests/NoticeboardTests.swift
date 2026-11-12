@@ -210,7 +210,7 @@ final class NoticeboardTests: XCTestCase {
     func testPuttingUpSendsEveryFieldTrimmed() throws {
         let draft = NoticeDraft(title: "  Kiln  ", body: " Out of action\n", imageURL: " https://example.org/k.png ",
                                 imageAlt: " The kiln ", repliesOpen: false, tellMembers: true)
-        XCTAssertEqual(try json(NoticeBody(draft)),
+        XCTAssertEqual(try json(NoticeBody(draft, ai: .off)),
                        #"{"body":"Out of action","image_alt":"The kiln","image_url":"https:\/\/example.org\/k.png","replies_open":false,"tell_members":true,"title":"Kiln"}"#)
     }
 
@@ -218,15 +218,15 @@ final class NoticeboardTests: XCTestCase {
     /// not travel: the field is hidden, and what it held is not sent.
     func testADescriptionWithNoImageIsNotSent() throws {
         let draft = NoticeDraft(title: "Kiln", imageURL: "  ", imageAlt: "The kiln")
-        XCTAssertEqual(NoticeBody(draft).imageAlt, "")
-        XCTAssertEqual(NoticeBody(draft).imageUrl, "")
+        XCTAssertEqual(NoticeBody(draft, ai: .off).imageAlt, "")
+        XCTAssertEqual(NoticeBody(draft, ai: .off).imageUrl, "")
     }
 
     /// An edit is the four things an author may rewrite. `replies_open` is
     /// a different right and never rides along, or an admin's switch on
     /// somebody else's notice would be refused as an edit.
     func testAnEditAndTheSwitchAreSeparateRequests() throws {
-        let edit = try json(NoticeEditBody(NoticeDraft(editing: Notice(id: "n", title: "Kiln", body: "Fixed", repliesOpen: false))))
+        let edit = try json(NoticeEditBody(NoticeDraft(editing: Notice(id: "n", title: "Kiln", body: "Fixed", repliesOpen: false)), was: nil))
         XCTAssertEqual(edit, #"{"body":"Fixed","image_alt":"","image_url":"","title":"Kiln"}"#)
         XCTAssertFalse(edit.contains("replies_open"))
         XCTAssertFalse(edit.contains("tell_members"))
@@ -236,8 +236,8 @@ final class NoticeboardTests: XCTestCase {
     func testAReportNamesItsKind() throws {
         XCTAssertEqual(try json(ReportBody(entityType: .reply, entityId: "r1", reason: "Spam or scam", details: "")),
                        #"{"details":"","entity_id":"r1","entity_type":"reply","reason":"Spam or scam"}"#)
-        XCTAssertEqual(Noticeboard.reportReasons.first, "Harassment or intimidation")
-        XCTAssertEqual(Noticeboard.reportReasons.count, 7)
+        XCTAssertEqual(Noticeboard.reportReasons.first?.label, "Harassment or intimidation")
+        XCTAssertEqual(Noticeboard.reportReasons.count, 8)
         XCTAssertTrue(Noticeboard.reportDestination.contains("this patch’s admins"), "not the quilt's panel")
     }
 

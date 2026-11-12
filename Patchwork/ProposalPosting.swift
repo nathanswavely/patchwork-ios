@@ -278,12 +278,17 @@ enum ProposalPosting {
     /// The server sets no limit on a proposal's length — nor does the web —
     /// so the one thing to check is the title, trimmed the way the web sends
     /// it, so a title of spaces is not accepted here and then shown blank.
-    static func problem(_ draft: ProposalDraft) -> String? {
+    ///
+    /// The AI answer comes last, and only from the act: the button's own
+    /// readiness never waits on it (`ai` defaults to off there), so a quilt
+    /// that requires an answer says so when the button is pressed rather
+    /// than greying a button for a reason nobody can see.
+    static func problem(_ draft: ProposalDraft, ai: AIDisclosure = .off) -> String? {
         if draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "title is required" }
         // The web's own check, before the server's "a membership proposal
         // has to name the person it is about".
         if draft.kind == .membership && draft.nomineeID.isEmpty { return "Choose the member this nomination is about" }
-        return nil
+        return ai.missing(draft.aiUse)
     }
 
     // MARK: Taking it back
@@ -314,6 +319,10 @@ struct ProposalDraft: Equatable {
     var putToVote = false
     /// The member a nomination is about.
     var nomineeID = ""
+    /// Whether AI wrote it (web ADR 2026-10-20): every proposal is asked,
+    /// a nomination too, since the server refuses any of them unanswered
+    /// on a quilt that requires it.
+    var aiUse: AIUse? = nil
 }
 
 /// `POST nodes/{slug}/proposals`, as the web's form sends it: the title and
@@ -328,12 +337,13 @@ struct ProposalBody: Encodable, Equatable {
     var putToVote: Bool?
     /// Only on a nomination: the person it is about.
     var targetUserId: String?
+    var aiUse: String?
     private enum CodingKeys: String, CodingKey {
         case title, body, proposalType = "proposal_type", durationHours = "duration_hours", putToVote = "put_to_vote"
-        case targetUserId = "target_user_id"
+        case targetUserId = "target_user_id", aiUse = "ai_use"
     }
 
-    init(_ draft: ProposalDraft, rules: GovernanceRules?, isPatchAdmin: Bool) {
+    init(_ draft: ProposalDraft, rules: GovernanceRules?, isPatchAdmin: Bool, ai: AIDisclosure) {
         title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         proposalType = draft.kind.rawValue
@@ -342,6 +352,7 @@ struct ProposalBody: Encodable, Equatable {
         durationHours = ProposalPosting.asksDuration(outcome) ? draft.durationHours : nil
         putToVote = chooses ? draft.putToVote : nil
         targetUserId = draft.kind == .membership && !draft.nomineeID.isEmpty ? draft.nomineeID : nil
+        aiUse = ai.sent(draft.aiUse)
     }
 }
 

@@ -246,9 +246,15 @@ struct EventBody: Encodable, Equatable {
     var imageUrl: String?
     var imageAlt: String?
     var visibility: String?
+    /// Whether AI made the words and the image (web ADR 2026-10-20). Left
+    /// out while unanswered or while the quilt has the question off, and
+    /// the image's whenever there is no image.
+    var aiUse: String? = nil
+    var imageAi: String? = nil
     private enum CodingKeys: String, CodingKey {
         case nodeId = "node_id", title, description, location, startsAt = "starts_at", endsAt = "ends_at"
         case eventUrl = "event_url", imageUrl = "image_url", imageAlt = "image_alt", visibility
+        case aiUse = "ai_use", imageAi = "image_ai"
     }
 }
 
@@ -264,6 +270,9 @@ struct EventDraft: Equatable {
     var hasEnd = false
     var endsAt: Date
     var tier = EventTier.public
+    /// The two AI answers, unanswered until somebody picks one.
+    var aiUse: AIUse?
+    var imageAI: AIUse?
 
     init(start: Date) {
         startsAt = start
@@ -271,21 +280,33 @@ struct EventDraft: Equatable {
     }
 
     var end: Date? { hasEnd ? endsAt : nil }
+    /// The image question is asked only while there is an image to ask about.
+    var hasImage: Bool { !imageURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     /// The one thing the button waits for. The start always has a value.
     var ready: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// What the server would refuse, said before asking it: the image, then
-    /// the link (the server's own order), the required title, then the end.
-    func problem() -> String? {
+    /// the link (the server's own order), the required title, the end, and
+    /// last the AI answers a quilt that requires them is owed — the image's
+    /// only while there is an image.
+    func problem(ai: AIDisclosure = .off) -> String? {
         if let problem = EventPosting.imageProblem(url: imageURL, alt: imageAlt) { return problem }
         if let problem = EventPosting.linkProblem(eventURL) { return problem }
         if !ready { return "Title is required" }
-        return EventPosting.endProblem(start: startsAt, end: end)
+        if let problem = EventPosting.endProblem(start: startsAt, end: end) { return problem }
+        return aiProblem(ai)
     }
+
+    func aiProblem(_ ai: AIDisclosure) -> String? {
+        hasImage ? ai.missing(aiUse, imageAI) : ai.missing(aiUse)
+    }
+
+    /// The question to scroll to when one is owed: the words' first.
+    var unansweredAI: String { aiUse == nil ? "aiUse" : "imageAI" }
 
     /// Fields trimmed, empties left out, the end only where there is one,
     /// and a tier only where the reader is posting directly.
-    func body(nodeId: String, direct: Bool) -> EventBody {
+    func body(nodeId: String, direct: Bool, ai: AIDisclosure) -> EventBody {
         func value(_ text: String) -> String? {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
@@ -303,7 +324,9 @@ struct EventDraft: Equatable {
             // A description with no picture left to describe goes nowhere:
             // the field that holds it is hidden once the address is cleared.
             imageAlt: image == nil ? nil : value(imageAlt),
-            visibility: direct ? tier.rawValue : nil
+            visibility: direct ? tier.rawValue : nil,
+            aiUse: ai.sent(aiUse),
+            imageAi: image == nil ? nil : ai.sent(imageAI)
         )
     }
 }

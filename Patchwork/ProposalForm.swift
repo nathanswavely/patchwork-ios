@@ -45,6 +45,7 @@ struct ProposalFormSheet: View {
     @State private var failure: String?
     /// The roster a nomination picks from, read once the type is chosen.
     @State private var members: [PatchMember]?
+    @State private var nudge = ScrollNudge()
 
     init(slug: String, rules: GovernanceRules?, seats: [GovernanceSeat] = [], nextContestOpens: String? = nil,
          isPatchAdmin: Bool, onDone: @escaping (Proposal) -> Void) {
@@ -64,60 +65,70 @@ struct ProposalFormSheet: View {
     private var heading: String { chooses ? "New change" : "New proposal" }
     private var mayNominate: Bool { ProposalPosting.mayNominate(rules: rules, seats: seats, isPatchAdmin: isPatchAdmin) }
     private var ready: Bool { !busy && ProposalPosting.problem(draft) == nil }
+    private var ai: AIDisclosure { session.aiDisclosure }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(heading)
-                            .font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityAddTraits(.isHeader)
-                            .accessibilityIdentifier("proposalFormHeading")
-                        if let note = ProposalPosting.outcomeNote(outcome) {
-                            Text(note)
-                                .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(heading)
+                                .font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .accessibilityIdentifier("proposalFormNote")
+                                .accessibilityAddTraits(.isHeader)
+                                .accessibilityIdentifier("proposalFormHeading")
+                            if let note = ProposalPosting.outcomeNote(outcome) {
+                                Text(note)
+                                    .font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("proposalFormNote")
+                            }
                         }
-                    }
-                    field("Title") {
-                        TextField("What should happen?", text: $draft.title, axis: .vertical)
-                            .lineLimit(1...3)
-                            .textInputAutocapitalization(.sentences)
-                            .fieldStyle()
-                            .accessibilityIdentifier("proposalTitle")
-                    }
-                    field("Description") {
-                        MarkdownComposer(text: $draft.body, title: "Description",
-                                         placeholder: "Explain it and why it matters. Use **bold**, *italic*, and - lists.",
-                                         base: session.quilt.url, segmentsID: "proposalWritePreview",
-                                         fieldID: "proposalBody", previewID: "proposalPreview")
-                    }
-                    typeField
-                    if draft.kind == .membership && mayNominate { nomineeField }
-                    if let note = ProposalPosting.councilNote(rules: rules, seats: seats, isPatchAdmin: isPatchAdmin, nextContestOpens: nextContestOpens) {
-                        Text(note).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                        field("Title") {
+                            TextField("What should happen?", text: $draft.title, axis: .vertical)
+                                .lineLimit(1...3)
+                                .textInputAutocapitalization(.sentences)
+                                .fieldStyle()
+                                .accessibilityIdentifier("proposalTitle")
+                        }
+                        field("Description") {
+                            MarkdownComposer(text: $draft.body, title: "Description",
+                                             placeholder: "Explain it and why it matters. Use **bold**, *italic*, and - lists.",
+                                             base: session.quilt.url, segmentsID: "proposalWritePreview",
+                                             fieldID: "proposalBody", previewID: "proposalPreview")
+                        }
+                        typeField
+                        if draft.kind == .membership && mayNominate { nomineeField }
+                        if let note = ProposalPosting.councilNote(rules: rules, seats: seats, isPatchAdmin: isPatchAdmin, nextContestOpens: nextContestOpens) {
+                            Text(note).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("proposalCouncilNote")
+                        }
+                        if chooses { decisionField }
+                        if ProposalPosting.asksDuration(outcome) { durationField }
+                        WebsiteOnlyNote(text: ProposalPosting.documentsNote)
                             .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("proposalCouncilNote")
-                    }
-                    if chooses { decisionField }
-                    if ProposalPosting.asksDuration(outcome) { durationField }
-                    WebsiteOnlyNote(text: ProposalPosting.documentsNote)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let failure {
-                        Label { Text(failure).font(Font.pw.footnote) } icon: {
-                            Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
+                        if ai.asks {
+                            field(AIUseQuestion.title, required: ai == .required) {
+                                AIUseQuestion(mode: ai, answer: $draft.aiUse)
+                            }
+                            .id("aiUse")
                         }
-                        .foregroundStyle(Color.pwText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("proposalFormError")
+                        if let failure {
+                            Label { Text(failure).font(Font.pw.footnote) } icon: {
+                                Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
+                            }
+                            .foregroundStyle(Color.pwText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("proposalFormError")
+                        }
                     }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(busy)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(busy)
+                .onChange(of: nudge) { _, now in withAnimation { proxy.scrollTo(now.target, anchor: .center) } }
             }
             .background(Color.pwGround.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -201,9 +212,9 @@ struct ProposalFormSheet: View {
         }
     }
 
-    private func field<Content: View>(_ title: String, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+    private func field<Content: View>(_ title: String, required: Bool = false, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+            FieldTitle(title: title, required: required, header: false)
             content()
             if let hint {
                 Text(hint).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
@@ -231,12 +242,13 @@ struct ProposalFormSheet: View {
     private func submit() {
         guard !busy else { return }
         failure = nil
-        if let problem = ProposalPosting.problem(draft) {
+        if let problem = ProposalPosting.problem(draft, ai: ai) {
             failure = EventPosting.sentenceCased(problem)
+            if problem == AIDisclosure.missingLine { nudge.to("aiUse") }
             return
         }
         busy = true
-        let body = ProposalBody(draft, rules: rules, isPatchAdmin: isPatchAdmin)
+        let body = ProposalBody(draft, rules: rules, isPatchAdmin: isPatchAdmin, ai: ai)
         Task {
             defer { busy = false }
             do {
@@ -310,16 +322,43 @@ struct VoteWindowPicker: View {
 /// A form field: its name over it, and a hint under it where one is owed.
 struct FormField<Content: View>: View {
     let title: String
+    var required = false
     var hint: String? = nil
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+            FieldTitle(title: title, required: required, header: false)
             content
             if let hint {
                 Text(hint).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+}
+
+/// A field's name, and its asterisk where the field is owed. One element
+/// that says the word the asterisk stands for: a child labelled "required"
+/// over a one-glyph frame read to the audit as clipped text.
+///
+/// The patch form marks every field's name as a heading; the authoring
+/// sheets have always left an optional field's name plain text, and keep it
+/// so (`header: false`) — only an owed field takes the heading's shape.
+struct FieldTitle: View {
+    let title: String
+    var required = false
+    var header = true
+    var body: some View {
+        if required || header {
+            HStack(spacing: 2) {
+                Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+                if required { Text("*").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted) }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(required ? "\(title), required" : title)
+            .accessibilityAddTraits(.isHeader)
+        } else {
+            Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
         }
     }
 }

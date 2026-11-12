@@ -199,6 +199,8 @@ enum DocumentAmending {
     static func heading(direct: Bool) -> String { direct ? "Changing" : "Proposing changes to" }
     static func whyLabel(direct: Bool) -> String { direct ? "Why this change? (optional)" : "Why are you proposing this? (optional)" }
     static func defaultTitle(_ document: String) -> String { "Update \(document)" }
+    /// The AI question, as the web's amendment editor asks it.
+    static let aiTitle = "Did you use AI to write this change?"
 
     /// The server's check a form can fail, and the one thing the web will
     /// not send: an amendment that changes nothing.
@@ -223,13 +225,19 @@ struct AmendmentBody: Encodable, Equatable {
     var changeSummary: String
     var durationHours: Int?
     var putToVote: Bool?
+    /// Whether AI wrote the proposed text (web ADR 2026-10-20), a document's
+    /// or the rules'. A change applied directly carries it too: the server
+    /// writes it as the commit's `AI-Use:` trailer, which the history reads.
+    var aiUse: String?
     private enum CodingKeys: String, CodingKey {
         case title, body, proposalType = "proposal_type", targetDoc = "target_doc", proposedBody = "proposed_body"
         case proposedTitle = "proposed_title", changeSummary = "change_summary", durationHours = "duration_hours", putToVote = "put_to_vote"
+        case aiUse = "ai_use"
     }
 
     init(title: String, why: String, targetDoc: String, documentTitle: String, proposed: String,
-         rules: GovernanceRules?, isPatchAdmin: Bool, putToVote: Bool, durationHours: Int) {
+         rules: GovernanceRules?, isPatchAdmin: Bool, putToVote: Bool, durationHours: Int,
+         aiUse: AIUse?, ai: AIDisclosure) {
         let summary = title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.title = summary
         body = why.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -242,6 +250,7 @@ struct AmendmentBody: Encodable, Equatable {
         let outcome = ProposalPosting.outcome(rules: rules, isPatchAdmin: isPatchAdmin, putToVote: chooses && putToVote, rulesDoc: rulesDoc)
         self.durationHours = ProposalPosting.asksDuration(outcome) ? durationHours : nil
         self.putToVote = chooses ? putToVote : nil
+        self.aiUse = ai.sent(aiUse)
     }
 }
 

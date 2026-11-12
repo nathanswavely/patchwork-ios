@@ -172,7 +172,10 @@ struct PatchSheet: View {
                 }
                 if let tags = patch.tags, !tags.isEmpty { Text(tags.joined(separator: " · ")).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted) }
                 notices
-                if let description = patch.description, !description.isEmpty { Text(description).foregroundStyle(Color.pwText).textSelection(.enabled) }
+                if let description = patch.description, !description.isEmpty {
+                    Text(description).foregroundStyle(Color.pwText).textSelection(.enabled)
+                    if AIUse.generated(patch.aiUse) { MadeWithAITag() }
+                }
             // The glimpses under the head keep a 20pt margin; the head's
             // text sits on the same line so the name and "About" align.
             }.padding(.horizontal, 20).padding(.vertical, 16)
@@ -283,6 +286,7 @@ struct PatchSheet: View {
     /// is a fact about the patch; the one door among them is claiming a
     /// listing nobody runs, which follows the fact it answers.
     @ViewBuilder private var notices: some View {
+        if patch.aiWork == true { AIWorkChip() }
         if let moved {
             VStack(alignment: .leading, spacing: 6) {
                 Label("This patch has moved to \(moved.host).", systemImage: "arrow.uturn.right")
@@ -349,6 +353,9 @@ struct PatchSheet: View {
     }
     private var glimpses: some View {
         VStack(alignment: .leading, spacing: 24) {
+            if AIWork.prompts(runs: PatchAdmin.runs(session.standing(for: patch.slug)), unclaimed: isUnclaimed, aiWork: patch.aiWork) {
+                AIWorkPrompt(slug: patch.slug) { Task { await load() } }
+            }
             if hasAbout { about }
             eventsGlimpse
             if showsMembers { membersGlimpse }

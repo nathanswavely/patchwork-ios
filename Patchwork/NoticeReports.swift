@@ -103,7 +103,7 @@ struct NoticeReportsView: View {
                 .accessibilityHint("Opens the notice")
                 .accessibilityIdentifier("reportOpen-\(report.id)")
             }
-            Text(report.reason).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
+            Text(Noticeboard.reasonLabel(report.reason)).font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
                 .accessibilityIdentifier("reportReason-\(report.id)")
             if !report.details.isEmpty {
                 Text(report.details).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
@@ -190,7 +190,7 @@ struct ReviewReportSheet: View {
                         Text(report.gone ? NoticeReports.gone : "“\(report.target)”")
                             .font(Font.pw.body).foregroundStyle(Color.pwText)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("\(report.reason) · \(NoticeReports.head(report))")
+                        Text("\(Noticeboard.reasonLabel(report.reason)) · \(NoticeReports.head(report))")
                             .font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }

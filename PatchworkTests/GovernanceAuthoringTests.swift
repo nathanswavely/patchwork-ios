@@ -121,10 +121,10 @@ final class GovernanceAuthoringTests: XCTestCase {
         XCTAssertEqual(ProposalPosting.problem(draft), "Choose the member this nomination is about")
         draft.nomineeID = "u-hana"
         XCTAssertNil(ProposalPosting.problem(draft))
-        XCTAssertEqual(try json(ProposalBody(draft, rules: meritocratic, isPatchAdmin: true)),
+        XCTAssertEqual(try json(ProposalBody(draft, rules: meritocratic, isPatchAdmin: true, ai: .off)),
                        #"{"body":"","duration_hours":168,"proposal_type":"membership","target_user_id":"u-hana","title":"Hana for admin"}"#)
         draft.kind = .action
-        XCTAssertFalse(try json(ProposalBody(draft, rules: meritocratic, isPatchAdmin: true)).contains("target_user_id"),
+        XCTAssertFalse(try json(ProposalBody(draft, rules: meritocratic, isPatchAdmin: true, ai: .off)).contains("target_user_id"),
                        "a nominee left behind by a change of type is not sent")
     }
 
@@ -176,11 +176,13 @@ final class GovernanceAuthoringTests: XCTestCase {
     func testAnAmendmentSendsTheWholeTextAndTheOutcomesKnobs() throws {
         let majority = GovernanceRules(decisionMethod: "majority", defaultVoteDurationHours: 336)
         let body = AmendmentBody(title: " Tools go back ", why: " Because. ", targetDoc: "how-we-decide.md", documentTitle: "How we decide",
-                                 proposed: "New text\n", rules: majority, isPatchAdmin: false, putToVote: false, durationHours: 336)
+                                 proposed: "New text\n", rules: majority, isPatchAdmin: false, putToVote: false, durationHours: 336,
+                                 aiUse: nil, ai: .off)
         XCTAssertEqual(try json(body), #"{"body":"Because.","change_summary":"Tools go back","duration_hours":336,"proposal_type":"amendment","proposed_body":"New text\n","proposed_title":"How we decide","target_doc":"how-we-decide.md","title":"Tools go back"}"#)
         let admins = GovernanceRules(decisionMethod: "admin", defaultVoteDurationHours: 48)
         let direct = AmendmentBody(title: "T", why: "", targetDoc: "d.md", documentTitle: "D", proposed: "x",
-                                   rules: admins, isPatchAdmin: true, putToVote: false, durationHours: 48)
+                                   rules: admins, isPatchAdmin: true, putToVote: false, durationHours: 48,
+                                   aiUse: nil, ai: .off)
         XCTAssertNil(direct.durationHours, "no window for a change nobody votes on")
         XCTAssertEqual(direct.putToVote, false)
         XCTAssertEqual(DocumentAmending.problem(title: "T", original: "a", proposed: "a"), "Change the document before you send it.")

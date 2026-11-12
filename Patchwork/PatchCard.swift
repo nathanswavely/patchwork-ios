@@ -216,6 +216,7 @@ struct PatchCard: View {
                     .font(Font.pw.captionSemibold)
                     .foregroundStyle(Color.pwText)
                 if patch.movedTo?.isEmpty == false { MovedChip() }
+                if patch.aiWork == true { AIWorkChip() }
             }
             if let description = patch.description, !description.isEmpty {
                 Text(description)
@@ -242,6 +243,24 @@ struct MovedChip: View {
             .padding(.horizontal, 7).padding(.vertical, 2)
             .overlay(Capsule().strokeBorder(Color.pwBorder))
             .accessibilityLabel("Moved")
+    }
+}
+
+/// The patch's own declaration that its work relies heavily on AI (web ADR
+/// 2026-10-20, decision 6), worn where a visitor decides whether to follow:
+/// the card and the profile's head. The same outlined shape as Moved,
+/// because it is a fact about the patch and not a warning. The quilt itself
+/// draws no mark for it — the ADR keeps the quilt a map of how people
+/// connect, not of whom to avoid.
+struct AIWorkChip: View {
+    var body: some View {
+        Text("AI work")
+            .font(Font.pw.caption2Semibold)
+            .foregroundStyle(Color.pwTextMuted)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .overlay(Capsule().strokeBorder(Color.pwBorder))
+            .accessibilityLabel("AI work. This patch\u{2019}s admins say its work relies heavily on AI.")
+            .accessibilityIdentifier("aiWorkChip")
     }
 }
 
@@ -305,6 +324,7 @@ struct CompactPatchCard<Detail: View>: View {
                         // list, so it is visible before anybody walks into an
                         // address that has moved (web ADR 090).
                         if patch.movedTo?.isEmpty == false { MovedChip() }
+                        if patch.aiWork == true { AIWorkChip() }
                     }
                     detail
                 }

@@ -50,7 +50,9 @@ final class PatchSettingsTests: XCTestCase {
     }
 
     func testSomethingAlreadyTakenDownCanOnlyBeDismissed() {
-        XCTAssertEqual(NoticeReports.actions(for: NoticeReport(id: "r", gone: false)), [.dismiss, .remove, .closeReplies])
+        XCTAssertEqual(NoticeReports.actions(for: NoticeReport(id: "r", gone: false)), [.dismiss, .remove, .closeReplies, .label])
+        XCTAssertEqual(NoticeReports.actions(for: NoticeReport(id: "r", entityType: "reply", gone: false)), [.dismiss, .remove, .closeReplies],
+                       "a reply carries no AI answer to label")
         XCTAssertEqual(NoticeReports.actions(for: NoticeReport(id: "r", gone: true)), [.dismiss], "the web offers nothing else")
     }
 

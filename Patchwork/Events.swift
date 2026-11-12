@@ -223,6 +223,9 @@ struct EventRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(event.title).font(Font.pw.headline)
                 EventTierChip(event: event)
+                // One tag for the whole row, words or image (the web's
+                // `listAiValue`); the event's own page says which.
+                if AIUse.generated(event.aiUse) || AIUse.generated(event.imageAi) { MadeWithAITag() }
             }
             if let location = event.location, !location.isEmpty {
                 Text(location).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted).lineLimit(2)
@@ -527,6 +530,8 @@ struct EventDetail: View {
                 HStack(spacing: 6) {
                     if event.communitySubmitted { EventBadge(text: "Community-submitted") }
                     EventTierChip(event: event)
+                    if AIUse.generated(event.aiUse) { MadeWithAITag() }
+                    if AIUse.generated(event.imageAi) { MadeWithAITag(image: true) }
                 }
             }
         }
