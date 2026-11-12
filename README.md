@@ -14,6 +14,8 @@ Normal launches use live APIs. Add `--preview` to the scheme's launch arguments 
 
 ## Implemented path
 
+What the app does next to the web, and what it leaves out, is tracked in [PARITY.md](PARITY.md).
+
 1. The first launch opens on the featured quilt itself — live, pannable, its patches tappable — with the app's bars folded away under a welcome that gives the quilt's own description and size. **Start exploring** keeps that quilt, under its own name, and unfolds the app around the same canvas; **Find another quilt** opens the picker, where a quilt is found in the directory, among the featured quilt's neighbours, or by its HTTPS origin.
 2. Every later launch opens straight onto the quilt used last, drawn at once from what the last launch kept (the whole tree, the description and the icon, in Caches) and read again behind the drawing; a quilt that cannot be reached stays drawn as it was last seen.
 3. Explore the interactive quilt — it runs under the bars — pinch to zoom, pan, and filter by the quilt's most-worn tags to repack it. Switch to map or list from the round button in the bottom-right corner, which unfolds upward into Quilt · Map · List; all three read the same filter.
