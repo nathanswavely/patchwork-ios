@@ -119,6 +119,15 @@ struct PatchDraft: Equatable {
     var imageURL = ""
     var imageAlt = ""
     var links: [PatchLink] = []
+    /// Whether AI made the description, and the image (edit only: a patch
+    /// is created without one), as web ADR 2026-10-20 asks every surface
+    /// that publishes. Unanswered until somebody picks.
+    var aiUse: AIUse?
+    var imageAI: AIUse?
+    /// The declaration that the patch's work relies heavily on AI (decision
+    /// 6): asked at creation, at setup and in the edit form, never seeded
+    /// from anything but the patch's own stored answer.
+    var aiWork: Bool?
 
     init(palette: String, block: String, rotation: Int) {
         self.palette = palette; self.block = block; self.rotation = rotation
@@ -156,6 +165,10 @@ struct PatchDraft: Equatable {
         tags = listing.tags ?? []
         if let icon = listing.appearance?.icon, Motifs.keys.contains(icon) { motif = icon }
         policy = template.membershipPolicy
+        // The description arrives as the suggester answered for it (the web
+        // seeds it too); the claimant can change it. The declaration is the
+        // claimant's own, so it starts unanswered.
+        aiUse = AIUse(stored: listing.aiUse)
     }
 
     /// Choosing a template: in setup it carries the policy with it until the
@@ -172,10 +185,15 @@ struct PatchDraft: Equatable {
     /// A motif pressed again is a motif let go of.
     mutating func toggleMotif(_ key: String) { motif = motif == key ? "" : key }
 
-    /// The one rule the form checks itself, in the web's words.
-    func problem() -> String? {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Name is required" : nil
+    /// The one rule the form checks itself, in the web's words, and the
+    /// description's AI answer where the quilt requires one.
+    func problem(ai: AIDisclosure = .off) -> String? {
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Name is required" }
+        return ai.missing(aiUse)
     }
+
+    /// The image question is asked only while there is an image.
+    var hasImage: Bool { !imageURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var appearance: AppearanceChoice {
         AppearanceChoice(palette: palette, block: block, rotation: rotation, icon: motif.isEmpty ? nil : motif)
@@ -189,12 +207,15 @@ struct PatchDraft: Equatable {
     /// `POST nodes`. `membership_policy` is always sent: the server defaults
     /// an omitted one to `open`, which is the one default the form exists
     /// to avoid. `visibility` is always `public`, as the web sends it.
-    var createBody: PatchCreateBody {
+    /// The AI answer travels only where the quilt asks it; the declaration
+    /// whenever it was answered, since it is not the quilt's switch to ask.
+    func createBody(ai: AIDisclosure) -> PatchCreateBody {
         PatchCreateBody(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                         description: Self.filled(description), address: Self.filled(address), website: Self.filled(website),
                         latitude: point?.latitude, longitude: point?.longitude,
                         visibility: "public", membershipPolicy: policy, template: template, appearance: appearance,
-                        tags: tags.isEmpty ? nil : tags, suggestTags: suggestTags.isEmpty ? nil : suggestTags)
+                        tags: tags.isEmpty ? nil : tags, suggestTags: suggestTags.isEmpty ? nil : suggestTags,
+                        aiUse: ai.sent(aiUse), aiWork: aiWork)
     }
 
     /// `POST claims/{id}/setup`: the template and the policy travel here,
@@ -203,12 +224,14 @@ struct PatchDraft: Equatable {
     var setupBody: ClaimSetupBody { ClaimSetupBody(template: template, membershipPolicy: policy) }
 
     /// `PATCH nodes/{slug}` once the patch is the claimant's: the fields, as
-    /// the web sends them after setup.
-    var updateBody: PatchUpdateBody {
+    /// the web sends them after setup — the declaration among them, which
+    /// the server takes only once the patch is no longer unclaimed.
+    func updateBody(ai: AIDisclosure) -> PatchUpdateBody {
         PatchUpdateBody(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                         description: Self.filled(description), address: Self.filled(address), website: Self.filled(website),
                         latitude: point?.latitude, longitude: point?.longitude, visibility: "public",
-                        appearance: appearance, tags: tags.isEmpty ? nil : tags, suggestTags: suggestTags.isEmpty ? nil : suggestTags)
+                        appearance: appearance, tags: tags.isEmpty ? nil : tags, suggestTags: suggestTags.isEmpty ? nil : suggestTags,
+                        aiUse: ai.sent(aiUse), aiWork: aiWork)
     }
 
     /// The draft as a patch, for the live miniature: the same drawing the
@@ -248,6 +271,8 @@ struct PatchCreateBody: Encodable, Equatable {
     let appearance: AppearanceChoice
     let tags: [String]?
     let suggestTags: [String]?
+    let aiUse: String?
+    let aiWork: Bool?
 }
 
 struct ClaimSetupBody: Encodable, Equatable {
@@ -266,6 +291,8 @@ struct PatchUpdateBody: Encodable, Equatable {
     let appearance: AppearanceChoice
     let tags: [String]?
     let suggestTags: [String]?
+    let aiUse: String?
+    let aiWork: Bool?
 }
 
 /// The 201 from `POST nodes`: the new node, and — when a suggested word had

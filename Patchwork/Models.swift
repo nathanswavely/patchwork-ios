@@ -41,6 +41,10 @@ struct Instance: Decodable {
     /// Whether this quilt can send email. An account invite link asks for an
     /// address only where it can (web ADR 071).
     var emailEnabled: Bool? = nil
+    /// Whether this quilt's forms ask if AI made a post (web ADR 2026-10-20):
+    /// `off`, `optional` or `required`. Absent is a quilt from before the
+    /// question, which asks nothing.
+    var aiDisclosure: String? = nil
     struct Neighbor: Decodable { let name: String; let url: String }
     struct Stats: Decodable { let nodeCount: Int?; let eventCount: Int?; let memberCount: Int? }
 }
@@ -167,6 +171,14 @@ struct Patch: Decodable, Identifiable, Hashable {
     /// What this patch's followers may have (web ADR 2026-09-19). Only the
     /// events switch is read: it is a ceiling on an event's tier.
     let followerPermissions: FollowerPermissions?
+    /// The patch's own declaration that its work relies heavily on AI (web
+    /// ADR 2026-10-20, decision 6): true wears a badge, null is unanswered.
+    var aiWork: Bool? = nil
+    /// Whether AI made the description and the image, as an event's are
+    /// asked; only `generated` is shown, and only the description's here,
+    /// since the profile draws no patch image.
+    var aiUse: String? = nil
+    var imageAi: String? = nil
     var communityListing: Bool { isUnclaimed == true || status == "unclaimed" }
 }
 
@@ -315,6 +327,10 @@ struct PatchworkEvent: Decodable, Identifiable, Hashable {
     /// The detail's answer to whether the reader holds trusted-contributor
     /// standing for this patch (quilt-wide or scoped to it).
     let viewerTrusted: Bool?
+    /// Whether AI made the words and the image (`none`, `assisted`,
+    /// `generated`, or nil for unanswered). Only `generated` is shown.
+    var aiUse: String? = nil
+    var imageAi: String? = nil
 
     var date: Date? { Self.parseDate(startsAt) }
     var endDate: Date? { endsAt.flatMap(Self.parseDate) }
@@ -763,6 +779,7 @@ struct Proposal: Decodable, Identifiable, Hashable {
     var rejectCount: Int? = nil
     var abstainCount: Int? = nil
     var electionPhase: String? = nil
+    var aiUse: String? = nil
     // The detail payload (`GET proposals/{id}`). A list row carries none of
     // these, so every one is optional and a list row is still a proposal.
     var nodeId: String? = nil
@@ -979,6 +996,9 @@ struct User: Decodable, Hashable, Identifiable {
     /// discovery surfaces. The server applies it to the tree; the client only
     /// saves it and asks again.
     var hideAmendedLinings: Bool? = nil
+    /// Web ADR 2026-10-20: keep patches that declared AI work out of this
+    /// reader's quilt, map and events. Applied by the server, like the above.
+    var hideAiWork: Bool? = nil
     /// The quilt-wide trusted-contributor grant (web ADR 2026-09-18): a
     /// suggestion from somebody holding it joins the quilt at once rather
     /// than waiting for an admin.

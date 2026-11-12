@@ -157,3 +157,74 @@ struct WebsiteOnlyNote: View {
         Text(text).font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
     }
 }
+
+/// The one-time question to a patch's own admin (web `AIWorkPrompt`, ADR
+/// 2026-10-20's consequence: "Patch admins see a one-time prompt in the
+/// workspace"). It goes by being answered, never by being dismissed: an
+/// answer makes `ai_work` non-null and the prompt is not drawn again, and a
+/// dismissal would be the silence the ADR refuses to read as No.
+struct AIWorkPrompt: View {
+    let slug: String
+    /// The patch should be read again: it now carries the answer.
+    let answered: () -> Void
+    @EnvironmentObject private var session: QuiltSession
+    @State private var saving = false
+    @State private var failure: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(AIWork.question)
+                .font(Font.pw.subheadlineSemibold).foregroundStyle(Color.pwText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Text(AIWork.hint)
+                .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("Yes") { answer(true) }
+                    .accessibilityIdentifier("aiWorkPromptYes")
+                Button("No") { answer(false) }
+                    .accessibilityIdentifier("aiWorkPromptNo")
+                if saving { ProgressView() }
+            }
+            .font(Font.pw.subheadlineSemibold)
+            .buttonStyle(.bordered)
+            .tint(Color.pwText)
+            .disabled(saving)
+            if let failure {
+                Label { Text(failure).font(Font.pw.footnote) } icon: {
+                    Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
+                }
+                .foregroundStyle(Color.pwText)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(AIWork.later)
+                .font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("aiWorkPrompt")
+    }
+
+    /// `PATCH nodes/{slug}` with the declaration alone.
+    private func answer(_ value: Bool) {
+        guard !saving else { return }
+        saving = true
+        failure = nil
+        Task {
+            defer { saving = false }
+            do {
+                try await session.api.editPatch(slug: slug, PatchEditBody(aiWork: value))
+                // The cards wear the badge from the tree, so it is read again.
+                await session.loadTree(refreshingWhole: true)
+                answered()
+            } catch APIError.unauthenticated {
+                session.signedOut()
+            } catch {
+                failure = sentenceCased(ProposalDetailView.sentence(error, fallback: PatchEditing.failed))
+            }
+        }
+    }
+}

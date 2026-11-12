@@ -126,12 +126,18 @@ struct EventChanges: Encodable, Equatable {
     var imageUrl: String?
     var imageAlt: String?
     var visibility: String?
+    /// An AI answer travels only where it changed: absent keeps the stored
+    /// one (`checkPatchedAIAnswer`), and a quilt with the question off never
+    /// shows the question, so nothing there can change.
+    var aiUse: String?
+    var imageAi: String?
 
     var isEmpty: Bool { self == EventChanges() }
 
     private enum CodingKeys: String, CodingKey {
         case title, description, location, startsAt = "starts_at", endsAt = "ends_at"
         case eventUrl = "event_url", imageUrl = "image_url", imageAlt = "image_alt", visibility
+        case aiUse = "ai_use", imageAi = "image_ai"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -147,6 +153,8 @@ struct EventChanges: Encodable, Equatable {
         try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try container.encodeIfPresent(imageAlt, forKey: .imageAlt)
         try container.encodeIfPresent(visibility, forKey: .visibility)
+        try container.encodeIfPresent(aiUse, forKey: .aiUse)
+        try container.encodeIfPresent(imageAi, forKey: .imageAi)
     }
 }
 
@@ -167,6 +175,10 @@ extension EventDraft {
             endsAt = end
         }
         tier = event.visibility.flatMap(EventTier.init(rawValue:)) ?? .public
+        // Pre-filled, as the web's edit is (decision 8), so saving an
+        // unrelated change never reads as answering anew.
+        aiUse = AIUse(stored: event.aiUse)
+        imageAI = AIUse(stored: event.imageAi)
     }
 
     /// The image as it would be stored: a description goes with its picture,
@@ -194,6 +206,10 @@ extension EventDraft {
         if image.url != wasImage.url { body.imageUrl = image.url }
         if image.alt != wasImage.alt { body.imageAlt = image.alt }
         if direct && tier != original.tier { body.visibility = tier.rawValue }
+        body.aiUse = aiAnswerChange(aiUse, from: original.aiUse)
+        // A cleared image takes its answer with it on the server, so only an
+        // image still there has one worth sending.
+        if hasImage { body.imageAi = aiAnswerChange(imageAI, from: original.imageAI) }
         return body
     }
 
@@ -201,12 +217,16 @@ extension EventDraft {
     /// the image pair and the link only where the edit touches them (an old
     /// event's stored flyer is not this edit's business), then the required
     /// title and an end after the start, in the create form's words.
-    func editProblem(changes: EventChanges) -> String? {
+    func editProblem(changes: EventChanges, ai: AIDisclosure = .off) -> String? {
         if changes.imageUrl != nil || changes.imageAlt != nil,
            let problem = EventPosting.imageProblem(url: imageURL, alt: storedImage.alt) { return problem }
         if changes.eventUrl != nil, let problem = EventPosting.linkProblem(eventURL) { return problem }
         if !ready { return "Title is required" }
-        return EventPosting.endProblem(start: startsAt, end: end)
+        if let problem = EventPosting.endProblem(start: startsAt, end: end) { return problem }
+        // The server takes an edit without an answer, but a quilt that
+        // requires one asks the next time a row is edited (the ADR's
+        // consequence for rows from before the question), as the web does.
+        return aiProblem(ai)
     }
 }
 

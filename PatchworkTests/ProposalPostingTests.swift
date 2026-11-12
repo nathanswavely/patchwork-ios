@@ -132,29 +132,29 @@ final class ProposalPostingTests: XCTestCase {
 
     func testAVoteSendsItsWindowAndNoFlag() throws {
         let draft = ProposalDraft(title: "  Open on Tuesdays ", body: "\nBecause.\n", kind: .action, durationHours: 168, putToVote: true)
-        let body = ProposalBody(draft, rules: majority, isPatchAdmin: true)
+        let body = ProposalBody(draft, rules: majority, isPatchAdmin: true, ai: .off)
         XCTAssertEqual(try json(body), #"{"body":"Because.","duration_hours":168,"proposal_type":"action","title":"Open on Tuesdays"}"#)
     }
 
     func testADirectChangeSendsNoWindow() throws {
         let draft = ProposalDraft(title: "New projector", kind: .other, durationHours: 48)
-        let body = ProposalBody(draft, rules: adminDecides, isPatchAdmin: true)
+        let body = ProposalBody(draft, rules: adminDecides, isPatchAdmin: true, ai: .off)
         XCTAssertEqual(try json(body), #"{"body":"","proposal_type":"other","put_to_vote":false,"title":"New projector"}"#)
     }
 
     func testAnAdvisoryVoteSendsBoth() throws {
         let draft = ProposalDraft(title: "New projector", durationHours: 24, putToVote: true)
-        let body = ProposalBody(draft, rules: adminDecides, isPatchAdmin: true)
+        let body = ProposalBody(draft, rules: adminDecides, isPatchAdmin: true, ai: .off)
         XCTAssertEqual(body.durationHours, 24)
         XCTAssertEqual(body.putToVote, true)
     }
 
     func testARequestToTheMaintainerAndADiscussionSendNeither() {
         let draft = ProposalDraft(title: "Later starts", durationHours: 72, putToVote: true)
-        let request = ProposalBody(draft, rules: adminDecides, isPatchAdmin: false)
+        let request = ProposalBody(draft, rules: adminDecides, isPatchAdmin: false, ai: .off)
         XCTAssertNil(request.durationHours)
         XCTAssertNil(request.putToVote, "only an admin who chooses sends the flag")
-        let discussion = ProposalBody(draft, rules: elsewhere, isPatchAdmin: false)
+        let discussion = ProposalBody(draft, rules: elsewhere, isPatchAdmin: false, ai: .off)
         XCTAssertNil(discussion.durationHours, "no clock where nothing is put to a vote")
         XCTAssertNil(discussion.putToVote)
     }

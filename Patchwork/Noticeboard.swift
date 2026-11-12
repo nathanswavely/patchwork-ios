@@ -37,6 +37,8 @@ struct Notice: Decodable, Identifiable, Hashable {
     var authorUsername: String = ""
     var authorDisplayName: String = ""
     var replyCount: Int = 0
+    /// Whether AI wrote it (`generated` is the only answer shown).
+    var aiUse: String? = nil
 
     init(id: String, nodeId: String = "", authorId: String = "", title: String = "", body: String = "",
          imageUrl: String = "", imageAlt: String = "", repliesOpen: Bool = true, membersTold: Bool = false,
@@ -50,7 +52,7 @@ struct Notice: Decodable, Identifiable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, nodeId, authorId, title, body, imageUrl, imageAlt, repliesOpen, membersTold
-        case createdAt, updatedAt, authorUsername, authorDisplayName, replyCount
+        case createdAt, updatedAt, authorUsername, authorDisplayName, replyCount, aiUse
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -63,6 +65,7 @@ struct Notice: Decodable, Identifiable, Hashable {
         createdAt = text(.createdAt); updatedAt = text(.updatedAt)
         authorUsername = text(.authorUsername); authorDisplayName = text(.authorDisplayName)
         replyCount = ((try? c.decodeIfPresent(Int.self, forKey: .replyCount)) ?? nil) ?? 0
+        aiUse = (try? c.decodeIfPresent(String.self, forKey: .aiUse)) ?? nil
     }
 
     var author: String { Noticeboard.author(displayName: authorDisplayName, username: authorUsername) }
@@ -263,13 +266,17 @@ enum Noticeboard {
     /// `validateNotice`, in the server's order and in its words. Lengths are
     /// bytes, as Go counts them, so a title of emoji runs out four times as
     /// fast as the web's `maxlength` suggests.
-    static func problem(_ draft: NoticeDraft) -> String? {
+    /// Then the AI answer, where the quilt requires one — on an edit too,
+    /// as the web asks it: a notice from before the question is asked the
+    /// next time it is rewritten. A notice's image is not asked about.
+    static func problem(_ draft: NoticeDraft, ai: AIDisclosure = .off) -> String? {
         let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         if title.isEmpty { return "a notice needs a title" }
         if title.utf8.count > titleLimit { return "keep the title under 140 characters" }
         if body.utf8.count > bodyLimit { return "that notice is too long" }
-        return EventPosting.imageProblem(url: draft.imageURL, alt: draft.imageAlt)
+        if let problem = EventPosting.imageProblem(url: draft.imageURL, alt: draft.imageAlt) { return problem }
+        return ai.missing(draft.aiUse)
     }
 
     static func replyProblem(_ text: String) -> String? {
@@ -292,11 +299,35 @@ enum Noticeboard {
     // MARK: Reports
 
     /// The web's reasons, in the web's order. The server takes any text; the
-    /// list is what keeps a report something an admin can sort.
-    static let reportReasons = [
-        "Harassment or intimidation", "Hate speech or discrimination", "Threats or incitement",
-        "Sharing private information", "Spam or scam", "Impersonation", "Something else",
+    /// list is what keeps a report something an admin can sort. Each is sent
+    /// as its words, except unlabelled AI, which travels as a code: the
+    /// queue acts on it, its first remedy being to apply the label (web ADR
+    /// 2026-10-20, decision 7).
+    static let reportReasons: [(label: String, value: String)] = [
+        ("Harassment or intimidation", "Harassment or intimidation"),
+        ("Hate speech or discrimination", "Hate speech or discrimination"),
+        ("Threats or incitement", "Threats or incitement"),
+        ("Sharing private information", "Sharing private information"),
+        ("Spam or scam", "Spam or scam"),
+        ("Impersonation", "Impersonation"),
+        (unlabelledAILabel, unlabelledAI),
+        ("Something else", "Something else"),
     ]
+    static let unlabelledAI = "unlabelled_ai"
+    static let unlabelledAILabel = "AI-made content without a label"
+
+    /// The reasons a report about this kind of thing is offered. Unlabelled
+    /// AI only where the question is asked: a notice, never a reply or a
+    /// person, which carry no answer to correct.
+    static func reportReasons(for kind: ReportBody.Kind) -> [(label: String, value: String)] {
+        kind == .notice ? reportReasons : reportReasons.filter { $0.value != unlabelledAI }
+    }
+
+    /// A stored reason in words: the code read back, every other reason
+    /// already its own words.
+    static func reasonLabel(_ value: String) -> String {
+        value == unlabelledAI ? unlabelledAILabel : value
+    }
     /// Where a report about a notice or a reply goes: to this patch's
     /// admins (`content_reports.node_id`), never to the quilt's panel. The
     /// web's shared dialog says "the instance admins" here, which is true of
@@ -312,15 +343,18 @@ struct NoticeDraft: Equatable {
     var imageAlt = ""
     var repliesOpen = true
     var tellMembers = false
+    var aiUse: AIUse?
 
-    init(title: String = "", body: String = "", imageURL: String = "", imageAlt: String = "", repliesOpen: Bool = true, tellMembers: Bool = false) {
+    init(title: String = "", body: String = "", imageURL: String = "", imageAlt: String = "", repliesOpen: Bool = true,
+         tellMembers: Bool = false, aiUse: AIUse? = nil) {
         self.title = title; self.body = body; self.imageURL = imageURL; self.imageAlt = imageAlt
-        self.repliesOpen = repliesOpen; self.tellMembers = tellMembers
+        self.repliesOpen = repliesOpen; self.tellMembers = tellMembers; self.aiUse = aiUse
     }
-    /// The edit form's starting point: the notice as it stands.
+    /// The edit form's starting point: the notice as it stands, its AI
+    /// answer pre-filled as the web's edit is.
     init(editing notice: Notice) {
         self.init(title: notice.title, body: notice.body, imageURL: notice.imageUrl, imageAlt: notice.imageAlt,
-                  repliesOpen: notice.repliesOpen, tellMembers: false)
+                  repliesOpen: notice.repliesOpen, tellMembers: false, aiUse: AIUse(stored: notice.aiUse))
     }
 }
 
@@ -337,13 +371,16 @@ struct NoticeBody: Encodable, Equatable {
     var imageAlt: String
     var repliesOpen: Bool
     var tellMembers: Bool
+    var aiUse: String?
     private enum CodingKeys: String, CodingKey {
         case title, body, imageUrl = "image_url", imageAlt = "image_alt", repliesOpen = "replies_open", tellMembers = "tell_members"
+        case aiUse = "ai_use"
     }
-    init(_ draft: NoticeDraft) {
-        let edit = NoticeEditBody(draft)
+    init(_ draft: NoticeDraft, ai: AIDisclosure) {
+        let edit = NoticeEditBody(draft, was: draft.aiUse)
         title = edit.title; body = edit.body; imageUrl = edit.imageUrl; imageAlt = edit.imageAlt
         repliesOpen = draft.repliesOpen; tellMembers = draft.tellMembers
+        aiUse = ai.sent(draft.aiUse)
     }
 }
 
@@ -351,17 +388,23 @@ struct NoticeBody: Encodable, Equatable {
 /// and nothing else. `replies_open` is left out on purpose — it is a
 /// different right, and a request that carries both is refused whole for an
 /// admin who is not the author.
+///
+/// The AI answer is the one field sent only where it changed from `was`,
+/// the notice's stored answer: absent keeps it on the server, and a quilt
+/// with the question off never shows it, so there it never changes.
 struct NoticeEditBody: Encodable, Equatable {
     var title: String
     var body: String
     var imageUrl: String
     var imageAlt: String
-    private enum CodingKeys: String, CodingKey { case title, body, imageUrl = "image_url", imageAlt = "image_alt" }
-    init(_ draft: NoticeDraft) {
+    var aiUse: String?
+    private enum CodingKeys: String, CodingKey { case title, body, imageUrl = "image_url", imageAlt = "image_alt", aiUse = "ai_use" }
+    init(_ draft: NoticeDraft, was: AIUse?) {
         title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         imageUrl = draft.imageURL.trimmingCharacters(in: .whitespacesAndNewlines)
         imageAlt = imageUrl.isEmpty ? "" : draft.imageAlt.trimmingCharacters(in: .whitespacesAndNewlines)
+        aiUse = aiAnswerChange(draft.aiUse, from: was)
     }
 }
 
@@ -401,12 +444,13 @@ extension PatchworkAPI {
     /// The notice is addressed by its id alone: the patch is not in the path.
     func notice(id: String) async throws -> NoticeEnvelope { try await get("notices/\(id)") }
 
-    func putUp(slug: String, draft: NoticeDraft) async throws -> Notice {
-        try await post("nodes/\(slug)/notices", body: NoticeBody(draft))
+    func putUp(slug: String, draft: NoticeDraft, ai: AIDisclosure) async throws -> Notice {
+        try await post("nodes/\(slug)/notices", body: NoticeBody(draft, ai: ai))
     }
 
-    func editNotice(id: String, draft: NoticeDraft) async throws -> Notice {
-        try await patch("notices/\(id)", body: NoticeEditBody(draft))
+    /// `was` is the notice's answer as it was opened.
+    func editNotice(id: String, draft: NoticeDraft, was: AIUse?) async throws -> Notice {
+        try await patch("notices/\(id)", body: NoticeEditBody(draft, was: was))
     }
 
     func setReplies(notice id: String, open: Bool) async throws -> Notice {

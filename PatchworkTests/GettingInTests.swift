@@ -81,7 +81,7 @@ final class GettingInTests: XCTestCase {
     func testTheCreateBodyAlwaysCarriesTheMembershipPolicy() throws {
         var bare = draft
         bare.name = "  Night Market  "
-        let body = try json(bare.createBody)
+        let body = try json(bare.createBody(ai: .off))
         XCTAssertEqual(body["membership_policy"] as? String, "invite_only",
                        "the server defaults a missing policy to open, so it is never left out")
         XCTAssertEqual(body["name"] as? String, "Night Market", "trimmed, as the web sends it")
@@ -98,16 +98,16 @@ final class GettingInTests: XCTestCase {
 
         var open = bare
         open.answer(.open)
-        XCTAssertEqual(try json(open.createBody)["membership_policy"] as? String, "open")
+        XCTAssertEqual(try json(open.createBody(ai: .off))["membership_policy"] as? String, "open")
     }
 
     func testOnlyAConfirmedPointTravels() throws {
         var filled = draft
         filled.name = "Night Market"
         filled.address = "12 Example Street"
-        XCTAssertNil(try json(filled.createBody)["latitude"], "an address implies no point")
+        XCTAssertNil(try json(filled.createBody(ai: .off))["latitude"], "an address implies no point")
         filled.point = MapPoint(latitude: 40.0379, longitude: -76.3055)
-        let body = try json(filled.createBody)
+        let body = try json(filled.createBody(ai: .off))
         XCTAssertEqual(body["latitude"] as? Double, 40.0379)
         XCTAssertEqual(body["longitude"] as? Double, -76.3055)
         XCTAssertEqual(body["address"] as? String, "12 Example Street")
@@ -119,7 +119,7 @@ final class GettingInTests: XCTestCase {
         filled.tags = ["music", "venue"]
         filled.suggestTags = ["zines"]
         filled.toggleMotif("vinyl")
-        let body = try json(filled.createBody)
+        let body = try json(filled.createBody(ai: .off))
         XCTAssertEqual(body["tags"] as? [String], ["music", "venue"], "in priority order")
         XCTAssertEqual(body["suggest_tags"] as? [String], ["zines"])
         XCTAssertEqual((body["appearance"] as? [String: Any])?["icon"] as? String, "vinyl")
@@ -163,7 +163,7 @@ final class GettingInTests: XCTestCase {
         let body = try json(setup.setupBody)
         XCTAssertEqual(body["template"] as? String, "casual")
         XCTAssertEqual(body["membership_policy"] as? String, "invite_only")
-        let update = try json(setup.updateBody)
+        let update = try json(setup.updateBody(ai: .off))
         XCTAssertNil(update["membership_policy"], "PATCH nodes takes no policy: governance moves through the rules")
         XCTAssertEqual(update["visibility"] as? String, "public")
     }
@@ -221,7 +221,7 @@ final class GettingInTests: XCTestCase {
         suggestion.name = " Gallery Row "
         suggestion.links = [.init(url: " https://galleryrow.example.org ", label: ""), .init(url: "", label: "orphan")]
         suggestion.tags = ["craft"]
-        let body = try json(suggestion.body)
+        let body = try json(suggestion.body(ai: .off))
         XCTAssertEqual(body["name"] as? String, "Gallery Row")
         XCTAssertEqual(body["description"] as? String, "", "always sent; the server takes an empty one")
         let links = try XCTUnwrap(body["links"] as? [[String: Any]])
@@ -231,7 +231,7 @@ final class GettingInTests: XCTestCase {
         XCTAssertEqual(body["tags"] as? [String], ["craft"])
         for absent in ["website", "address", "feed_url"] { XCTAssertNil(body[absent]) }
         suggestion.feedURL = "https://galleryrow.example.org/calendar.ics"
-        XCTAssertEqual(try json(suggestion.body)["feed_url"] as? String, "https://galleryrow.example.org/calendar.ics")
+        XCTAssertEqual(try json(suggestion.body(ai: .off))["feed_url"] as? String, "https://galleryrow.example.org/calendar.ics")
         XCTAssertEqual(SuggestionDraft().problem(), "Name is required")
     }
 

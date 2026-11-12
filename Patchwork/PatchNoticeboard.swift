@@ -273,6 +273,7 @@ struct NoticeRow: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(byline).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
             HStack(spacing: 8) {
+                if AIUse.generated(notice.aiUse) { MadeWithAITag() }
                 if notice.membersTold { NoticePill(text: "members told") }
                 if notice.repliesOpen {
                     Text(Noticeboard.repliesLabel(notice)).font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted)
@@ -313,6 +314,7 @@ struct NoticeFormSheet: View {
     @State private var draft: NoticeDraft
     @State private var busy = false
     @State private var failure: String?
+    @State private var nudge = ScrollNudge()
 
     init(mode: Mode, repliesDefault: Bool = true, onDone: @escaping (Notice, NoticeDraft) -> Void) {
         self.mode = mode
@@ -327,51 +329,64 @@ struct NoticeFormSheet: View {
     private var isNew: Bool { if case .new = mode { return true } else { return false } }
     private var hasImage: Bool { !draft.imageURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var ready: Bool { !busy && !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var ai: AIDisclosure { session.aiDisclosure }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    heading
-                    field("Title") {
-                        TextField("Notice title", text: $draft.title, axis: .vertical)
-                            .lineLimit(1...3)
-                            .textInputAutocapitalization(.sentences)
-                            .fieldStyle()
-                            .accessibilityIdentifier("noticeTitle")
-                    }
-                    field("Notice") {
-                        MarkdownComposer(text: $draft.body, title: "Notice", placeholder: "Markdown is supported.",
-                                         base: session.quilt.url, segmentsID: "noticeWritePreview",
-                                         fieldID: "noticeBody", previewID: "noticePreview")
-                    }
-                    field("Image address", hint: "Link a flyer or photo you already have online. Patchwork points at it and never keeps a copy.") {
-                        TextField(text: $draft.imageURL, prompt: Text(verbatim: "https://…")) { Text("Image address") }
-                            .keyboardType(.URL).textContentType(.URL)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .fieldStyle()
-                            .accessibilityIdentifier("noticeImageURL")
-                    }
-                    // Asked for only once there is something to describe.
-                    if hasImage {
-                        field("Describe the image", hint: "Read aloud by screen readers, and shown if the image stops loading.") {
-                            TextField("Alt text for the image", text: $draft.imageAlt)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        heading
+                        field("Title") {
+                            TextField("Notice title", text: $draft.title, axis: .vertical)
+                                .lineLimit(1...3)
+                                .textInputAutocapitalization(.sentences)
                                 .fieldStyle()
-                                .accessibilityIdentifier("noticeImageAlt")
+                                .accessibilityIdentifier("noticeTitle")
+                        }
+                        field("Notice") {
+                            MarkdownComposer(text: $draft.body, title: "Notice", placeholder: "Markdown is supported.",
+                                             base: session.quilt.url, segmentsID: "noticeWritePreview",
+                                             fieldID: "noticeBody", previewID: "noticePreview")
+                        }
+                        field("Image address", hint: "Link a flyer or photo you already have online. Patchwork points at it and never keeps a copy.") {
+                            TextField(text: $draft.imageURL, prompt: Text(verbatim: "https://…")) { Text("Image address") }
+                                .keyboardType(.URL).textContentType(.URL)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                                .fieldStyle()
+                                .accessibilityIdentifier("noticeImageURL")
+                        }
+                        // Asked for only once there is something to describe.
+                        if hasImage {
+                            field("Describe the image", hint: "Read aloud by screen readers, and shown if the image stops loading.") {
+                                TextField("Alt text for the image", text: $draft.imageAlt)
+                                    .fieldStyle()
+                                    .accessibilityIdentifier("noticeImageAlt")
+                            }
+                        }
+                        if isNew { switches }
+                        // The notice's words only: its image is not asked about
+                        // (web ADR 2026-10-20 asks images of events and patches).
+                        if ai.asks {
+                            field(AIUseQuestion.title, required: ai == .required) {
+                                AIUseQuestion(mode: ai, answer: $draft.aiUse)
+                            }
+                            .id("aiUse")
+                        }
+                        if let failure {
+                            Label { Text(failure).font(Font.pw.footnote) } icon: {
+                                Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
+                            }
+                            .foregroundStyle(Color.pwText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("noticeFormError")
                         }
                     }
-                    if isNew { switches }
-                    if let failure {
-                        Label { Text(failure).font(Font.pw.footnote) } icon: {
-                            Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
-                        }
-                        .foregroundStyle(Color.pwText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("noticeFormError")
-                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .follows(nudge, in: proxy)
+                .clearsMissingAnswer($failure, answers: [draft.aiUse])
             }
             .background(Color.pwGround.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -426,9 +441,9 @@ struct NoticeFormSheet: View {
         }
     }
 
-    private func field<Content: View>(_ title: String, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+    private func field<Content: View>(_ title: String, required: Bool = false, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
+            FieldTitle(title: title, required: required, header: false)
             content()
             if let hint {
                 Text(hint).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
@@ -459,8 +474,9 @@ struct NoticeFormSheet: View {
     private func submit() {
         guard !busy else { return }
         failure = nil
-        if let problem = Noticeboard.problem(draft) {
+        if let problem = Noticeboard.problem(draft, ai: ai) {
             failure = EventPosting.sentenceCased(problem)
+            if problem == AIDisclosure.missingLine { nudge.to("aiUse") }
             return
         }
         busy = true
@@ -470,8 +486,8 @@ struct NoticeFormSheet: View {
             do {
                 let notice: Notice
                 switch mode {
-                case .new(let slug, _): notice = try await session.api.putUp(slug: slug, draft: sent)
-                case .edit(let old): notice = try await session.api.editNotice(id: old.id, draft: sent)
+                case .new(let slug, _): notice = try await session.api.putUp(slug: slug, draft: sent, ai: ai)
+                case .edit(let old): notice = try await session.api.editNotice(id: old.id, draft: sent, was: AIUse(stored: old.aiUse))
                 }
                 onDone(notice, sent)
                 dismiss()

@@ -30,8 +30,11 @@ struct RulesChangeSheet: View {
     @State private var confirmingDiscard = false
     @State private var busy = false
     @State private var failure: String?
+    @State private var aiUse: AIUse?
+    @State private var nudge = ScrollNudge()
 
     private var rules: GovernanceRules? { current?.governanceRules }
+    private var ai: AIDisclosure { session.aiDisclosure }
     private var chooses: Bool { ProposalPosting.adminChooses(rules, isPatchAdmin: isPatchAdmin, rulesDoc: true) }
     private var outcome: ProposalPosting.Outcome {
         ProposalPosting.outcome(rules: rules, isPatchAdmin: isPatchAdmin, putToVote: chooses && putToVote, rulesDoc: true)
@@ -43,29 +46,33 @@ struct RulesChangeSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Group {
-                    Section {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(direct ? "Changing" : "Proposing changes to")
-                                .font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted).textCase(.uppercase)
-                            Text("Governance Rules").font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
-                                .accessibilityAddTraits(.isHeader)
-                                .accessibilityIdentifier("rulesHeading")
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    if current != nil { fields } else if let loadError {
+            ScrollViewReader { proxy in
+                Form {
+                    Group {
                         Section {
-                            Text(loadError).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
-                            Button("Try again") { Task { await load() } }
-                                .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(direct ? "Changing" : "Proposing changes to")
+                                    .font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted).textCase(.uppercase)
+                                Text("Governance Rules").font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
+                                    .accessibilityAddTraits(.isHeader)
+                                    .accessibilityIdentifier("rulesHeading")
+                            }
+                            .padding(.vertical, 4)
                         }
-                    } else {
-                        Section { ProgressView("Loading rules…") }
+                        if current != nil { fields } else if let loadError {
+                            Section {
+                                Text(loadError).font(Font.pw.subheadline).foregroundStyle(Color.pwTextMuted)
+                                Button("Try again") { Task { await load() } }
+                                    .font(Font.pw.subheadlineMedium).inkAction("arrow.clockwise")
+                            }
+                        } else {
+                            Section { ProgressView("Loading rules…") }
+                        }
                     }
+                    .listRowBackground(Color.pwSurface)
                 }
-                .listRowBackground(Color.pwSurface)
+                .follows(nudge, in: proxy)
+                .clearsMissingAnswer($failure, answers: [aiUse])
             }
             .scrollContentBackground(.hidden)
             .background(Color.pwGround.ignoresSafeArea())
@@ -175,6 +182,20 @@ struct RulesChangeSheet: View {
                 Text(ProposalPosting.durationHint(rules))
             }
         }
+        // The rules are a text like any other the patch changes; the web's
+        // rules editor asks in the question's own words.
+        if ai.asks {
+            Section {
+                // The card is the row: a surface inside a surface would be
+                // two outlines for one question.
+                AIUseQuestion(mode: ai, answer: $aiUse)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            } header: {
+                FieldTitle(title: AIUseQuestion.title, required: ai == .required).textCase(nil)
+            }
+            .id("aiUse")
+        }
         Section {
             Text(RulesChange.consequence(outcome, hours: hours))
                 .font(Font.pw.subheadline).foregroundStyle(Color.pwText)
@@ -265,9 +286,15 @@ struct RulesChangeSheet: View {
             failure = "Title is required"
             return
         }
+        if let missing = ai.missing(aiUse) {
+            failure = missing
+            nudge.to("aiUse")
+            return
+        }
         busy = true
         let body = AmendmentBody(title: title, why: why, targetDoc: DocumentAmending.rulesFile, documentTitle: "Governance Rules",
-                                 proposed: proposed.text(), rules: rules, isPatchAdmin: isPatchAdmin, putToVote: putToVote, durationHours: hours)
+                                 proposed: proposed.text(), rules: rules, isPatchAdmin: isPatchAdmin, putToVote: putToVote, durationHours: hours,
+                                 aiUse: aiUse, ai: ai)
         Task {
             defer { busy = false }
             do {

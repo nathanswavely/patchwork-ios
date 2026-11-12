@@ -19,6 +19,7 @@ struct AccountChanges: Encodable, Equatable {
     var links: [PatchLink]?
     var startOnMyQuilt: Bool?
     var hideAmendedLinings: Bool?
+    var hideAiWork: Bool?
 }
 
 /// The Profile page's fields, held apart from the account until Save.
@@ -183,7 +184,7 @@ struct SettingsIndex: View {
                     row("Profile", detail: "Name, bio, links and contact card", symbol: "person.crop.circle", id: "settingsProfile") { ProfileSettings() }
                     row("When you open Patchwork", detail: (session.me?.startOnMyQuilt == true) ? "My Quilt" : "The whole quilt",
                         symbol: "house", id: "settingsLanding") { LandingSettings() }
-                    row("Discovery", detail: (session.me?.hideAmendedLinings == true) ? "Hiding amended linings" : "Showing every patch",
+                    row("Discovery", detail: DiscoverySettings.summary(session.me),
                         symbol: "eye", id: "settingsDiscovery") { DiscoverySettings() }
                     row("Notifications", detail: "What reaches you, and how", symbol: "bell", id: "settingsNotifications") { NotificationPreferencesView() }
                     row("Security", detail: "Recovery codes and devices", symbol: "lock", id: "settingsSecurity") { SecuritySettings() }
@@ -415,10 +416,11 @@ struct ProfileSettings: View {
     }
 }
 
-// MARK: - The two switches
+// MARK: - The switches
 
 /// One switch saved the moment it moves, the way the web saves it: a single
-/// toggle does not need a Save button. A refusal puts it back.
+/// toggle does not need a Save button. A refusal puts it back. A section
+/// rather than a page, so one page can hold two, each with its own footer.
 private struct AccountSwitch: View {
     let title: String
     let heading: String
@@ -433,25 +435,19 @@ private struct AccountSwitch: View {
     @State private var failure: String?
 
     var body: some View {
-        List {
-            Group {
-                Section {
-                    Toggle(isOn: Binding(get: { on }, set: { value in on = value; Task { await save(value) } })) {
-                        Text(title).font(Font.pw.body)
-                    }
-                    .tint(Color.pwAccent)
-                    .disabled(saving)
-                    .accessibilityIdentifier(identifier)
-                    if let failure { Text(failure).font(Font.pw.footnote).foregroundStyle(Color.pwText) }
-                } header: {
-                    settingsHeading(heading)
-                } footer: {
-                    settingsFootnote(footer)
-                }
+        Section {
+            Toggle(isOn: Binding(get: { on }, set: { value in on = value; Task { await save(value) } })) {
+                Text(title).font(Font.pw.body)
             }
-            .listRows()
+            .tint(Color.pwAccent)
+            .disabled(saving)
+            .accessibilityIdentifier(identifier)
+            if let failure { Text(failure).font(Font.pw.footnote).foregroundStyle(Color.pwText) }
+        } header: {
+            settingsHeading(heading)
+        } footer: {
+            settingsFootnote(footer)
         }
-        .groundedList()
         .onAppear { on = session.me.map(read) ?? false }
     }
 
@@ -476,34 +472,74 @@ private struct AccountSwitch: View {
 /// re-asserts — so moving it here changes the next launch, not this one.
 struct LandingSettings: View {
     var body: some View {
-        AccountSwitch(
-            title: "Start on My Quilt",
-            heading: "When you open Patchwork",
-            footer: "Patchwork opens on the whole quilt. Switch this on to start on My Quilt instead, from the next time the app opens. You can still switch lens whenever you like.",
-            identifier: "startOnMyQuilt",
-            read: { $0.startOnMyQuilt == true },
-            changes: { AccountChanges(startOnMyQuilt: $0) }
-        )
+        List {
+            Group {
+                AccountSwitch(
+                    title: "Start on My Quilt",
+                    heading: "When you open Patchwork",
+                    footer: "Patchwork opens on the whole quilt. Switch this on to start on My Quilt instead, from the next time the app opens. You can still switch lens whenever you like.",
+                    identifier: "startOnMyQuilt",
+                    read: { $0.startOnMyQuilt == true },
+                    changes: { AccountChanges(startOnMyQuilt: $0) }
+                )
+            }
+            .listRows()
+        }
+        .groundedList()
         .navigationTitle("When you open Patchwork")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-/// Web ADR 037's personal filter. The server applies it to the tree, so the
-/// quilt is read again once it is saved; the whole tree too, since Discover
-/// and search read it even while My Quilt is on.
+/// Web ADR 037's personal filter, and web ADR 2026-10-20's for declared AI
+/// work beside it. The server applies both to the tree, so the quilt is
+/// read again once one is saved; the whole tree too, since Discover and
+/// search read it even while My Quilt is on. The AI filter also narrows the
+/// event feed, so the lists of events read again as well.
 struct DiscoverySettings: View {
     @EnvironmentObject private var session: QuiltSession
+
+    /// The index row's line: what is hidden, or that nothing is.
+    static func summary(_ user: User?) -> String {
+        switch (user?.hideAmendedLinings == true, user?.hideAiWork == true) {
+        case (true, true): return "Hiding amended linings and AI work"
+        case (true, false): return "Hiding amended linings"
+        case (false, true): return "Hiding AI work"
+        case (false, false): return "Showing every patch"
+        }
+    }
+
     var body: some View {
-        AccountSwitch(
-            title: "Hide patches with amended linings",
-            heading: "Discovery",
-            footer: "Keeps patches that changed the shared community standards out of your quilt, search, map and event feed. Direct links still work. If this quilt already hides them for everyone, this can only hide more, never less.",
-            identifier: "hideAmendedLinings",
-            read: { $0.hideAmendedLinings == true },
-            changes: { AccountChanges(hideAmendedLinings: $0) },
-            after: { await session.loadTree(refreshingWhole: true) }
-        )
+        List {
+            Group {
+                AccountSwitch(
+                    title: "Hide patches with amended linings",
+                    heading: "Discovery",
+                    footer: "Keeps patches that changed the shared community standards out of your quilt, search, map and event feed. Direct links still work. If this quilt already hides them for everyone, this can only hide more, never less.",
+                    identifier: "hideAmendedLinings",
+                    read: { $0.hideAmendedLinings == true },
+                    changes: { AccountChanges(hideAmendedLinings: $0) },
+                    after: { await session.loadTree(refreshingWhole: true) }
+                )
+                // The server's filter (`hideAIWork`) skips `scope=my`, and
+                // the event feed keeps a patch the reader belongs to or
+                // follows: the filter protects browsing, not taking part.
+                AccountSwitch(
+                    title: "Hide patches whose work relies on AI",
+                    heading: "AI work",
+                    footer: "Keeps patches whose admins say their work relies heavily on AI out of your quilt, search, map and event feed. My Quilt still shows the patches you belong to or follow, and so does the event feed. Direct links still work.",
+                    identifier: "hideAiWork",
+                    read: { $0.hideAiWork == true },
+                    changes: { AccountChanges(hideAiWork: $0) },
+                    after: {
+                        await session.loadTree(refreshingWhole: true)
+                        session.eventsChanged()
+                    }
+                )
+            }
+            .listRows()
+        }
+        .groundedList()
         .navigationTitle("Discovery")
         .navigationBarTitleDisplayMode(.inline)
     }

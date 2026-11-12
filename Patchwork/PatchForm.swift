@@ -207,6 +207,7 @@ struct PatchFormView: View {
     /// The link being added in the edit form.
     @State private var newLinkURL = ""
     @State private var newLinkLabel = ""
+    @State private var nudge = ScrollNudge()
 
     init(mode: Mode, draft: PatchDraft, suggestInstead: (() -> Void)? = nil, onFinished: @escaping (String) -> Void = { _ in }) {
         self.mode = mode
@@ -217,6 +218,7 @@ struct PatchFormView: View {
 
     private var setup: Bool { if case .setup = mode { return true } else { return false } }
     private var editing: Bool { if case .edit = mode { return true } else { return false } }
+    private var ai: AIDisclosure { session.aiDisclosure }
 
     var body: some View {
         // The map's buttons arrive under the pinned act at the foot when the
@@ -236,6 +238,8 @@ struct PatchFormView: View {
                     withAnimation { proxy.scrollTo(PlacePicker.anchor, anchor: .bottom) }
                 }
             }
+            .follows(nudge, in: proxy)
+            .clearsMissingAnswer($failure, answers: [draft.aiUse, draft.imageAI])
         }
         .background(Color.pwGround.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
@@ -243,6 +247,8 @@ struct PatchFormView: View {
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) } }
         .safeAreaInset(edge: .bottom) { foot }
         .interactiveDismissDisabled(busy)
+        // A cleared image takes its answer with it, as the server drops it.
+        .onChange(of: draft.hasImage) { _, has in if !has { draft.imageAI = nil } }
         .confirmationDialog(zoneQuestion ?? "", isPresented: Binding(get: { zoneQuestion != nil }, set: { if !$0 { zoneQuestion = nil } }),
                             titleVisibility: .visible) {
             let count = PatchEditing.zoneEventCount(zoneQuestion ?? "")
@@ -313,6 +319,14 @@ struct PatchFormView: View {
         }
         if editing {
             imageField
+            // Under the image's description, as an event's is: the picture
+            // is asked about apart from the words (decision 3).
+            if ai.asks && draft.hasImage {
+                field(AIUseQuestion.imageTitle, required: ai == .required) {
+                    AIUseQuestion(mode: ai, title: AIUseQuestion.imageTitle, answer: $draft.imageAI, identifier: "imageAI")
+                }
+                .id("imageAI")
+            }
             linksField
         }
         field("Tags", hint: nil) {
@@ -354,6 +368,18 @@ struct PatchFormView: View {
             }
             policyField
             templateField
+        }
+        // The declaration is the patch's, not the quilt's switch to ask:
+        // it is asked whatever `ai_disclosure` says, as the web asks it.
+        field(AIWork.question, hint: AIWork.hint) {
+            AIWorkQuestion(answer: $draft.aiWork)
+        }
+        .id("aiWork")
+        if ai.asks {
+            field(editing ? PatchEditing.descriptionAITitle : AIUseQuestion.title, required: ai == .required) {
+                AIUseQuestion(mode: ai, title: editing ? PatchEditing.descriptionAITitle : AIUseQuestion.title, answer: $draft.aiUse)
+            }
+            .id("aiUse")
         }
         if let failure {
             Label { Text(failure).font(Font.pw.footnote) } icon: {
@@ -618,16 +644,7 @@ struct PatchFormView: View {
 
     private func field<Content: View>(_ title: String, required: Bool = false, hint: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 2) {
-                Text(title).font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted)
-                if required { Text("*").font(Font.pw.footnoteSemibold).foregroundStyle(Color.pwTextMuted) }
-            }
-            // One element that says the word the asterisk stands for: a
-            // child labelled "required" over a one-glyph frame read to the
-            // audit as clipped text.
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(required ? "\(title), required" : title)
-            .accessibilityAddTraits(.isHeader)
+            FieldTitle(title: title, required: required)
             content()
             if let hint {
                 Text(hint).font(Font.pw.caption).foregroundStyle(Color.pwTextMuted)
@@ -660,7 +677,16 @@ struct PatchFormView: View {
     private func submit() {
         guard !busy else { return }
         failure = nil
-        if let problem = editing ? draft.editProblem() : draft.problem() { failure = problem; return }
+        let original: PatchDraft? = { if case .edit(_, let original, _) = mode { return original } else { return nil } }()
+        if let problem = editing ? draft.editProblem(from: original, ai: ai) : draft.problem(ai: ai) {
+            failure = problem
+            if problem == AIDisclosure.missingLine {
+                var target = "aiUse"
+                if let original, let owed = draft.owedAI(from: original).first(where: { $0.answer == nil }) { target = owed.id }
+                nudge.to(target)
+            }
+            return
+        }
         busy = true
         Task {
             defer { busy = false }
@@ -708,7 +734,7 @@ struct PatchFormView: View {
     /// patch is there to dock, and docked once this sheet has gone.
     private func create() async {
         do {
-            let created = try await session.api.createPatch(draft.createBody)
+            let created = try await session.api.createPatch(draft.createBody(ai: ai))
             await session.refreshMemberships()
             await session.loadTree(refreshingWhole: true)
             let slug = created.node.slug
@@ -740,7 +766,7 @@ struct PatchFormView: View {
             return
         }
         var note = "This patch is yours"
-        do { try await session.api.sendVoid("PATCH", "nodes/\(slug)", body: draft.updateBody) }
+        do { try await session.api.sendVoid("PATCH", "nodes/\(slug)", body: draft.updateBody(ai: ai)) }
         catch { note = "Patch set up. Finish edits in Patch Settings." }
         await session.refreshMemberships()
         await session.loadTree(refreshingWhole: true)

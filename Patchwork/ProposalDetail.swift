@@ -251,7 +251,14 @@ struct ProposalDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                 }
-                if detail != nil || !proposal.title.isEmpty { OutcomeBadge(proposal: proposal) }
+                if detail != nil || !proposal.title.isEmpty {
+                    HStack(spacing: 6) {
+                        OutcomeBadge(proposal: proposal)
+                        // On the proposal's own page only, as the web wears
+                        // it: a list row says what is being decided.
+                        if AIUse.generated(proposal.aiUse) { MadeWithAITag() }
+                    }
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     if let byline { Text(byline).font(Font.pw.subheadline) }
                     if let created = ProfileDate.day(proposal.createdAt) { Text(created).font(Font.pw.caption) }

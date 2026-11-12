@@ -75,7 +75,7 @@ two to each other.
 
 | Feature | Status | In the app | Notes |
 |---|---|---|---|
-| AI disclosure: the question on every form that posts, the "Made with AI" tag, the patch's AI work badge, the reader's hide switch, the `unlabelled_ai` report reason | In progress | branch `claude/ai-disclosure` | Web ADR 2026-10-20. Without it, a quilt with `ai_disclosure: required` refuses every post the app sends |
+| AI disclosure: the question on every form that posts, the "Made with AI" tag, the patch's AI work badge, the reader's hide switch, the `unlabelled_ai` report reason | Built | `AIUse`, the posting forms, `Events`, `NoticeDetail`, `ProposalDetail`, `PatchCard`, `Settings` | Web ADR 2026-10-20. Follows the quilt's `ai_disclosure`; on `required` a post is refused in the form, before the server would refuse it |
 | Interim-admin offer (`membership.interim_offer`) | Not yet | | Accept or Decline on the governance overview: `POST nodes/{slug}/interim-offer/accept` and `/decline` |
 | Nonprofit badge (`nodes.nonprofit`) | Not yet | | Shown on the patch head; set on create, on suggest and in Edit patch |
 | Search inside a patch | Not yet | | `search=` on `/events`, `/nodes/{slug}/proposals`, `/nodes/{slug}/members`, as `.searchable` |

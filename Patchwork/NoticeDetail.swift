@@ -160,6 +160,7 @@ struct NoticeDetailView: View {
                         }
                     }
                 }
+                if AIUse.generated(notice.aiUse) { MadeWithAITag() }
                 if notice.membersTold || !notice.repliesOpen {
                     ActsRow(spacing: 8) {
                         if notice.membersTold { NoticePill(text: "members told") }
@@ -531,7 +532,7 @@ struct ReportSheet: View {
 
     @EnvironmentObject private var session: QuiltSession
     @Environment(\.dismiss) private var dismiss
-    @State private var reason = Noticeboard.reportReasons[0]
+    @State private var reason = Noticeboard.reportReasons[0].value
     @State private var details = ""
     @State private var busy = false
     @State private var failure: String?
@@ -585,11 +586,11 @@ struct ReportSheet: View {
             // set in the system face, which no other word on this sheet is.
             Menu {
                 Picker("Reason", selection: $reason) {
-                    ForEach(Noticeboard.reportReasons, id: \.self) { Text($0).tag($0) }
+                    ForEach(Noticeboard.reportReasons(for: target.kind), id: \.value) { Text($0.label).tag($0.value) }
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Text(reason).font(Font.pw.body).foregroundStyle(Color.pwText)
+                    Text(Noticeboard.reasonLabel(reason)).font(Font.pw.body).foregroundStyle(Color.pwText)
                         .multilineTextAlignment(.leading)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.up.chevron.down")
@@ -599,7 +600,7 @@ struct ReportSheet: View {
                 .fieldStyle()
             }
             .accessibilityLabel("Reason")
-            .accessibilityValue(reason)
+            .accessibilityValue(Noticeboard.reasonLabel(reason))
             .accessibilityIdentifier("reportReason")
         }
         VStack(alignment: .leading, spacing: 6) {

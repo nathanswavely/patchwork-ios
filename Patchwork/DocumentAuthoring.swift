@@ -28,6 +28,8 @@ struct DocumentAmendmentSheet: View {
     @State private var confirmingDiscard = false
     @State private var busy = false
     @State private var failure: String?
+    @State private var aiUse: AIUse?
+    @State private var nudge = ScrollNudge()
 
     init(slug: String, document: GovernanceDocument, rules: GovernanceRules?, isPatchAdmin: Bool, onDone: @escaping (Proposal) -> Void) {
         self.slug = slug
@@ -49,69 +51,81 @@ struct DocumentAmendmentSheet: View {
     private var direct: Bool { outcome == .applied }
     private var diff: [LineDiff.Line] { LineDiff.lines(old: original, new: text) }
     private var ready: Bool { !busy && DocumentAmending.problem(title: title, original: original, proposed: text) == nil }
+    private var ai: AIDisclosure { session.aiDisclosure }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(DocumentAmending.heading(direct: direct))
-                            .font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted).textCase(.uppercase)
-                        Text(document.title)
-                            .font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityAddTraits(.isHeader)
-                            .accessibilityIdentifier("amendHeading")
-                        if let version = document.version {
-                            Text("Current version: v\(version)").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
-                        }
-                        if let note = ProposalPosting.outcomeNote(outcome) {
-                            Text(note).font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(DocumentAmending.heading(direct: direct))
+                                .font(Font.pw.captionSemibold).foregroundStyle(Color.pwTextMuted).textCase(.uppercase)
+                            Text(document.title)
+                                .font(Font.pw.displayTitle2).foregroundStyle(Color.pwText)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 4)
+                                .accessibilityAddTraits(.isHeader)
+                                .accessibilityIdentifier("amendHeading")
+                            if let version = document.version {
+                                Text("Current version: v\(version)").font(Font.pw.footnote).foregroundStyle(Color.pwTextMuted)
+                            }
+                            if let note = ProposalPosting.outcomeNote(outcome) {
+                                Text(note).font(Font.pw.body).foregroundStyle(Color.pwTextMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.top, 4)
+                            }
+                        }
+                        FormField(title: "The document") {
+                            MarkdownComposer(text: $text, title: "The document", placeholder: "The document’s text",
+                                             base: session.quilt.url, hardBreaks: false, lines: 10...40,
+                                             segmentsID: "amendWritePreview", fieldID: "amendText", previewID: "amendPreview")
+                        }
+                        changes
+                        FormField(title: "Summary of changes") {
+                            TextField("e.g. Update conflict resolution process", text: $title, axis: .vertical)
+                                .lineLimit(1...3)
+                                .textInputAutocapitalization(.sentences)
+                                .fieldStyle()
+                                .accessibilityIdentifier("amendTitle")
+                        }
+                        FormField(title: DocumentAmending.whyLabel(direct: direct)) {
+                            TextField("Help others understand why this change matters.", text: $why, axis: .vertical)
+                                .lineLimit(3...8)
+                                .fieldStyle()
+                                .accessibilityIdentifier("amendWhy")
+                        }
+                        if chooses {
+                            FormField(title: "How this gets decided") {
+                                DecisionChoices(choices: ProposalPosting.choices(rules), putToVote: $putToVote)
+                            }
+                        }
+                        if ProposalPosting.asksDuration(outcome) {
+                            FormField(title: ProposalPosting.durationLabel(outcome), hint: ProposalPosting.durationHint(rules)) {
+                                VoteWindowPicker(outcome: outcome, rules: rules, hours: $hours)
+                            }
+                        }
+                        // The web's amendment editor words it for a change.
+                        if ai.asks {
+                            FormField(title: DocumentAmending.aiTitle, required: ai == .required) {
+                                AIUseQuestion(mode: ai, title: DocumentAmending.aiTitle, answer: $aiUse)
+                            }
+                            .id("aiUse")
+                        }
+                        if let failure {
+                            Label { Text(failure).font(Font.pw.footnote) } icon: {
+                                Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
+                            }
+                            .foregroundStyle(Color.pwText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("amendError")
                         }
                     }
-                    FormField(title: "The document") {
-                        MarkdownComposer(text: $text, title: "The document", placeholder: "The document’s text",
-                                         base: session.quilt.url, hardBreaks: false, lines: 10...40,
-                                         segmentsID: "amendWritePreview", fieldID: "amendText", previewID: "amendPreview")
-                    }
-                    changes
-                    FormField(title: "Summary of changes") {
-                        TextField("e.g. Update conflict resolution process", text: $title, axis: .vertical)
-                            .lineLimit(1...3)
-                            .textInputAutocapitalization(.sentences)
-                            .fieldStyle()
-                            .accessibilityIdentifier("amendTitle")
-                    }
-                    FormField(title: DocumentAmending.whyLabel(direct: direct)) {
-                        TextField("Help others understand why this change matters.", text: $why, axis: .vertical)
-                            .lineLimit(3...8)
-                            .fieldStyle()
-                            .accessibilityIdentifier("amendWhy")
-                    }
-                    if chooses {
-                        FormField(title: "How this gets decided") {
-                            DecisionChoices(choices: ProposalPosting.choices(rules), putToVote: $putToVote)
-                        }
-                    }
-                    if ProposalPosting.asksDuration(outcome) {
-                        FormField(title: ProposalPosting.durationLabel(outcome), hint: ProposalPosting.durationHint(rules)) {
-                            VoteWindowPicker(outcome: outcome, rules: rules, hours: $hours)
-                        }
-                    }
-                    if let failure {
-                        Label { Text(failure).font(Font.pw.footnote) } icon: {
-                            Image(systemName: "exclamationmark.circle").font(Font.pw.footnote)
-                        }
-                        .foregroundStyle(Color.pwText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("amendError")
-                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(busy)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(busy)
+                .follows(nudge, in: proxy)
+                .clearsMissingAnswer($failure, answers: [aiUse])
             }
             .background(Color.pwGround.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -160,13 +174,15 @@ struct DocumentAmendmentSheet: View {
     private func submit() {
         guard !busy else { return }
         failure = nil
-        if let problem = DocumentAmending.problem(title: title, original: original, proposed: text) {
+        if let problem = DocumentAmending.problem(title: title, original: original, proposed: text) ?? ai.missing(aiUse) {
             failure = EventPosting.sentenceCased(problem)
+            if problem == AIDisclosure.missingLine { nudge.to("aiUse") }
             return
         }
         busy = true
         let body = AmendmentBody(title: title, why: why, targetDoc: document.filename ?? document.title, documentTitle: document.title,
-                                 proposed: text, rules: rules, isPatchAdmin: isPatchAdmin, putToVote: putToVote, durationHours: hours)
+                                 proposed: text, rules: rules, isPatchAdmin: isPatchAdmin, putToVote: putToVote, durationHours: hours,
+                                 aiUse: aiUse, ai: ai)
         Task {
             defer { busy = false }
             do {

@@ -24,9 +24,14 @@ struct SuggestionDraft: Equatable {
     var address = ""
     /// Curated words only: a suggestion coins none.
     var tags: [String] = []
+    /// Whether AI wrote the description: the suggester answers for what
+    /// they typed (web ADR 2026-10-20). Never the declaration — whether a
+    /// patch's work relies on AI is its runners' to say, once they claim it.
+    var aiUse: AIUse?
 
-    func problem() -> String? {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Name is required" : nil
+    func problem(ai: AIDisclosure = .off) -> String? {
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Name is required" }
+        return ai.missing(aiUse)
     }
 
     private static func filled(_ text: String) -> String? {
@@ -37,7 +42,7 @@ struct SuggestionDraft: Equatable {
     /// `POST submissions`, as the web sends it: the description always (the
     /// server takes an empty one), everything else only where it was filled,
     /// and a link only where it has an address.
-    var body: SubmissionBody {
+    func body(ai: AIDisclosure) -> SubmissionBody {
         let rows = links.compactMap { row -> SubmissionBody.Link? in
             guard let url = Self.filled(row.url) else { return nil }
             return SubmissionBody.Link(url: url, label: Self.filled(row.label))
@@ -46,7 +51,7 @@ struct SuggestionDraft: Equatable {
                               description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                               website: Self.filled(website), links: rows.isEmpty ? nil : rows,
                               address: Self.filled(address), feedUrl: Self.filled(feedURL),
-                              tags: tags.isEmpty ? nil : tags)
+                              tags: tags.isEmpty ? nil : tags, aiUse: ai.sent(aiUse))
     }
 }
 
@@ -62,6 +67,7 @@ struct SubmissionBody: Encodable, Equatable {
     let address: String?
     let feedUrl: String?
     let tags: [String]?
+    let aiUse: String?
 }
 
 /// The 201: published at once, with the listing; or waiting for review.
@@ -114,6 +120,8 @@ struct SuggestPatchForm: View {
     @State private var existingMissing = false
     /// Waiting for review: the form gives way to the web's sentence.
     @State private var waiting = false
+    @State private var nudge = ScrollNudge()
+    private var ai: AIDisclosure { session.aiDisclosure }
 
     init(name: String = "") {
         var draft = SuggestionDraft()
@@ -122,12 +130,16 @@ struct SuggestPatchForm: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if waiting { waitingCard } else { form }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if waiting { waitingCard } else { form }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .follows(nudge, in: proxy)
+            .clearsMissingAnswer($failure, answers: [draft.aiUse])
         }
         .background(Color.pwGround.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
@@ -198,6 +210,12 @@ struct SuggestPatchForm: View {
         }
         field("Tags", optional: true) {
             TagPicker(picked: $draft.tags, suggested: .constant([]), vocabulary: session.tagTerms, allowSuggesting: false)
+        }
+        if ai.asks {
+            field(AIUseQuestion.title, required: ai == .required) {
+                AIUseQuestion(mode: ai, answer: $draft.aiUse)
+            }
+            .id("aiUse")
         }
         if let failure {
             VStack(alignment: .leading, spacing: 8) {
@@ -288,12 +306,16 @@ struct SuggestPatchForm: View {
         failure = nil
         existing = nil
         existingMissing = false
-        if let problem = draft.problem() { failure = problem; return }
+        if let problem = draft.problem(ai: ai) {
+            failure = problem
+            if problem == AIDisclosure.missingLine { nudge.to("aiUse") }
+            return
+        }
         busy = true
         Task {
             defer { busy = false }
             do {
-                let answer = try await session.api.suggestPatch(draft.body)
+                let answer = try await session.api.suggestPatch(draft.body(ai: ai))
                 if let node = answer.node {
                     // On the quilt already: read it again and land on it.
                     await session.loadTree(refreshingWhole: true)
